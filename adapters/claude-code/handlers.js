@@ -16,7 +16,7 @@ import {
 import { appendEvent } from '../../core/lib/log.js';
 import { statusData } from '../../core/lib/ops.js';
 import { cardData, renderCard } from '../../core/lib/card.js';
-import { loadPlan, loadProgress } from '../../core/lib/state.js';
+import { loadGuard, loadPlan, loadProgress } from '../../core/lib/state.js';
 import { renderStatus } from '../../core/lib/cli.js';
 import { CLI, COMMANDS, LEARNER_ONLY, denyMessage, learnerCommandContext, mentorRules } from './messages.js';
 
@@ -67,7 +67,7 @@ export function preToolUse(input, env) {
   const toolInput = input.tool_input ?? {};
 
   if (tool === 'Skill' || tool === 'SlashCommand') {
-    return /\bmenitor:(skip|off|on)\b/.test(JSON.stringify(toolInput)) ? deny(LEARNER_ONLY) : {};
+    return /\bmenitor:(skip|off|on|typealong)\b/.test(JSON.stringify(toolInput)) ? deny(LEARNER_ONLY) : {};
   }
 
   const ctx = contextFor(input, env);
@@ -163,9 +163,10 @@ export function postToolUse(input, env) {
  */
 export function parseLearnerPrompt(prompt) {
   if (typeof prompt !== 'string') return null;
-  const m = /^\s*\/menitor:(skip|off|on)(?=\s|$)([\s\S]*)$/.exec(prompt);
+  const m = /^\s*\/menitor:(skip|off|on|typealong)(?=\s|$)([\s\S]*)$/.exec(prompt);
   if (!m) return null;
   if (m[1] === 'skip') return { command: 'skip', confirm: /(^|\s)--confirm(?=\s|$)/.test(m[2]) };
+  if (m[1] === 'typealong') return { command: 'typealong', on: !/^\s*off(\s|$)/.test(m[2]) };
   return { command: /** @type {'off' | 'on'} */ (m[1]) };
 }
 
@@ -196,6 +197,9 @@ export function sessionContext(ctx) {
   } else {
     lines.push('', mentorRules());
   }
+  if (ctx.mode === 'on' && typeAlongOn(ctx)) {
+    lines.push('', `Type-along is on: the window shows each step's instructions and full code, and the learner types it. Never paste step code into chat; point them to the window. You still never write their files. Steps without code yet need it: see "task brief" and "steps import".`);
+  }
   lines.push('', 'The task window has Check, Hint and Stuck buttons. A press arrives as a "Menitor window" notification. Run the skill it names right away, as if the learner had typed the command.');
   try {
     lines.push('', renderStatus(statusData(ctx.paths)));
@@ -212,6 +216,17 @@ export function sessionContext(ctx) {
     lines.push('', `Menitor's state has a problem: ${/** @type {Error} */ (err).message}. Run ${CLI} validate.`);
   }
   return lines.join('\n');
+}
+
+/**
+ * @param {GuardContext} ctx
+ */
+function typeAlongOn(ctx) {
+  try {
+    return ctx.paths ? Boolean(loadGuard(ctx.paths).typeAlong) : false;
+  } catch {
+    return false;
+  }
 }
 
 /**

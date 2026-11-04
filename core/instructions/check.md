@@ -25,6 +25,7 @@ Sort what you find:
 
 1. Log it with `{{cli}} log check task=<id> result=fail mustFix=<n> nice=<n>`.
 2. Add each must-fix as a fix item with `{{cli}} task fix "<short action>" "<short action>"`. They show up in the window, and existing ticks stay.
+   - If type-along is on, also write each fix's code and store it with `{{cli}} steps import -`. Fix IDs end in .f1, .f2 and so on.
 3. Tell the learner, briefly:
    - what already works, in one line;
    - each must-fix, with the reason and the better path, but no code;

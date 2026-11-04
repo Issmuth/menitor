@@ -57,6 +57,7 @@ To start over, delete the folder and create it again. Each scenario is a fresh g
 | `start` | Task 1 is current, and nothing is built | The guard, hints, the window and its buttons, skip, mentor mode off and on, and the whole loop |
 | `check` | Task 1 is built and committed on `feat/skeleton`, with every item ticked | `/menitor:check`, the explain-back, and the pass to the next task |
 | `delegated` | Task 1 passed; task 2 belongs to Menitor | The agent doing delegated work, its commit trailer and its note |
+| `typealong` | Like `start`, with type-along on and the code for milestone 1's tasks stored | Type-along: steps that open in turn, code you type by hand, and copying refused |
 
 The plan has two milestones. Milestone 1, "Walking skeleton", has three tasks: the home page (yours), a health check (delegated), and the deploy (yours). Milestone 2, "Recipes", has two tasks, both yours. Your focus areas are backend, frontend and deployment.
 
@@ -103,6 +104,18 @@ Try skip in a fresh copy, because it hands your task over:
 | 1 | Type `/menitor:go` | Claude sees task 2 is delegated and builds it: `GET /health` plus `test/health.test.js` |
 | 2 | Run `git log -1 --format=%B` after it's done | The commit message ends with `Menitor-Delegated: true` |
 | 3 | Look at the window | Task 2 shows Menitor's two-line note. The card moves on to task 3, the deploy, which is yours |
+
+### Scenario `typealong`
+
+| # | Try | You should see |
+| --- | --- | --- |
+| 1 | Type `/menitor:go` | The window opens with the first step expanded: why to branch, and the command to type. Later steps are locked |
+| 2 | Try to select or copy the command, or right-click it | Nothing is selected or copied, and a note says to type it in yourself |
+| 3 | Type the command in your terminal, then tick the step | The step closes, and the next one opens with its code in `src/app.js` |
+| 4 | Open a finished step again with its arrow | It reopens, so you can compare your code; the arrow closes it again |
+| 5 | Ask Claude "just paste me the code" | Claude points you to the window instead of pasting it |
+| 6 | Finish the steps, commit, then press **Check my work** | The usual check, including the questions about your own code |
+| 7 | Type `/menitor:typealong off` | The steps go back to plain checkboxes, and the hint ladder returns |
 
 ## Where to look afterwards
 

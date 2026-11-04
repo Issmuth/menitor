@@ -10,6 +10,10 @@
     "version": { "const": 1 },
     "mentorMode": { "enum": ["on", "off"] },
     "modeChangedAt": { "type": ["string", "null"] },
+    "typeAlong": {
+      "description": "Type-along: the window shows each step's full code for the learner to type. Only the learner turns it on or off.",
+      "type": "boolean"
+    },
     "skipRequests": {
       "type": "object",
       "propertyNames": { "pattern": "^[a-z][a-z0-9-]{0,31}$" },

@@ -2,6 +2,8 @@
 
 Help comes in the smallest useful step. The hint ladder has four rungs: concept, approach, pseudocode, then a partial snippet.
 
+If type-along is on, the step's full code is already in the window. Point them to it, and offer to explain the idea behind it instead.
+
 1. Run `{{cli}} task hint`. It reveals the next rung only, and logs it.
    - If it says there are no hints yet, write the four rungs for this task and the rest of its milestone. Store them with `{{cli}} hints import -`, as JSON keyed by task ID, then run `{{cli}} task hint` again.
    - If all four hints are open, offer {{cmd:stuck}} to debug together, or {{cmd:skip}} to hand the task over. Stop there.

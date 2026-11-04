@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Issmuth/menitor/blob/main/core/schemas/solutions.schema.json",
+  "title": "Menitor step code for type-along (.menitor/solutions.json)",
+  "description": "For each checklist item: what to do, in plain words, and the exact code to type. Written by the agent through the menitor CLI. Gitignored, so solutions never reach the learner's public repo; the window sends a step's code only once the step before it is ticked.",
+  "type": "object",
+  "required": ["version", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "steps": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]{0,31}\\.[cf][0-9]{1,3}$" },
+      "additionalProperties": { "$ref": "#/$defs/step" }
+    }
+  },
+  "$defs": {
+    "step": {
+      "type": "object",
+      "required": ["say", "code"],
+      "additionalProperties": false,
+      "properties": {
+        "say": { "type": "string", "minLength": 1, "maxLength": 1500 },
+        "code": { "type": "array", "maxItems": 6, "items": { "$ref": "#/$defs/block" } }
+      }
+    },
+    "block": {
+      "type": "object",
+      "required": ["text"],
+      "additionalProperties": false,
+      "properties": {
+        "where": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[^\\n\\r]*$" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 20000 }
+      }
+    }
+  }
+}

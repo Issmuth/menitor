@@ -135,3 +135,21 @@ The window was redesigned with the design-taste-frontend skill's app-screen rule
   - A tick re-renders the card, and focus returns to the same control by a `data-key`.
   - A polite live region announces a new task, a new check result, an opened hint and added fixes, instead of reading the whole card on every update.
 
+## Type-along mode
+
+A second way to help: instead of hints that build up, each step shows the full code to type by hand.
+
+- **Learner-only, like skip.** `/menitor:typealong` and `/menitor:typealong off` are recorded by the `UserPromptSubmit` hook in `guard.json` (`typeAlong`). The agent can't switch it on: it reveals full solutions. `/menitor:start` offers it, and a `typealong` log event records each change.
+- **The guard doesn't change.** The agent still never writes the learner's files. The learner types every line, and the check still ends with explain-back.
+- **Where the code lives.** The agent writes it per milestone, for every learner step, with `menitor steps import`. It goes into `.menitor/solutions.json`, keyed by checklist item ID. Each step has a plain `say`, and code blocks with a `where`: a file path, or Terminal by default.
+- **Out of the repo.** The file is gitignored, because learner repos are public portfolios. Projects set up earlier get the entry appended on their first import. The CLI is its only writer, and the guard treats it as state.
+- **What the window receives.** A step's code is sent only once the step is open: the first step, a ticked step, or the step after a tick. Later steps arrive as `{ locked: true }`, like locked hints.
+- **The accordion.** The step after the last tick opens by itself; ticking it closes it and opens the next. Any open step can also be opened or closed by hand. A step's checkbox works only once the step before it is ticked.
+- **Copying is refused, as friction rather than secrecy.**
+  - The code is `user-select: none`.
+  - Copy, cut, drag, the context menu and Ctrl or Cmd with C, X or A are cancelled inside it, with a short nudge.
+  - A page-wide copy that would include it is cancelled too, in the pop-out as well.
+  - The file on disk can still be opened; the point is the habit, not secrecy.
+- **No hints in type-along.** The Hint button and the hint ladder are hidden. `/menitor:hint` points to the window, and `/menitor:stuck` compares what was typed with the step's code without pasting it.
+- **Desktop layout.** In type-along the steps column grows and shrinks as steps open, so the rail stays sticky beside it and doesn't stretch. The inspector's `ragged-row` warning on that row is expected.
+

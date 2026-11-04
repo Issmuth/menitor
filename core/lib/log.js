@@ -39,6 +39,8 @@ export const EVENTS = {
   override: { task: 'id', reason: 'text' },
   level: { from: 'text', to: 'guided|standard|fast' },
   mode: { value: 'on|off' },
+  typealong: { value: 'on|off' },
+  steps: { count: 'int' },
   note: { text: 'text' },
 };
 
@@ -46,7 +48,7 @@ export const EVENTS = {
 export const AGENT_EVENTS = new Set(['check', 'explain', 'stuck', 'dispute', 'deploy', 'note']);
 
 /** Events only adapter hooks write, because they record what the learner typed. */
-export const LEARNER_EVENTS = new Set(['skip', 'mode', 'session']);
+export const LEARNER_EVENTS = new Set(['skip', 'mode', 'typealong', 'session']);
 
 export const LOG_HEADER =
   '# Menitor log\n\nOne line per event, oldest first. The menitor CLI writes this file; hand edits can break `menitor stats`.\n\n';

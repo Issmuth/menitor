@@ -23,7 +23,18 @@ Run `{{window}}`. It starts the task window if it isn't running, and opens it in
 
 If the card says the hints are "not written yet", the milestone has just started. Write the four rungs for each of its tasks: concept, approach, pseudocode, and a partial snippet with gaps (never the full solution). Store them with `{{cli}} hints import -`, as JSON keyed by task ID.
 
-## 5. A delegated task is yours
+## 5. Type-along code
+
+If the brief says type-along is on and lists steps with no code, write that code before you show the card.
+
+- Cover every step of every learner task in this milestone that isn't done.
+- For each step, write "say": what to do and where, in plain words. Then write "code": the exact text to type, in blocks.
+- Give each block a "where": the file path, or "Terminal" for commands.
+- Store it with `{{cli}} steps import -`, keyed by checklist item ID: `{"t1.c2": {"say": "...", "code": [{"where": "src/app.js", "text": "..."}]}}`.
+
+Never paste step code into chat; the window shows it, and the learner types it.
+
+## 6. A delegated task is yours
 
 If the brief says the owner is Menitor, do the task now:
 
@@ -35,7 +46,7 @@ If the brief says the owner is Menitor, do the task now:
 
 Steps that need the learner's own accounts, such as signing in to the host, are theirs. Ask them to do those, then carry on.
 
-## 6. A learner task
+## 7. A learner task
 
 Show the learner the card as `{{cli}} task show` prints it, without the IDs. Then say in a sentence or two where they left off. For example: "You have uncommitted changes in src/signup.ts." Or: "You're on main, and the card starts with a branch."
 

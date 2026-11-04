@@ -1,7 +1,8 @@
 // Load and save the files in .menitor/. Every save is schema-validated and atomic.
 //
 // Each file has one writer, so the window and the agent never overwrite each other:
-//   plan.json, session.json, learner.md  -> the CLI (the agent goes through it)
+//   plan.json, session.json, learner.md,
+//   solutions.json                       -> the CLI (the agent goes through it)
 //   progress.json, window.json           -> the task window
 //   guard.json                           -> agent-adapter hooks, from commands the learner typed
 //   log.md                               -> appended by the CLI and adapter hooks
@@ -24,7 +25,10 @@ import { planProblems } from './plan.js';
  * @typedef {{ at: string, ok: boolean, head: string | null, problems?: number }} LastCheck
  * @typedef {{ version: 1, currentTask: string | null, tasks: Record<string, { startCommit: string | null, startedAt: string, lastCheck?: LastCheck }> }} Session
  * @typedef {{ version: 1, ticks: Record<string, string> }} Progress
- * @typedef {{ version: 1, mentorMode: 'on' | 'off', modeChangedAt?: string | null, skipRequests: Record<string, string>, grants: Record<string, string> }} Guard
+ * @typedef {{ version: 1, mentorMode: 'on' | 'off', modeChangedAt?: string | null, typeAlong?: boolean, skipRequests: Record<string, string>, grants: Record<string, string> }} Guard
+ * @typedef {{ where?: string, text: string }} CodeBlock
+ * @typedef {{ say: string, code: CodeBlock[] }} StepCode
+ * @typedef {{ version: 1, steps: Record<string, StepCode> }} Solutions
  */
 
 /**
@@ -45,6 +49,7 @@ export const SCHEMAS = {
   window: loadSchema('window'),
   listener: loadSchema('listener'),
   inboxEvent: loadSchema('inbox-event'),
+  solutions: loadSchema('solutions'),
 };
 
 /**
@@ -159,7 +164,7 @@ export function saveProgress(paths, progress) {
 
 /** @returns {Guard} */
 export function defaultGuard() {
-  return { version: 1, mentorMode: 'on', modeChangedAt: null, skipRequests: {}, grants: {} };
+  return { version: 1, mentorMode: 'on', modeChangedAt: null, typeAlong: false, skipRequests: {}, grants: {} };
 }
 
 /**
@@ -181,6 +186,33 @@ export function loadGuard(paths) {
 export function saveGuard(paths, guard) {
   assertValid('guard', guard, 'The guard');
   writeJsonAtomic(paths.guard, guard);
+}
+
+// solutions.json (the CLI writes it; the window reads it in type-along)
+
+/** @returns {Solutions} */
+export function defaultSolutions() {
+  return { version: 1, steps: {} };
+}
+
+/**
+ * @param {StatePaths} paths
+ * @returns {Solutions}
+ */
+export function loadSolutions(paths) {
+  const solutions = readJsonOrNull(paths.solutions);
+  if (solutions === null) return defaultSolutions();
+  assertValid('solutions', solutions, 'solutions.json');
+  return /** @type {Solutions} */ (solutions);
+}
+
+/**
+ * @param {StatePaths} paths
+ * @param {Solutions} solutions
+ */
+export function saveSolutions(paths, solutions) {
+  assertValid('solutions', solutions, 'The step code');
+  writeJsonAtomic(paths.solutions, solutions);
 }
 
 // learner.md

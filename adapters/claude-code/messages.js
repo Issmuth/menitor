@@ -79,7 +79,7 @@ function capitalize(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export const LEARNER_ONLY = `Menitor: only the learner can run ${COMMANDS.skip}, ${COMMANDS.off} and ${COMMANDS.on}, by typing them. If they want to, ask them to type it.`;
+export const LEARNER_ONLY = `Menitor: only the learner can run ${COMMANDS.skip}, ${COMMANDS.off}, ${COMMANDS.on} and ${COMMANDS.typealong}, by typing them. If they want to, ask them to type it.`;
 
 /**
  * Context for the agent after the learner typed a Menitor command.
@@ -120,6 +120,16 @@ export function learnerCommandContext(r) {
       return `Menitor: the learner turned mentor mode back on (recorded). Project code on learner tasks is theirs to write again.`;
     case 'already-on':
       return 'Menitor: mentor mode is already on.';
+    case 'typealong-on':
+    case 'already-typealong-on':
+      return [
+        `Menitor: the learner turned type-along on${r.status === 'typealong-on' ? ' (recorded)' : ''}. The window now shows each step's instructions and full code, and they type it themselves.`,
+        `Run ${CLI} task brief. If it lists steps with no code yet, write the code for every learner task in the current milestone and store it with ${CLI} steps import -.`,
+        'Never paste step code into chat, and still never write their files.',
+      ].join(' ');
+    case 'typealong-off':
+    case 'already-typealong-off':
+      return `Menitor: type-along is off${r.status === 'typealong-off' ? ' (recorded)' : ''}. Back to hints: the window hides the step code, and help comes one rung at a time.`;
     default:
       return '';
   }

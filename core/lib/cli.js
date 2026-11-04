@@ -21,6 +21,7 @@ import {
   fixTask,
   importHints,
   importPlan,
+  importSteps,
   initProject,
   learnerAdd,
   learnerNote,
@@ -54,6 +55,8 @@ Plan
   menitor plan show                     Outline of milestones and tasks
   menitor plan deploy-url <url>         Record the deployed URL
   menitor hints import <file|->         Store locked hints: {"t5": {concept, approach, pseudocode, snippet}}
+  menitor steps import <file|->         Store type-along code per step:
+                                        {"t5.c2": {"say": "...", "code": [{"where": "src/app.js", "text": "..."}]}}
 
 Tasks (the ID defaults to the current task)
   menitor task show [id]                Print the task card
@@ -129,7 +132,7 @@ function formatWarnings(warnings) {
  */
 export function renderStatus(s) {
   const lines = [];
-  lines.push(`${s.project ?? 'No plan yet'} · ${s.approved ? 'plan approved' : 'plan not approved'} · mentor mode ${s.mentorMode}`);
+  lines.push(`${s.project ?? 'No plan yet'} · ${s.approved ? 'plan approved' : 'plan not approved'} · mentor mode ${s.mentorMode}${s.typeAlong ? ' · type-along on' : ''}`);
   lines.push(`Level ${s.level ?? 'not set'} · focus: ${s.focusAreas.length ? s.focusAreas.join(', ') : 'none set'}`);
   if (s.current) {
     lines.push(`Current  Task ${s.current.number}/${s.current.total} · Milestone ${s.current.milestone.number}: ${s.current.milestone.title} · ${s.current.goal}${s.current.owner === 'delegated' ? ' (delegated)' : ''}`);
@@ -179,6 +182,10 @@ function renderBrief(b) {
     lines.push(`${i === 0 ? 'Verify' : ''}`.padEnd(11) + text);
   }
   if (b.verify.some((v) => 'url' in v && v.url.startsWith('$deployUrl'))) lines.push(`Deploy URL ${b.deployUrl ?? 'not recorded yet'}`);
+  if (b.typeAlong && b.card.owner === 'learner') {
+    const { stored, missing } = b.stepCode;
+    lines.push(`Type-along on · code stored for ${stored.length} of ${stored.length + missing.length} steps${missing.length ? ` · missing: ${missing.join(', ')}` : ''}`);
+  }
   lines.push('');
   const { doc } = b;
   const where = doc.anchor ? `${doc.file}#${doc.anchor}` : doc.file;
@@ -292,6 +299,14 @@ export function run(argv, ioOverrides = {}) {
 
       case 'task':
         return runTask(sub, rest, values, io, paths, json);
+
+      case 'steps': {
+        if (sub !== 'import' || !rest[0]) throw new MenitorError('Usage: menitor steps import <file|->');
+        const { ids, warnings } = importSteps(paths(), parseJsonInput(readSource(rest[0], io), 'The step code'));
+        if (values.json) json({ stored: ids, warnings });
+        else io.out(`Stored type-along code for ${ids.join(', ')}. The window shows each step's code once the step before it is ticked.${formatWarnings(warnings)}`);
+        return EXIT.ok;
+      }
 
       case 'window': {
         const p = paths();

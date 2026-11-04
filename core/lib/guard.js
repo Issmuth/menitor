@@ -217,9 +217,9 @@ export function decideCommand(ctx, command, options = {}) {
 }
 
 /**
- * @typedef {{ command: 'skip', confirm: boolean } | { command: 'off' } | { command: 'on' }} LearnerCommand
+ * @typedef {{ command: 'skip', confirm: boolean } | { command: 'off' } | { command: 'on' } | { command: 'typealong', on: boolean }} LearnerCommand
  * @typedef {object} LearnerCommandResult
- * @property {'inactive' | 'no-task' | 'already-delegated' | 'requested' | 'confirm-first' | 'already-requested' | 'granted' | 'already-granted' | 'mode-on' | 'mode-off' | 'already-on' | 'already-off'} status
+ * @property {'inactive' | 'no-task' | 'already-delegated' | 'requested' | 'confirm-first' | 'already-requested' | 'granted' | 'already-granted' | 'mode-on' | 'mode-off' | 'already-on' | 'already-off' | 'typealong-on' | 'typealong-off' | 'already-typealong-on' | 'already-typealong-off'} status
  * @property {string | null} task
  */
 
@@ -241,6 +241,15 @@ export function applyLearnerCommand(root, cmd, options = {}) {
   } catch {
     // A broken guard file must never lock the learner out: start again from the default.
     guard = defaultGuard();
+  }
+
+  if (cmd.command === 'typealong') {
+    const on = cmd.on;
+    if (Boolean(guard.typeAlong) === on) return { status: on ? 'already-typealong-on' : 'already-typealong-off', task: null };
+    guard.typeAlong = on;
+    saveGuard(paths, guard);
+    appendEvent(paths.log, 'typealong', { value: on ? 'on' : 'off' }, now);
+    return { status: on ? 'typealong-on' : 'typealong-off', task: null };
   }
 
   if (cmd.command === 'off' || cmd.command === 'on') {

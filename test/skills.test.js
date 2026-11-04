@@ -48,7 +48,7 @@ test('frontmatter: names, descriptions and learner-only commands', () => {
     assert.equal(/^disable-model-invocation: true$/m.test(front), spec.learnerOnly, name);
     assert.match(front, /- Bash\(node "\$\{CLAUDE_PLUGIN_ROOT\}\/core\/bin\/menitor\.js" \*\)/);
   }
-  for (const name of ['start', 'skip', 'off', 'on']) assert.equal(SKILLS[name].learnerOnly, true, `${name} is typed by the learner only`);
+  for (const name of ['start', 'skip', 'off', 'on', 'typealong']) assert.equal(SKILLS[name].learnerOnly, true, `${name} is typed by the learner only`);
   for (const name of ['go', 'check', 'hint', 'stuck']) assert.equal(SKILLS[name].learnerOnly, false, `${name} is reachable from window buttons`);
 });
 
@@ -99,6 +99,12 @@ test('the plan example in start.md is a valid plan', () => {
   const { errors, warnings } = planProblems(plan, { focusAreas: ['frontend'] });
   assert.deepEqual(errors, []);
   assert.deepEqual(warnings, []);
+});
+
+test('the step code example in typealong.md is valid step code', () => {
+  const json = /```json\n([\s\S]*?)\n```/.exec(instructions('typealong.md'));
+  assert.ok(json, 'typealong.md has a JSON example');
+  assert.deepEqual(validate(SCHEMAS.solutions, { version: 1, steps: JSON.parse(json[1]) }), []);
 });
 
 test('instructions follow the language rules: sentences under 25 words', () => {

@@ -22,6 +22,7 @@ export const COMMAND_NAMES = {
   confirm: '/menitor:skip --confirm',
   off: '/menitor:off',
   on: '/menitor:on',
+  typealong: '/menitor:typealong',
 };
 
 /**
@@ -75,6 +76,12 @@ export const SKILLS = {
     description: 'Turn Menitor mentor mode back on. Only the learner can run it, by typing it.',
     learnerOnly: true,
     allowedTools: [CLI_RULE],
+  },
+  typealong: {
+    description: "Turn Menitor's type-along mode on or off. In type-along the window shows each step's instructions and full code, and the learner types it in by hand. Only the learner can run it, by typing it.",
+    learnerOnly: true,
+    argumentHint: '[off]',
+    allowedTools: [CLI_RULE, ...GIT_READ_RULES],
   },
 };
 

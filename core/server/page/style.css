@@ -56,6 +56,7 @@
   --notice-border: #fde68a;
   --notice-ink: #92400e;
   --bone: #e9ece8;
+  --code-bg: #f2f6f3;
   --focus: #1f5fbf;
   --toast-bg: #1f201d;
   --toast-ink: #ffffff;
@@ -106,6 +107,7 @@
     --notice-border: #5c4614;
     --notice-ink: #f3c87a;
     --bone: #232523;
+    --code-bg: #181a18;
     --focus: #8ab4ff;
     --toast-bg: #f1f2f1;
     --toast-ink: #141514;
@@ -688,6 +690,159 @@ h1 {
   font-size: var(--fs-meta);
 }
 
+/* Type-along: each step opens to its instructions and the code to type.
+ * The step after the last tick opens by itself; ticking it closes it and opens the next. */
+
+.typealong .step-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  min-height: 48px;
+}
+
+.disclose {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.disclose:disabled {
+  cursor: default;
+}
+
+.disclose .text {
+  min-width: 0;
+}
+
+.chev {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  margin: 6px 4px 0 0;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.disclose[aria-expanded="true"] .chev {
+  transform: translateY(4px) rotate(-135deg);
+}
+
+.disclose:hover:not(:disabled) .chev {
+  border-color: var(--text);
+}
+
+.step.locked .text {
+  color: var(--muted);
+}
+
+.step.locked .chev {
+  opacity: 0.35;
+}
+
+.step.done:not(.expanded) .text {
+  color: var(--muted);
+}
+
+.solution {
+  display: grid;
+  gap: 12px;
+  padding: 0 14px 18px 48px; /* the text's edge: 14px pad + 22px box + 12px gap */
+  animation: open 0.16s ease;
+}
+
+.solution[hidden] {
+  display: none;
+}
+
+.say {
+  max-width: 68ch;
+  text-wrap: pretty;
+}
+
+.code {
+  margin: 0;
+  min-width: 0;
+  border-radius: var(--radius-inner);
+  background: var(--code-bg);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.where {
+  padding: 10px 14px 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.where.path {
+  font-family: var(--mono); /* taste-skill-ignore: a file path is literal code */
+}
+
+.code pre {
+  margin: 0;
+  padding: 8px 14px 12px 0;
+  overflow-x: auto;
+  border-radius: var(--radius-inner);
+  font-size: 14px;
+  line-height: 1.6;
+  tab-size: 2;
+  counter-reset: line;
+}
+
+.code code {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  font-size: inherit;
+}
+
+.ln {
+  display: block;
+  position: relative;
+  min-height: 1.6em;
+  padding-left: 3.25em;
+  white-space: pre;
+}
+
+.ln::before {
+  counter-increment: line;
+  content: counter(line);
+  position: absolute;
+  left: 0;
+  width: 2.25em;
+  text-align: right;
+  color: var(--muted);
+}
+
+@keyframes open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* Before you code: the read-first link, the doc section and the branch */
 
 .learn-link {
@@ -1006,6 +1161,19 @@ h1 {
     flex: 1 0 auto;
   }
 
+  .board.typealong {
+    align-items: start;
+  }
+
+  .board.typealong > .rail {
+    position: sticky;
+    top: 16px;
+  }
+
+  .board.typealong .rail > .plan {
+    flex: none;
+  }
+
   .board > .hints {
     grid-column: 1 / -1;
     display: grid;
@@ -1041,6 +1209,12 @@ h1 {
 
 /* The narrowest phones: tighter buttons, and the mark stands in for the wordmark */
 
+@media (max-width: 640px) {
+  .solution {
+    padding-left: 14px;
+  }
+}
+
 @media (max-width: 360px) {
   .actions {
     gap: 6px;
@@ -1068,5 +1242,6 @@ h1 {
   *::before,
   *::after {
     transition: none !important;
+    animation: none !important;
   }
 }

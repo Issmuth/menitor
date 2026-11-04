@@ -18,6 +18,12 @@ let pipWindow = null;
 /** @type {ReturnType<typeof setTimeout> | undefined} */
 let toastTimer;
 
+/** Type-along: which steps are open. The step after the last tick opens by itself; others open by hand. */
+let accordion = { task: /** @type {string | null} */ (null), current: /** @type {string | null} */ (null), open: new Set(/** @type {string[]} */ ([])) };
+/** Set when a tick moved the open step, so the next render brings it into view. */
+let revealNext = false;
+let lastNudge = 0;
+
 const RUNGS = /** @type {Record<string, string>} */ ({ concept: 'Concept', approach: 'Approach', pseudocode: 'Pseudocode', snippet: 'Snippet' });
 const CODE_RUNGS = new Set(['pseudocode', 'snippet']);
 
@@ -154,9 +160,135 @@ function actions(s) {
     'div',
     { class: 'actions' },
     h('p', { class: 'how' }, s.listening ? 'Buttons go straight to your coding session.' : 'No session is listening, so buttons copy the command.'),
-    h('button', { type: 'button', class: 'btn secondary', 'data-key': 'act:hint', onclick: (/** @type {Event} */ e) => onAction('hint', e) }, 'Hint'),
+    s.typeAlong ? null : h('button', { type: 'button', class: 'btn secondary', 'data-key': 'act:hint', onclick: (/** @type {Event} */ e) => onAction('hint', e) }, 'Hint'),
     h('button', { type: 'button', class: 'btn secondary', 'data-key': 'act:stuck', onclick: (/** @type {Event} */ e) => onAction('stuck', e) }, "I'm stuck"),
     h('button', { type: 'button', class: 'btn primary', 'data-key': 'act:check', onclick: (/** @type {Event} */ e) => onAction('check', e) }, 'Check my work'),
+  );
+}
+
+/**
+ * Type-along refuses copying: the learner types the code by hand. It's friction, not secrecy.
+ * @param {Event} e
+ */
+function noCopy(e) {
+  e.preventDefault();
+  if (e.type === 'selectstart' || e.type === 'dragstart') return;
+  const now = Date.now();
+  if (now - lastNudge < 2500) return;
+  lastNudge = now;
+  showToast('Type it in yourself. Typing it is how it sticks.', undefined, docOf(e));
+}
+
+/** @param {Element} el */
+function guardCopy(el) {
+  for (const type of ['copy', 'cut', 'contextmenu', 'dragstart', 'selectstart']) el.addEventListener(type, noCopy);
+  el.addEventListener('keydown', (e) => {
+    const k = /** @type {KeyboardEvent} */ (e);
+    if ((k.ctrlKey || k.metaKey) && ['c', 'x', 'a'].includes(k.key.toLowerCase())) noCopy(e);
+  });
+}
+
+/**
+ * A copy that would carry step code out of a page-wide selection is refused too.
+ * @param {Document} doc
+ */
+function guardDocumentCopy(doc) {
+  doc.addEventListener('copy', (e) => {
+    const sel = doc.getSelection();
+    if (sel && [...doc.querySelectorAll('.code')].some((el) => sel.containsNode(el, true))) noCopy(e);
+  });
+}
+
+/**
+ * One block of code to type, with line numbers to keep your place.
+ * @param {{ where?: string, text: string }} block
+ */
+function codeBlock(block) {
+  const where = block.where ?? 'Terminal';
+  const code = h('code');
+  for (const line of block.text.replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n')) code.append(h('span', { class: 'ln' }, line));
+  const pre = h('pre', { tabindex: '0', 'aria-label': `Code to type in ${where}` }, code);
+  const fig = h('figure', { class: 'code' }, h('figcaption', { class: `where${/[/.]/.test(where) ? ' path' : ''}` }, where), pre);
+  guardCopy(fig);
+  return fig;
+}
+
+/**
+ * Keep the open step in step with the ticks: ticking a step closes it and opens the next.
+ * @param {any} c
+ */
+function syncAccordion(c) {
+  const current = c.checklist.find((/** @type {any} */ i) => !i.ticked)?.id ?? null;
+  if (accordion.task !== c.task) {
+    accordion = { task: c.task, current, open: new Set(current ? [current] : []) };
+    return;
+  }
+  if (accordion.current === current) return;
+  accordion.current = current;
+  accordion.open = new Set(current ? [current] : []);
+}
+
+/**
+ * Type-along steps: each one a row that opens to its instructions and the code to type.
+ * @param {any} c
+ * @param {any} s
+ */
+function typeAlongPanel(c, s) {
+  syncAccordion(c);
+  const ticked = c.checklist.filter((/** @type {any} */ i) => i.ticked).length;
+  const list = h('ol', { class: 'checklist inner typealong' });
+  c.checklist.forEach((/** @type {any} */ item, /** @type {number} */ i) => {
+    const step = s.typeAlong.steps[item.id] ?? { missing: true };
+    const locked = Boolean(step.locked);
+    const expanded = !locked && accordion.open.has(item.id);
+    const textId = `step-${item.id}`;
+    const panelId = `code-${item.id}`;
+    const canTick = item.ticked || i === 0 || c.checklist[i - 1].ticked;
+    const box = /** @type {HTMLInputElement} */ (
+      h('input', { type: 'checkbox', checked: item.ticked, disabled: !canTick, 'aria-labelledby': textId, 'data-key': `tick:${item.id}` })
+    );
+    box.addEventListener('change', () => {
+      revealNext = box.checked;
+      onTick(item.id, box);
+    });
+    const toggle = h(
+      'button',
+      { type: 'button', class: 'disclose', 'aria-expanded': String(expanded), 'aria-controls': panelId, disabled: locked, 'data-key': `open:${item.id}` },
+      h('span', { class: 'text', id: textId }, item.text, item.source === 'fix' ? h('span', { class: 'pill negative' }, 'Fix') : null),
+      locked ? h('span', { class: 'sr-only' }, ', opens once the step before is ticked') : null,
+      h('span', { class: 'chev', 'aria-hidden': 'true' }),
+    );
+    toggle.addEventListener('click', () => {
+      if (accordion.open.has(item.id)) accordion.open.delete(item.id);
+      else accordion.open.add(item.id);
+      render(state);
+    });
+    /** @type {(Node | null)[]} */
+    const body = [];
+    if (step.missing) body.push(h('p', { class: 'empty' }, 'No code for this step yet. Ask Menitor in your session to write it.'));
+    if (step.say) body.push(h('p', { class: 'say' }, step.say));
+    for (const block of step.code ?? []) body.push(codeBlock(block));
+    list.append(
+      h(
+        'li',
+        { class: `item step${item.ticked ? ' done' : ''}${locked ? ' locked' : ''}${expanded ? ' expanded' : ''}` },
+        h('div', { class: 'step-row' }, box, toggle),
+        h('div', { class: 'solution', id: panelId, hidden: !expanded }, ...body),
+      ),
+    );
+  });
+  return h(
+    'section',
+    { class: 'panel steps', 'aria-labelledby': 'steps-title' },
+    h(
+      'header',
+      { class: 'panel-head' },
+      h('h2', { id: 'steps-title' }, 'Steps'),
+      h('span', { class: 'count num' }, `${ticked} of ${c.checklist.length} done`),
+      h('span', { class: 'pill neutral' }, 'Type-along'),
+    ),
+    list,
+    h('div', { class: 'done-when' }, h('h3', null, 'Done when'), h('ul', null, ...c.doneWhen.map((/** @type {string} */ d) => h('li', null, d)))),
   );
 }
 
@@ -295,7 +427,14 @@ function taskView(s) {
     learner ? actions(s) : null,
   );
   // DOM order is the phone's reading order: steps, hints, then the rail. Desktop places the rail beside the steps.
-  const board = h('div', { class: 'board' }, stepsPanel(c), learner ? hintsPanel(c) : null, h('div', { class: 'col rail' }, learnPanel(c), planPanel(s)));
+  const typeAlong = learner && s.typeAlong;
+  const board = h(
+    'div',
+    { class: `board${typeAlong ? ' typealong' : ''}` },
+    typeAlong ? typeAlongPanel(c, s) : stepsPanel(c),
+    learner && !typeAlong ? hintsPanel(c) : null,
+    h('div', { class: 'col rail' }, learnPanel(c), planPanel(s)),
+  );
   return { nodes: [head, board], bar: learner };
 }
 
@@ -330,6 +469,11 @@ function announceChanges(prev, s) {
     announce(`Now on task ${s.card.number} of ${s.card.total}: ${s.card.goal}`);
     return;
   }
+  const next = (/** @type {any} */ x) => x.card.checklist.find((/** @type {any} */ i) => !i.ticked);
+  if (s.typeAlong && next(s) && next(s)?.id !== next(prev)?.id) {
+    announce(`Next step open: ${next(s).text}`);
+    return;
+  }
   if (s.lastCheck && s.lastCheck.at !== prev.lastCheck?.at) announce(findingOf(s).text);
   else if (s.card.hints.revealed > prev.card.hints.revealed) announce(`${RUNGS[s.card.hints.rungs[s.card.hints.revealed - 1]?.rung] ?? 'A'} hint is open`);
   else if (s.card.checklist.length > prev.card.checklist.length) announce(`${plural(s.card.checklist.length - prev.card.checklist.length, 'fix', 'fixes')} added to the steps`);
@@ -355,6 +499,12 @@ function render(s) {
   $('project').textContent = s.project ?? 'Your project';
   doc.title = s.card ? `${s.card.number}/${s.card.total} · ${s.card.goal}` : 'Menitor';
   if (focusKey) /** @type {HTMLElement | null} */ (content.querySelector(`[data-key="${CSS.escape(focusKey)}"]`))?.focus({ preventScroll: true });
+  if (revealNext && s.typeAlong) {
+    revealNext = false;
+    const open = content.querySelector('.step.expanded');
+    const still = doc.defaultView?.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    open?.scrollIntoView({ block: 'nearest', behavior: still ? 'auto' : 'smooth' });
+  }
   if (s.ok) announceChanges(prev, s);
 }
 
@@ -412,6 +562,7 @@ function setupPopout() {
     pip.document.head.append(link);
     pip.document.title = 'Menitor';
     pip.document.body.classList.add('pip');
+    guardDocumentCopy(pip.document);
     const pipToast = toast.cloneNode();
     pip.document.body.append(app, pipToast);
     away.hidden = false;
@@ -426,5 +577,6 @@ function setupPopout() {
   $('bring-back').addEventListener('click', () => pipWindow?.close());
 }
 
+guardDocumentCopy(document);
 setupPopout();
 connect();

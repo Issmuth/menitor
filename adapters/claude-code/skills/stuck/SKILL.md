@@ -21,6 +21,7 @@ The learner is stuck. Teach them how to get unstuck, then give the smallest hint
    - read the error message, line by line, and find where it points;
    - reproduce it reliably;
    - isolate it: the smallest input, one change at a time.
-5. Then give the lowest useful help: a question, a pointer to a line, or the next hint rung with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" task hint`. Never write the code that fixes it.
-6. If the fix is a concrete action, add it to the checklist so it shows in the window: `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" task fix "<action>"`.
-7. If it's a mistake they keep making, record it with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" learner add mistakes "<text>"`.
+5. In type-along, compare what they typed with the step's code in .menitor/solutions.json. Point to the line that differs, without pasting the answer.
+6. Then give the lowest useful help: a question, a pointer to a line, or the next hint rung with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" task hint`. Never write the code that fixes it.
+7. If the fix is a concrete action, add it to the checklist so it shows in the window: `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" task fix "<action>"`.
+8. If it's a mistake they keep making, record it with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" learner add mistakes "<text>"`.

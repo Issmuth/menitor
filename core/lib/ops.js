@@ -13,6 +13,8 @@ import { allTasks, appendFixes, findTask, isFocusTask, nextTodo, normalizePlanIn
 import { validate } from './schema.js';
 import { cardData } from './card.js';
 import { readDocLink } from './docs.js';
+import { languageWarnings } from './lint.js';
+import { readTextOrNull } from './fsx.js';
 import { runCheck } from './check.js';
 import {
   SCHEMAS,
@@ -20,6 +22,7 @@ import {
   isInitialized,
   loadGuard,
   loadLearner,
+  loadSolutions,
   loadPlan,
   loadProgress,
   loadSession,
@@ -27,6 +30,7 @@ import {
   savePlan,
   saveLearner,
   saveSession,
+  saveSolutions,
 } from './state.js';
 
 /**
@@ -44,6 +48,7 @@ guard.json
 learner.md
 log.md
 activity.jsonl
+solutions.json
 window.json
 inbox.jsonl
 listener.json
@@ -330,6 +335,51 @@ export function importHints(paths, raw) {
 }
 
 /**
+ * Projects set up before type-along keep their own .menitor/.gitignore; make sure step code stays out of git.
+ * @param {StatePaths} paths
+ */
+function ignoreSolutions(paths) {
+  const text = readTextOrNull(paths.gitignore) ?? '';
+  if (/^solutions\.json$/m.test(text)) return;
+  writeFileAtomic(paths.gitignore, `${text.replace(/\n*$/, '\n')}solutions.json\n`);
+}
+
+/**
+ * Type-along: store each step's plain instructions and the exact code to type, keyed by checklist
+ * item ID: { "t1.c2": { "say": "...", "code": [{ "where": "src/app.js", "text": "..." }] } }.
+ * A block without "where" is typed in the terminal. Imported steps replace earlier ones.
+ * @param {StatePaths} paths
+ * @param {unknown} raw
+ * @param {{ now?: Date }} [options]
+ */
+export function importSteps(paths, raw, options = {}) {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new MenitorError('Step code must be a JSON object keyed by checklist item ID, such as "t1.c2"');
+  }
+  const plan = requirePlan(paths);
+  const items = new Map(allTasks(plan).flatMap((e) => e.task.checklist.map((i) => [i.id, { task: e.task, item: i }])));
+  const ids = Object.keys(raw);
+  if (!ids.length) throw new MenitorError('No step code given');
+  const unknown = ids.filter((id) => !items.has(id));
+  if (unknown.length) throw new MenitorError(`No checklist item ${unknown.map((id) => `"${id}"`).join(', ')} in the plan`);
+  const delegated = ids.filter((id) => items.get(id)?.task.owner === 'delegated');
+  if (delegated.length) throw new MenitorError(`${delegated.join(', ')} belong${delegated.length === 1 ? 's' : ''} to delegated tasks, which Menitor does itself`);
+
+  const solutions = loadSolutions(paths);
+  /** @type {string[]} */
+  const warnings = [];
+  for (const id of ids) {
+    const step = /** @type {Record<string, any>} */ (raw)[id];
+    solutions.steps[id] = step;
+    if (step && typeof step.say === 'string') warnings.push(...languageWarnings(`${id} say`, step.say).filter((w) => !w.includes('looks like code')));
+  }
+  saveSolutions(paths, solutions);
+  ignoreSolutions(paths);
+  appendEvent(paths.log, 'steps', { count: ids.length }, options.now);
+  return { ids, warnings };
+}
+
+/**
  * H-2: reveal the next hint rung for a task and log it.
  * @param {StatePaths} paths
  * @param {string | undefined} id
@@ -484,6 +534,12 @@ export function briefData(paths, id) {
     verify: task.verify ?? [],
     deployUrl: plan.project.deployUrl ?? null,
     doc: readDocLink(paths.root, task.docs),
+    typeAlong: Boolean(loadGuard(paths).typeAlong),
+    stepCode: (() => {
+      const steps = loadSolutions(paths).steps;
+      const ids = task.checklist.map((i) => i.id);
+      return { stored: ids.filter((id) => steps[id]), missing: ids.filter((id) => !steps[id]) };
+    })(),
   };
 }
 
@@ -504,6 +560,7 @@ export function statusData(paths) {
     project: plan?.project.name ?? null,
     approved: Boolean(plan?.approvedAt),
     mentorMode: guard.mentorMode,
+    typeAlong: Boolean(guard.typeAlong),
     level: learner.level,
     focusAreas: learner.focusAreas,
     current: current

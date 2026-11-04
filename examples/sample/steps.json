@@ -1,0 +1,53 @@
+{
+  "t1.c1": {
+    "say": "Every milestone gets its own branch, so main only ever holds finished work. Create this one from main in your terminal.",
+    "code": [{ "where": "Terminal", "text": "git checkout -b feat/skeleton" }]
+  },
+  "t1.c2": {
+    "say": "Open src/app.js. At the top of handle, before the 404, answer a GET for / with status 200 and an HTML content type. HOME is the page you add in the next step.",
+    "code": [
+      {
+        "where": "src/app.js",
+        "text": "  if (req.method === 'GET' && req.url === '/') {\n    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });\n    res.end(HOME);\n    return;\n  }"
+      }
+    ]
+  },
+  "t1.c3": {
+    "say": "Still in src/app.js, add the page itself as a constant, just below the import line. The h1 holds the app's name.",
+    "code": [
+      {
+        "where": "src/app.js",
+        "text": "const HOME = `<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\">\n    <title>Recipe box</title>\n  </head>\n  <body>\n    <h1>Recipe box</h1>\n  </body>\n</html>`;"
+      }
+    ]
+  },
+  "t1.c4": {
+    "say": "Run the tests. If one fails, read its message first: it names what the page is missing.",
+    "code": [{ "where": "Terminal", "text": "npm test" }]
+  },
+  "t1.c5": {
+    "say": "Commit the work with a Conventional Commits message: the type, the area in brackets, then what changed.",
+    "code": [{ "where": "Terminal", "text": "git add src/app.js\ngit commit -m \"feat(web): add home page\"" }]
+  },
+  "t3.c1": {
+    "say": "Create an empty repository on GitHub called recipe-box, without a README. Then connect it and push your branch and main.",
+    "code": [
+      {
+        "where": "Terminal",
+        "text": "git remote add origin https://github.com/<your-username>/recipe-box.git\ngit push -u origin main\ngit push -u origin feat/skeleton"
+      }
+    ]
+  },
+  "t3.c2": {
+    "say": "On render.com, choose New, then Web Service, and pick the recipe-box repository. Choose the Free plan.",
+    "code": []
+  },
+  "t3.c3": {
+    "say": "In the service's settings, leave the build command empty and set the start command. Render sets PORT, and src/server.js already reads it.",
+    "code": [{ "where": "Render: Start command", "text": "npm start" }]
+  },
+  "t3.c4": {
+    "say": "When the deploy finishes, copy the URL Render shows at the top of the page and paste it into your coding session.",
+    "code": []
+  }
+}

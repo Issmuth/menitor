@@ -74,6 +74,13 @@ Ask what they want to learn, with the AskUserQuestion tool as a multi-select: fr
 
 Record them with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" learner set focusAreas "<area>,<area>"`. Explain in one sentence that tasks outside these are delegated: you do them and leave a short note.
 
+Then ask how they want help when they don't know the next line, with the AskUserQuestion tool:
+
+- Hints: each one shows a little more, from the idea to a partial snippet. Best for working things out.
+- Type-along: the window shows each step's full code, and they type it in by hand. Best when they want to see working code first.
+
+Only they can turn type-along on, by typing /menitor:typealong. If they choose it, ask them to type it now.
+
 ## 5. Stack
 
 - If they named a stack, check that it fits their goal, level and time. If it's too complex for the project, push back once, kindly, with a simpler option.

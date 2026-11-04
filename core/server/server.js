@@ -9,7 +9,7 @@ import { statePaths } from '../lib/paths.js';
 import { statusData } from '../lib/ops.js';
 import { cardData } from '../lib/card.js';
 import { findTask } from '../lib/plan.js';
-import { loadPlan, loadProgress, loadSession, saveProgress } from '../lib/state.js';
+import { loadPlan, loadProgress, loadSession, loadSolutions, saveProgress } from '../lib/state.js';
 import { deliverToListener, liveListener } from '../lib/inbox.js';
 
 /** The only events a button can send (W-7). */
@@ -79,6 +79,7 @@ export function windowState(paths, options) {
       phase,
       project: status.project,
       mentorMode: status.mentorMode,
+      typeAlong: status.typeAlong && card?.owner === 'learner' ? typeAlongSteps(paths, card) : null,
       level: status.level,
       card,
       lastCheck: record?.lastCheck ?? null,
@@ -92,6 +93,24 @@ export function windowState(paths, options) {
   } catch (err) {
     return { ok: false, error: /** @type {Error} */ (err).message, commands: options.commands };
   }
+}
+
+/**
+ * Type-along: each step's instructions and code, but only for steps that are open: ticked, the first,
+ * or the one right after a tick. Later steps' code never leaves the server, like locked hints.
+ * @param {StatePaths} paths
+ * @param {import('../lib/card.js').CardData} card
+ */
+export function typeAlongSteps(paths, card) {
+  const stored = loadSolutions(paths).steps;
+  /** @type {Record<string, { locked: true } | { missing: true } | { say: string, code: { where?: string, text: string }[] }>} */
+  const steps = {};
+  card.checklist.forEach((item, i, all) => {
+    const open = item.ticked || i === 0 || all[i - 1].ticked;
+    const code = stored[item.id];
+    steps[item.id] = !open ? { locked: true } : code ? { say: code.say, code: code.code } : { missing: true };
+  });
+  return { steps };
 }
 
 /**

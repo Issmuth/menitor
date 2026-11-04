@@ -4,6 +4,16 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
 
 ## Unreleased
 
+### Added
+
+- **Type-along mode** (`/menitor:typealong`, learner-only):
+  - each step in the window opens to plain instructions and the full code for that step, with line numbers;
+  - the code can't be selected or copied there, so the learner types it by hand;
+  - a step opens when the one before it is ticked, and closes when it is ticked;
+  - the agent writes the code per milestone with `menitor steps import`, into a gitignored `.menitor/solutions.json`;
+  - the window receives a step's code only once that step is open.
+- A `typealong` scenario in the sample project.
+
 ### Changed
 
 - **The task window, redesigned** for phones, the pop-out, tablets and desktops:

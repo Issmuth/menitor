@@ -84,8 +84,18 @@ flowchart LR
 | `/menitor:stuck` | Debug with you: what you tried, the error, the debugging step, the smallest useful hint |
 | `/menitor:skip [--explain]` | Hand the task to Menitor. It pushes back once; confirm with `/menitor:skip --confirm` |
 | `/menitor:off` and `/menitor:on` | Turn mentor mode off, so the agent may write code, or back on |
+| `/menitor:typealong [off]` | Type-along: the window shows each step's instructions and full code, and you type it in by hand. `off` goes back to hints |
 
-Plain questions still work: ask anything. Commands are only for actions that change your progress. `skip`, `off` and `on` only work when you type them. The agent can't run them for you.
+Plain questions still work: ask anything. Commands are only for actions that change your progress. `skip`, `off`, `on` and `typealong` only work when you type them. The agent can't run them for you.
+
+## Hints or type-along
+
+When you don't know the next line, Menitor helps in one of two ways. `/menitor:start` asks which you want, and you can switch at any time.
+
+- **Hints** (the default): each hint shows a little more, from the idea to a partial snippet. Best for working things out yourself.
+- **Type-along**: each step in the window opens to plain instructions and the full code for that step. You type it in by hand, because the window won't let you copy it: typing it is how it sticks. A step opens when you tick the one before it, and closes when you tick it.
+
+In both modes the agent never writes your code, and every check still asks you to explain it. The step code lives in `.menitor/solutions.json`, which stays out of git.
 
 ## The task window
 
@@ -99,6 +109,7 @@ Plain questions still work: ask anything. Commands are only for actions that cha
 - **Pop out:** an always-on-top mini window in desktop Chrome, Edge and other Chromium browsers. Other browsers get a small separate window.
 - **The plan:** every task in your plan as one cell, marked by who did it: you, Menitor, skipped, the one you're on, or still to do.
 - **Hints:** the four-rung ladder shows which hints are open, with their text beside it. Code hints are set as code.
+- **Type-along:** each step opens to its instructions and code, with line numbers to keep your place. Locked steps don't reach the window until you tick the step before.
 - **Layout:** one column on a phone or in the pop-out, with the buttons always at the bottom of the screen. On a desktop, the steps sit beside the plan and the buttons sit beside the title. It works from 320 px wide, in light and dark mode, and by keyboard.
 
 The window only works on your machine. It listens on 127.0.0.1 and needs the link your session gives you. It loads nothing from outside: even its typeface, Instrument Sans, is bundled under the SIL Open Font License.
@@ -138,6 +149,7 @@ Menitor keeps its state in `.menitor/` in your project. The plan is committed, s
 | `log.md` | a dated history of checks, hints, skips and disputes | no |
 | `guard.json` | mentor mode and skip grants, from commands you typed | no |
 | `activity.jsonl` | every command and file write the agent ran | no |
+| `solutions.json` | type-along: each step's instructions and code | no |
 | `window.json`, `inbox.jsonl`, `listener.json` | the running window and its buttons | no |
 
 Your lean docs go in `docs/`, one page each: product requirements, technical requirements, app flow, design brief, data and API contract, and testing approach. Decision records go in `docs/adr/`. You write the first one, for your stack.

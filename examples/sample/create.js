@@ -7,6 +7,7 @@
 //   start      Task 1 is current and nothing is done. Try the guard, hints, the window and skip.
 //   check      Task 1 is built and committed on its branch. Try /menitor:check end to end.
 //   delegated  Task 1 has passed; task 2 belongs to Menitor. Try the agent doing delegated work.
+//   typealong  Like start, with type-along on: each step's code shows in the window, to type by hand.
 //
 // Plugin, so Claude Code loads Menitor when you open the folder (after you accept its trust prompt):
 //   --plugin local   (default) .claude/settings.local.json points at this clone of Menitor.
@@ -26,7 +27,7 @@ import { parseArgs } from 'node:util';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MENITOR_ROOT = path.resolve(HERE, '..', '..');
 const CLI = path.join(MENITOR_ROOT, 'core', 'bin', 'menitor.js');
-const SCENARIOS = ['start', 'check', 'delegated'];
+const SCENARIOS = ['start', 'check', 'delegated', 'typealong'];
 const PLUGIN_MODES = ['local', 'github', 'none'];
 
 const { values, positionals } = parseArgs({
@@ -121,6 +122,14 @@ menitor(['hints', 'import', '-'], fs.readFileSync(path.join(HERE, 'hints.json'),
 commit(SETUP, 'chore: set up Recipe box with Menitor');
 menitor(['plan', 'approve']);
 
+if (scenario === 'typealong') {
+  // The code for milestone 1's own tasks, as the agent writes it when type-along is on.
+  menitor(['steps', 'import', '-'], fs.readFileSync(path.join(HERE, 'steps.json'), 'utf8'));
+  // Only the learner turns type-along on, by typing /menitor:typealong; this setup stands in for them.
+  const { applyLearnerCommand } = await import('../../core/lib/guard.js');
+  applyLearnerCommand(root, { command: 'typealong', on: true });
+}
+
 // 4. The scenario.
 if (scenario === 'check' || scenario === 'delegated') {
   // The learner's own work for task 1: a branch, the home page, ticks and a commit.
@@ -157,6 +166,11 @@ const next = {
   delegated: [
     'Run /menitor:go. Task 2 is delegated, so Claude builds the health check itself,',
     'commits it with the trailer "Menitor-Delegated: true", and passes it with a short note.',
+  ],
+  typealong: [
+    'Run /menitor:go. The first step is open in the window, with the command to type.',
+    "Type each step's code by hand, then tick it: the next step opens. Try copying the code too.",
+    'Type /menitor:typealong off to go back to hints.',
   ],
 }[scenario];
 
