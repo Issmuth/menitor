@@ -12,7 +12,7 @@ const stale = [];
 for (const name of Object.keys(SKILLS)) {
   const file = path.join(SKILLS_DIR, name, 'SKILL.md');
   const text = buildSkill(name);
-  const current = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
+  const current = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n') : null;
   if (current === text) continue;
   if (check) {
     stale.push(path.relative(process.cwd(), file));

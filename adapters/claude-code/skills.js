@@ -106,7 +106,7 @@ export function renderInstructions(text, vars) {
 export function buildSkill(name) {
   const spec = SKILLS[name];
   if (!spec) throw new Error(`No skill spec for "${name}"`);
-  const source = fs.readFileSync(new URL(`../../core/instructions/${name}.md`, import.meta.url), 'utf8');
+  const source = fs.readFileSync(new URL(`../../core/instructions/${name}.md`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   const body = renderInstructions(source, {
     cli: SKILL_CLI,
     templates: '${CLAUDE_PLUGIN_ROOT}/core/templates/docs',

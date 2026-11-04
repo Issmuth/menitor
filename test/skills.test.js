@@ -16,13 +16,15 @@ const TEMPLATES = path.resolve(import.meta.dirname, '..', 'core', 'templates', '
 const instructionFiles = fs.readdirSync(INSTRUCTIONS_DIR).filter((f) => f.endsWith('.md'));
 
 /** @param {string} name */
-const instructions = (name) => fs.readFileSync(path.join(INSTRUCTIONS_DIR, name), 'utf8');
+const instructions = (name) => fs.readFileSync(path.join(INSTRUCTIONS_DIR, name), 'utf8').replace(/\r\n/g, '\n');
+/** @param {string} file */
+const readLf = (file) => fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
 
 test('every generated SKILL.md is up to date', () => {
   for (const name of Object.keys(SKILLS)) {
     const file = path.join(SKILLS_DIR, name, 'SKILL.md');
     assert.ok(fs.existsSync(file), `${name} is missing; run npm run build:skills`);
-    assert.equal(fs.readFileSync(file, 'utf8'), buildSkill(name), `${name} is stale; run npm run build:skills`);
+    assert.equal(readLf(file), buildSkill(name), `${name} is stale; run npm run build:skills`);
   }
   const dirs = fs.readdirSync(SKILLS_DIR).sort();
   assert.deepEqual(dirs, Object.keys(SKILLS).sort(), 'no stray skill folders');
