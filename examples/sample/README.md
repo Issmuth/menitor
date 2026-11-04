@@ -4,7 +4,7 @@
 
 ## Set up
 
-You need Node.js 22 or newer, git, and Claude Code.
+You need Node.js 22 or newer, git, and Claude Code **on your own machine**: the terminal, the desktop app or VS Code. Claude Code on the web (cloud sessions) doesn't load plugins, so the sample can't be tested there.
 
 1. Get Menitor. Until it's merged to `main`, use the `v1` branch:
 
@@ -18,17 +18,37 @@ You need Node.js 22 or newer, git, and Claude Code.
    node menitor/examples/sample/create.js recipe-box --scenario start
    ```
 
-3. Open it in Claude Code, with the plugin loaded from your clone:
+3. Open the folder in Claude Code:
 
    ```bash
    cd recipe-box
    ```
 
    ```bash
-   claude --plugin-dir ../menitor
+   claude
    ```
 
+4. Accept the prompt to trust the folder. Claude Code then loads Menitor from your clone. The sample's `.claude/settings.local.json` points at it, so you don't need `--plugin-dir`.
+
+5. Check it loaded: type `/menitor` and the commands appear, such as `/menitor:go`. Or ask "What's my current task?": Claude already knows it's Task 1/5.
+
 To start over, delete the folder and create it again. Each scenario is a fresh git repo.
+
+### If Menitor doesn't load
+
+- **You're in a cloud session.** Plugins don't load there. Use Claude Code on your machine.
+- **You didn't trust the folder.** Claude Code ignores a repo's plugin settings until you do. Run `claude` in the folder again, and accept the prompt.
+- **You moved or deleted the Menitor clone.** The local settings point at its path. Create the sample again.
+- **Your Claude Code is old.** Update it with `claude update`, then check with `claude --version`.
+- **Still nothing?** Start Claude Code with the plugin loaded directly: `claude --plugin-dir ../menitor`. Then run `claude --plugin-dir ../menitor plugin list` in the folder. It should say `Status: √ loaded`. Send me what it says.
+
+### Other ways to load the plugin
+
+| Option | What it writes | Use it when |
+| --- | --- | --- |
+| `--plugin local` (default) | `.claude/settings.local.json`, pointing at your clone. Gitignored | Testing on the machine where you cloned Menitor. Edits to the clone apply to the next session |
+| `--plugin github` | `.claude/settings.json`, pointing at `github.com/Issmuth/menitor` on `v1` (change it with `--ref`). Committed | Pushing the sample and opening it on another machine |
+| `--plugin none` | Nothing | Starting Claude Code yourself with `claude --plugin-dir <path to menitor>` |
 
 ## Scenarios
 

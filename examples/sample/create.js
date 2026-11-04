@@ -8,6 +8,13 @@
 //   check      Task 1 is built and committed on its branch. Try /menitor:check end to end.
 //   delegated  Task 1 has passed; task 2 belongs to Menitor. Try the agent doing delegated work.
 //
+// Plugin, so Claude Code loads Menitor when you open the folder (after you accept its trust prompt):
+//   --plugin local   (default) .claude/settings.local.json points at this clone of Menitor.
+//                    Works in the terminal, the desktop app and VS Code on this machine.
+//   --plugin github  .claude/settings.json points at github.com/Issmuth/menitor (--ref, default v1).
+//                    Commit and push the sample, and it works on any machine.
+//   --plugin none    Write no settings; start Claude Code with --plugin-dir instead.
+//
 // Everything goes through the real menitor CLI and git, the way a real setup would.
 
 import fs from 'node:fs';
@@ -20,15 +27,26 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MENITOR_ROOT = path.resolve(HERE, '..', '..');
 const CLI = path.join(MENITOR_ROOT, 'core', 'bin', 'menitor.js');
 const SCENARIOS = ['start', 'check', 'delegated'];
+const PLUGIN_MODES = ['local', 'github', 'none'];
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
-  options: { scenario: { type: 'string', default: 'start' }, help: { type: 'boolean', short: 'h' } },
+  options: {
+    scenario: { type: 'string', default: 'start' },
+    plugin: { type: 'string', default: 'local' },
+    ref: { type: 'string', default: 'v1' },
+    help: { type: 'boolean', short: 'h' },
+  },
 });
 
 if (values.help || !positionals[0]) {
-  process.stdout.write(`Usage: node examples/sample/create.js <folder> [--scenario ${SCENARIOS.join('|')}]\n`);
+  process.stdout.write(`Usage: node examples/sample/create.js <folder> [--scenario ${SCENARIOS.join('|')}] [--plugin ${PLUGIN_MODES.join('|')}] [--ref <branch>]\n`);
   process.exit(values.help ? 0 : 1);
+}
+const pluginMode = values.plugin ?? 'local';
+if (!PLUGIN_MODES.includes(pluginMode)) {
+  process.stderr.write(`Unknown --plugin "${pluginMode}". Pick one of: ${PLUGIN_MODES.join(', ')}\n`);
+  process.exit(1);
 }
 const scenario = values.scenario ?? 'start';
 if (!SCENARIOS.includes(scenario)) {
@@ -73,7 +91,25 @@ fs.cpSync(path.join(HERE, 'template'), root, { recursive: true });
 run('git', ['init', '-q']);
 run('git', ['symbolic-ref', 'HEAD', 'refs/heads/main']);
 
-// 2. Setup, as /menitor:start would leave it: a calibrated learner, docs, an approved plan, hints.
+// 2. Tell Claude Code to load Menitor in this folder. The marketplace lists the plugin by a
+// relative path, so it loads from the marketplace copy once the folder is trusted.
+const marketplaces = {
+  local: { source: 'directory', path: MENITOR_ROOT },
+  github: { source: 'github', repo: 'Issmuth/menitor', ref: values.ref ?? 'v1' },
+};
+if (pluginMode !== 'none') {
+  const settings = {
+    extraKnownMarketplaces: { menitor: { source: marketplaces[/** @type {'local' | 'github'} */ (pluginMode)] } },
+    enabledPlugins: { 'menitor@menitor': true },
+  };
+  const file = pluginMode === 'local' ? 'settings.local.json' : 'settings.json';
+  fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.claude', file), `${JSON.stringify(settings, null, 2)}\n`);
+  // The local file holds a path on this machine, so it stays out of git.
+  fs.appendFileSync(path.join(root, '.gitignore'), '.claude/settings.local.json\n');
+}
+
+// 3. Setup, as /menitor:start would leave it: a calibrated learner, docs, an approved plan, hints.
 menitor(['init']);
 menitor(['learner', 'set', 'level', 'standard']);
 menitor(['learner', 'set', 'focusAreas', 'backend,frontend,deployment']);
@@ -85,7 +121,7 @@ menitor(['hints', 'import', '-'], fs.readFileSync(path.join(HERE, 'hints.json'),
 commit(SETUP, 'chore: set up Recipe box with Menitor');
 menitor(['plan', 'approve']);
 
-// 3. The scenario.
+// 4. The scenario.
 if (scenario === 'check' || scenario === 'delegated') {
   // The learner's own work for task 1: a branch, the home page, ticks and a commit.
   run('git', ['checkout', '-q', '-b', 'feat/skeleton']);
@@ -124,14 +160,33 @@ const next = {
   ],
 }[scenario];
 
+const open = {
+  local: `Open the folder in Claude Code on this machine (the terminal, the desktop app or VS Code):
+
+  cd "${root}"
+  claude
+
+Accept the prompt to trust the folder. Menitor then loads from ${MENITOR_ROOT}.`,
+  github: `Push it to GitHub if you like, then open it in Claude Code on any machine:
+
+  cd "${root}"
+  claude
+
+Accept the prompt to trust the folder. Menitor then loads from github.com/Issmuth/menitor (${values.ref}).`,
+  none: `Open it in Claude Code with the plugin loaded from this clone:
+
+  cd "${root}"
+  claude --plugin-dir "${MENITOR_ROOT}"`,
+}[pluginMode];
+
 process.stdout.write(`Created the Menitor sample project (scenario: ${scenario}) in ${root}
 
 ${status.trim()}
 
-Open it in Claude Code with this plugin loaded:
+${open}
 
-  cd "${root}"
-  claude --plugin-dir "${MENITOR_ROOT}"
+Check it loaded: /menitor:go should be a command, or run "claude plugin list" in the folder.
+Claude Code on the web (cloud sessions) doesn't load plugins, so test on your own machine.
 
 Then:
 ${next.map((l) => `  - ${l}`).join('\n')}

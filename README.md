@@ -48,7 +48,7 @@ To test Menitor without going through setup, create the sample project. It's a t
 node examples/sample/create.js ../recipe-box
 ```
 
-Then open `../recipe-box` in Claude Code with `claude --plugin-dir <path to this repo>`. [examples/sample/README.md](examples/sample/README.md) has the scenarios and a test script.
+Then open `../recipe-box` in Claude Code on your machine, and accept the prompt to trust the folder. The sample's settings load Menitor from this clone. [examples/sample/README.md](examples/sample/README.md) has the scenarios, a test script, and what to do if Menitor doesn't load.
 
 ## Quick start
 
@@ -154,6 +154,7 @@ Everything stays on your machine. Menitor has no servers, accounts or analytics.
 
 ## Known limits
 
+- **Claude Code on the web doesn't load plugins.** Use Claude Code in the terminal, the desktop app or an IDE.
 - **Window buttons need a plugin monitor,** an experimental Claude Code feature. Monitors don't start in `claude -p`. When no session is listening, buttons copy the command instead.
 - **The shell guard is best effort.** It reads commands by pattern, so a creative script can slip past. When Claude Code reports the files a command changed, Menitor logs them and the check flags them.
 - **Two Claude Code sessions** open on the same project both receive window button presses.
