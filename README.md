@@ -40,6 +40,16 @@ On older versions, add the marketplace, then install:
 
 Menitor does nothing in a folder until you run `/menitor:start` there.
 
+## Try it on the sample project
+
+To test Menitor without going through setup, create the sample project. It's a tiny web app with an approved plan, ready for task 1:
+
+```bash
+node examples/sample/create.js ../recipe-box
+```
+
+Then open `../recipe-box` in Claude Code with `claude --plugin-dir <path to this repo>`. [examples/sample/README.md](examples/sample/README.md) has the scenarios and a test script.
+
 ## Quick start
 
 1. Open Claude Code in an empty folder, or in a project you want to keep building.
@@ -174,6 +184,7 @@ core/                     agent-neutral: works with any coding agent
   templates/docs/         lean doc templates
 adapters/claude-code/     the thin Claude Code layer: hooks, monitor, command names, generated skills
 .claude-plugin/           plugin and marketplace manifests
+examples/sample/          a sample project generator, with a test script
 test/                     node:test suites
 docs/                     PRD, ADRs and implementation decisions
 ```

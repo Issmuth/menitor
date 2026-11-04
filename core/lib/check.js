@@ -73,10 +73,11 @@ function stripAnsi(text) {
  * @param {string} text
  */
 function tail(text) {
-  // Drop blank runs: they cost tokens and say nothing.
+  // Drop blank runs and Node's own stack frames: they cost tokens and say nothing.
   const lines = stripAnsi(text)
     .replace(/\r\n/g, '\n')
     .split('\n')
+    .filter((l) => !/\(?node:internal\//.test(l))
     .filter((l, i, all) => l.trim() !== '' || (i > 0 && all[i - 1].trim() !== ''));
   while (lines.length && lines[0].trim() === '') lines.shift();
   while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
@@ -208,11 +209,14 @@ const RUN_SCRIPT = `
 import { spawn, spawnSync } from 'node:child_process';
 const [command, ms] = process.argv.slice(1);
 const windows = process.platform === 'win32';
+const env = { ...process.env, CI: '1', FORCE_COLOR: '0', NO_COLOR: '1' };
+// A test runner around Menitor must not leak into the learner's own test runs.
+delete env.NODE_TEST_CONTEXT;
 const child = spawn(command, {
   shell: true,
   detached: !windows,
   stdio: ['ignore', 'pipe', 'pipe'],
-  env: { ...process.env, CI: '1', FORCE_COLOR: '0', NO_COLOR: '1' },
+  env,
   windowsHide: true,
 });
 let out = '';

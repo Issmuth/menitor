@@ -35,4 +35,5 @@ The first build of v1, ready for its first testers. It covers the v1 scope in th
   - a layout that works from 320 px.
 - **Window buttons:** Check, Hint and Stuck reach the session through a Claude Code plugin monitor, and copy the command when no session is listening.
 - **The state CLI:** schema-validated, atomic writes; `menitor stats` for the success metrics.
+- **A sample project:** `examples/sample/create.js` builds "Recipe box" with an approved plan, in three scenarios (`start`, `check`, `delegated`), plus a test script.
 - **Docs:** 13 decision records in [docs/adr](docs/adr/README.md), and the [implementation decisions](docs/implementation-decisions.md).
