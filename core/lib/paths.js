@@ -17,6 +17,7 @@ export const STATE_DIR = '.menitor';
  * @property {string} learner  learner.md, written by the CLI
  * @property {string} log      log.md, appended by the CLI and adapter hooks
  * @property {string} activity activity.jsonl, appended by adapter hooks
+ * @property {string} window   window.json, written by the window server while it runs
  * @property {string} gitignore .menitor/.gitignore
  */
 
@@ -36,6 +37,7 @@ export function statePaths(root) {
     learner: path.join(dir, 'learner.md'),
     log: path.join(dir, 'log.md'),
     activity: path.join(dir, 'activity.jsonl'),
+    window: path.join(dir, 'window.json'),
     gitignore: path.join(dir, '.gitignore'),
   };
 }

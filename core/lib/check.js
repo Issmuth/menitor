@@ -276,11 +276,11 @@ function runCommand(root, name, command, timeoutSeconds) {
 }
 
 const FETCH_SCRIPT = `
-const [url, ms] = process.argv.slice(1);
+const [url, ms, init] = process.argv.slice(1);
 const ctrl = new AbortController();
 const timer = setTimeout(() => ctrl.abort(), Number(ms));
 try {
-  const res = await fetch(url, { signal: ctrl.signal, redirect: 'follow' });
+  const res = await fetch(url, { ...JSON.parse(init || '{}'), signal: ctrl.signal, redirect: 'follow' });
   const body = await res.text();
   process.stdout.write(JSON.stringify({ status: res.status, body: body.slice(0, 500000) }));
 } catch (err) {
@@ -293,11 +293,12 @@ try {
 /**
  * Fetch a URL in a child process, so the CLI itself stays synchronous.
  * @param {string} url
- * @param {number} timeoutMs
+ * @param {number} [timeoutMs]
+ * @param {{ method?: string, headers?: Record<string, string>, body?: string }} [init]
  * @returns {{ status?: number, body?: string, error?: string }}
  */
-export function fetchSync(url, timeoutMs = 15000) {
-  const r = spawnSync(process.execPath, ['--input-type=module', '-e', FETCH_SCRIPT, url, String(timeoutMs)], {
+export function fetchSync(url, timeoutMs = 15000, init = {}) {
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', FETCH_SCRIPT, url, String(timeoutMs), JSON.stringify(init)], {
     encoding: 'utf8',
     timeout: timeoutMs + 5000,
     maxBuffer: 10 * 1024 * 1024,

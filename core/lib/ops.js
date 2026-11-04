@@ -44,6 +44,7 @@ guard.json
 learner.md
 log.md
 activity.jsonl
+window.json
 warmup/
 *.tmp
 `;

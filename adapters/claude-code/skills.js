@@ -80,7 +80,7 @@ export const SKILLS = {
 
 /**
  * Fill the placeholders in neutral instructions:
- * {{cli}}, {{cmd:<name>}}, {{ask}}, {{templates}} and {{args}}.
+ * {{cli}}, {{cmd:<name>}}, {{window}}, {{ask}}, {{templates}} and {{args}}.
  * @param {string} text
  * @param {{ cli: string, templates: string, args: string }} vars
  */
@@ -92,6 +92,10 @@ export function renderInstructions(text, vars) {
       return name;
     }
     if (key === 'cli') return vars.cli;
+    if (key === 'window') {
+      const pairs = ['check', 'hint', 'stuck', 'go', 'start'].map((k) => `--command ${k}=${/** @type {Record<string, string>} */ (COMMAND_NAMES)[k]}`);
+      return `${vars.cli} window open ${pairs.join(' ')}`;
+    }
     if (key === 'templates') return vars.templates;
     if (key === 'args') return vars.args;
     if (key === 'ask') return 'the AskUserQuestion tool';

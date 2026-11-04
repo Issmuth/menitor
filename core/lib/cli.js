@@ -11,6 +11,7 @@ import { appendAgentEvent, parseFieldArgs, parseLog } from './log.js';
 import { cardData, renderCard } from './card.js';
 import { computeStats, renderStats } from './stats.js';
 import { renderCheck } from './check.js';
+import { openWindow, readWindowInfo, isAlive, stopWindow, windowUrl } from './window.js';
 import { allTasks } from './plan.js';
 import { loadLearner, loadProgress, loadSession, requirePlan } from './state.js';
 import {
@@ -75,6 +76,14 @@ Checks
         --no-commands                   Skip build, lint, test and verify (doesn't count for a pass)
         --no-diff                       Leave the diff out
         --timeout <seconds>             Per command (default 180)
+
+Window
+  menitor window open                   Start the task window if it isn't running, and open it
+        --command <name>=<text>         What the learner types for check, hint, stuck, go or start
+                                        (repeatable); buttons copy it when they can't reach the session
+        --no-browser                    Print the link without opening a browser
+  menitor window status                 Whether the window is running, and its link
+  menitor window stop                   Stop the window server
 
 History
   menitor log <event> key=value...      Log check, explain, stuck, dispute, deploy or note
@@ -230,6 +239,8 @@ export function run(argv, ioOverrides = {}) {
         'no-commands': { type: 'boolean', default: false },
         'no-diff': { type: 'boolean', default: false },
         timeout: { type: 'string' },
+        command: { type: 'string', multiple: true },
+        'no-browser': { type: 'boolean', default: false },
         help: { type: 'boolean', short: 'h', default: false },
       },
     });
@@ -281,6 +292,42 @@ export function run(argv, ioOverrides = {}) {
 
       case 'task':
         return runTask(sub, rest, values, io, paths, json);
+
+      case 'window': {
+        const p = paths();
+        if (sub === 'open') {
+          /** @type {Record<string, string>} */
+          const commands = {};
+          for (const pair of values.command ?? []) {
+            const eq = pair.indexOf('=');
+            if (eq <= 0) throw new MenitorError(`--command takes name=text, got "${pair}"`);
+            commands[pair.slice(0, eq)] = pair.slice(eq + 1);
+          }
+          let r;
+          try {
+            r = openWindow(p, { commands, browser: !values['no-browser'], env: io.env });
+          } catch (err) {
+            throw new MenitorError(/** @type {Error} */ (err).message);
+          }
+          if (values.json) json({ url: r.url, started: r.started, opened: r.opened });
+          else io.out(`${r.started ? 'Started the task window' : 'The task window is already running'}: ${r.url}\n${r.opened ? 'Opened it in the browser.' : 'Open that link in a browser on this machine.'}`);
+          return EXIT.ok;
+        }
+        if (sub === 'status') {
+          const info = readWindowInfo(p);
+          const alive = info ? isAlive(p, info) : false;
+          if (values.json) json({ running: alive, url: alive && info ? windowUrl(info) : null });
+          else io.out(alive && info ? `The task window is running: ${windowUrl(info)}` : 'The task window is not running. Start it with "menitor window open".');
+          return EXIT.ok;
+        }
+        if (sub === 'stop') {
+          const was = stopWindow(p);
+          if (values.json) json({ stopped: was });
+          else io.out(was ? 'Stopped the task window.' : 'The task window was not running.');
+          return EXIT.ok;
+        }
+        throw new MenitorError('Usage: menitor window <open|status|stop>');
+      }
 
       case 'check': {
         if (sub !== 'run') throw new MenitorError('Usage: menitor check run [id]');

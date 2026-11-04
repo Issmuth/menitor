@@ -14,8 +14,8 @@ It is free (MIT), runs fully locally on your existing Claude plan, and has no ac
 | 2. Guard hooks | Done |
 | 3. Skills and doc templates | Done |
 | 4. Check runner | Done |
-| 5. Task window | Next |
-| 6. Window buttons through plugin monitors | Planned |
+| 5. Task window | Done |
+| 6. Window buttons through plugin monitors | Next |
 | 7. README, ADRs and doc templates | Planned |
 
 ## Install
@@ -65,6 +65,23 @@ flowchart LR
 
 Plain questions typed into the session still work. Commands are only for actions that change progress.
 
+## The task window
+
+`/menitor:go` opens a page in your browser that shows one task card at a time, beside or over your editor.
+
+- **Live:** the card updates as soon as Menitor's state changes. There's no need to reload.
+- **Ticks:** tick checklist items as you go. They're saved to `.menitor/progress.json`.
+- **Buttons:** Check my work, Hint and I'm stuck. Until window buttons can wake the session (milestone 6), they copy the command for you to paste.
+- **Pop out:** an always-on-top mini window through Document Picture-in-Picture in desktop Chromium browsers. Other browsers get a small separate window.
+- **Progress:** milestone bars, and how many tasks you wrote versus how many were delegated.
+- **Layout:** works from 320 px wide, in light and dark mode, and by keyboard.
+
+The window server listens on 127.0.0.1 only and needs a random token on every request. The link's token is swapped for an HttpOnly, SameSite=Strict cookie on first load. Requests with the wrong `Host` or `Origin` are refused, which blocks other sites and DNS rebinding. The page has a strict Content Security Policy, and buttons send fixed events only, never free text. The server stops after 6 hours without a visitor.
+
+```bash
+node core/bin/menitor.js window open --no-browser
+```
+
 ## The guard
 
 While mentor mode is on, hooks keep the agent's hands off the learner's code:
@@ -85,6 +102,7 @@ core/                     agent-neutral: works with any coding agent
   bin/menitor.js          the state CLI (the agent changes state only through it)
   lib/                    plan, learner, log, stats, card, docs, shell analysis and guard
   schemas/                JSON Schemas for every file in .menitor/
+  server/                 the task window: a small HTTP server and a dependency-free page
   instructions/           what each command does, in neutral words
   templates/docs/         lean doc templates: PRD, tech, flow, design, data and API, testing, ADR
 adapters/claude-code/     the thin Claude Code layer: hooks, command names and skills
@@ -105,6 +123,7 @@ A learner's project keeps its state in `.menitor/`, split by writer so nothing o
 | `learner.md` | the CLI | level, focus areas, strengths, mistakes, hint use | no |
 | `log.md` | the CLI and hooks | dated history of checks, hints, skips and disputes | no |
 | `activity.jsonl` | hooks | every agent command and file write, for the check | no |
+| `window.json` | the window server | where the running window listens, and its token | no |
 
 ## The state CLI
 

@@ -2,7 +2,7 @@
 //
 // Each file has one writer, so the window and the agent never overwrite each other:
 //   plan.json, session.json, learner.md  -> the CLI (the agent goes through it)
-//   progress.json                        -> the task window
+//   progress.json, window.json           -> the task window
 //   guard.json                           -> agent-adapter hooks, from commands the learner typed
 //   log.md                               -> appended by the CLI and adapter hooks
 //   activity.jsonl                       -> appended by adapter hooks
@@ -40,6 +40,7 @@ export const SCHEMAS = {
   guard: loadSchema('guard'),
   learner: loadSchema('learner'),
   activity: loadSchema('activity'),
+  window: loadSchema('window'),
 };
 
 /**

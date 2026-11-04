@@ -85,3 +85,19 @@ These settle the ambiguities and open questions in [prd.md](prd.md) before the b
 - **Fetching URLs.** URLs are fetched in a child Node process, so the CLI stays synchronous. `$deployUrl` comes from `plan deploy-url`.
 - **The diff.** It's capped at 40,000 characters. Untracked text files are shown in full up to 20 KB each.
 
+## Task window (milestone 5)
+
+- **One server per project.** `menitor window open` starts `core/server/main.js` detached and records the port, pid and token in `.menitor/window.json`. A second `open` reuses a server that answers `/api/ping` for the same project root. A stale `window.json` is replaced.
+- **Security.**
+  - The server binds to 127.0.0.1 and picks a random port.
+  - Every request needs the token: from a header, an HttpOnly SameSite=Strict cookie named per port, or the link's `?t=` on the first page load, which redirects to `/` with the cookie.
+  - `Host` must be `127.0.0.1:<port>` or `localhost:<port>`. POSTs must send JSON, and their `Origin` must match.
+  - The CSP allows only same-origin scripts, styles and requests, with no inline styles. `Referrer-Policy: no-referrer` keeps the token out of the referrer when the learner follows a docs link.
+- **Fixed events only (W-7).** `/api/event` accepts `check`, `hint` or `stuck`, and nothing else. Until milestone 6 connects a monitor, it answers `delivered: false` with the command to type, and the page copies it (W-6).
+- **Ticks (W-3).** `/api/tick` takes an item ID on the current card and a boolean. The window is the only writer of `progress.json`.
+- **Live updates (W-2).** Server-Sent Events push the whole state on every change. Changes are found by `fs.watch` on `.menitor/` and by a 2-second poll, in case the watch misses one.
+- **Command names stay out of core.** The server shows whatever command names the adapter passes with `--command name=text`. The generated `/menitor:go` skill passes the `/menitor:*` names.
+- **Pop out (W-4).** Document Picture-in-Picture moves the live card into an always-on-top window and moves it back when that closes. Without the API, the button opens a small separate window.
+- **Shutdown.** The server stops on `menitor window stop`, after 6 hours without visitors, or when `.menitor/` disappears.
+- **Checked in a real browser.** The page was tested in Chromium at 320 and 560 px, in light and dark mode. The checks covered ticks, live updates, the copy fallback, pop-out, and refusal without a token.
+
