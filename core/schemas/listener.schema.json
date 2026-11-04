@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Issmuth/menitor/blob/main/core/schemas/listener.schema.json",
+  "title": "Menitor session listener (.menitor/listener.json)",
+  "description": "A heartbeat from the agent session that turns window events into actions. Written only by the agent adapter's listener; the window reads it to decide whether a button can reach the session.",
+  "type": "object",
+  "required": ["version", "pid", "beatAt", "startedAt", "agent"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "pid": { "type": "integer", "minimum": 1 },
+    "beatAt": { "type": "string" },
+    "startedAt": { "type": "string" },
+    "agent": { "type": "string", "pattern": "^[a-z0-9-]{1,32}$" }
+  }
+}

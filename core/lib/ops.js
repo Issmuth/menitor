@@ -45,6 +45,8 @@ learner.md
 log.md
 activity.jsonl
 window.json
+inbox.jsonl
+listener.json
 warmup/
 *.tmp
 `;

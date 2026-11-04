@@ -106,7 +106,8 @@ async function onAction(type, e) {
   try {
     const r = await post('/api/event', { type });
     if (r.delivered) {
-      showToast(`Sent "${type}" to your session.`, undefined, doc);
+      const what = { check: 'check your work', hint: 'give you the next hint', stuck: 'help you debug' }[type];
+      showToast(`Sent. Your session will ${what} now.`, undefined, doc);
       return;
     }
     const command = r.command;
@@ -161,10 +162,11 @@ function renderCard(c) {
     if (r.open && r.text) open.push(h('p', { class: 'hint-text' }, h('strong', null, r.rung), r.text));
   }
 
+  const how = state?.listening ? 'Buttons send straight to your coding session.' : 'No session is listening, so buttons copy the command for you to paste.';
   const actions = learnerTask
     ? h(
         'div',
-        { class: 'actions' },
+        { class: 'actions', title: how },
         h('button', { type: 'button', onclick: (/** @type {Event} */ e) => onAction('check', e) }, 'Check my work'),
         h('button', { type: 'button', class: 'secondary', onclick: (/** @type {Event} */ e) => onAction('hint', e) }, 'Hint'),
         h('button', { type: 'button', class: 'secondary', onclick: (/** @type {Event} */ e) => onAction('stuck', e) }, "I'm stuck"),
@@ -189,6 +191,7 @@ function renderCard(c) {
     rungs,
     ...open,
     actions,
+    learnerTask ? h('p', { class: 'how' }, how) : null,
     last,
     c.note ? h('p', { class: 'note' }, c.note) : null,
   ];

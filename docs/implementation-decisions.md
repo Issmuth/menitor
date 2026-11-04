@@ -101,3 +101,20 @@ These settle the ambiguities and open questions in [prd.md](prd.md) before the b
 - **Shutdown.** The server stops on `menitor window stop`, after 6 hours without visitors, or when `.menitor/` disappears.
 - **Checked in a real browser.** The page was tested in Chromium at 320 and 560 px, in light and dark mode. The checks covered ticks, live updates, the copy fallback, pop-out, and refusal without a token.
 
+## Window buttons (milestone 6)
+
+- **How a press reaches the session.**
+  1. The window server appends a fixed event (`check`, `hint` or `stuck`, plus the current task ID) to `.menitor/inbox.jsonl`.
+  2. The Claude Code plugin monitor (`adapters/claude-code/monitor.js`) polls the inbox every second.
+  3. For each new event, it prints one fixed sentence that names the skill to run. Claude Code delivers each printed line to Claude as a notification.
+  4. The text Claude receives is written by the monitor, never taken from the page (W-7).
+- **Is anyone listening?** The monitor writes `.menitor/listener.json` every 5 seconds. The window writes an event only when that heartbeat is under 15 seconds old and its process is alive. Otherwise the button copies the command (W-6). The page shows which of the two will happen.
+- **Idempotent presses.** The same button pressed again within 5 seconds counts once. The monitor never replays events from before it started, and prints each event ID once.
+- **One monitor per session.** It runs for the whole session (`when` defaults to `always`). In a folder without `.menitor/`, it waits quietly and starts once setup creates the folder. It removes its heartbeat when it stops. Where Windows ends it abruptly, a dead pid makes the heartbeat count as stale.
+- **The monitor prints nothing else on stdout,** because every line becomes a notification. Diagnostics go to stderr.
+- **The session context explains the notifications.** The session-start context tells Claude to run the named skill at once when a "Menitor window" notification arrives.
+- **Limits.**
+  - Monitors don't start with `claude -p`, and they are an experimental Claude Code feature, so typed commands remain the primary path.
+  - If two sessions are open on one project, both receive every press.
+  - `claude plugin validate` checks that the monitors file exists, but not its keys, so a test checks the keys.
+

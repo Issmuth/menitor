@@ -196,6 +196,7 @@ export function sessionContext(ctx) {
   } else {
     lines.push('', mentorRules());
   }
+  lines.push('', 'The task window has Check, Hint and Stuck buttons. A press arrives as a "Menitor window" notification. Run the skill it names right away, as if the learner had typed the command.');
   try {
     lines.push('', renderStatus(statusData(ctx.paths)));
     const plan = loadPlan(ctx.paths);

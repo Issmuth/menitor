@@ -10,6 +10,7 @@ import { statusData } from '../lib/ops.js';
 import { cardData } from '../lib/card.js';
 import { findTask } from '../lib/plan.js';
 import { loadPlan, loadProgress, loadSession, saveProgress } from '../lib/state.js';
+import { deliverToListener, liveListener } from '../lib/inbox.js';
 
 /** The only events a button can send (W-7). */
 export const EVENTS = /** @type {const} */ (['check', 'hint', 'stuck']);
@@ -71,6 +72,7 @@ export function windowState(paths, options) {
       total: status.total,
       written: status.written,
       commands: options.commands,
+      listening: Boolean(liveListener(paths)),
     };
   } catch (err) {
     return { ok: false, error: /** @type {Error} */ (err).message, commands: options.commands };
@@ -270,7 +272,8 @@ export function createWindowServer(root, options = {}) {
         } catch {
           task = null;
         }
-        const delivered = options.deliver ? options.deliver({ type, task }) : false;
+        const event = { type: /** @type {'check' | 'hint' | 'stuck'} */ (type), task };
+        const delivered = options.deliver ? options.deliver(event) : deliverToListener(paths, event).delivered;
         return sendJson(res, 200, { delivered, command: /** @type {Record<string, string>} */ (commands)[type] });
       }
       if (url.pathname === '/api/shutdown') {

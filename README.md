@@ -15,8 +15,8 @@ It is free (MIT), runs fully locally on your existing Claude plan, and has no ac
 | 3. Skills and doc templates | Done |
 | 4. Check runner | Done |
 | 5. Task window | Done |
-| 6. Window buttons through plugin monitors | Next |
-| 7. README, ADRs and doc templates | Planned |
+| 6. Window buttons through plugin monitors | Done |
+| 7. README, ADRs and release polish | Next |
 
 ## Install
 
@@ -71,7 +71,7 @@ Plain questions typed into the session still work. Commands are only for actions
 
 - **Live:** the card updates as soon as Menitor's state changes. There's no need to reload.
 - **Ticks:** tick checklist items as you go. They're saved to `.menitor/progress.json`.
-- **Buttons:** Check my work, Hint and I'm stuck. Until window buttons can wake the session (milestone 6), they copy the command for you to paste.
+- **Buttons:** Check my work, Hint and I'm stuck. While a Claude Code session is open on the project, a press goes straight to it, through a plugin monitor. With no session listening, the button copies the command for you to paste instead. The card says which of the two will happen.
 - **Pop out:** an always-on-top mini window through Document Picture-in-Picture in desktop Chromium browsers. Other browsers get a small separate window.
 - **Progress:** milestone bars, and how many tasks you wrote versus how many were delegated.
 - **Layout:** works from 320 px wide, in light and dark mode, and by keyboard.
@@ -124,6 +124,8 @@ A learner's project keeps its state in `.menitor/`, split by writer so nothing o
 | `log.md` | the CLI and hooks | dated history of checks, hints, skips and disputes | no |
 | `activity.jsonl` | hooks | every agent command and file write, for the check | no |
 | `window.json` | the window server | where the running window listens, and its token | no |
+| `inbox.jsonl` | the window server | button presses waiting for the session: fixed events only | no |
+| `listener.json` | the session's monitor | a heartbeat that says a session is listening | no |
 
 ## The state CLI
 

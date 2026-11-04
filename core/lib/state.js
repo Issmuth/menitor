@@ -6,6 +6,8 @@
 //   guard.json                           -> agent-adapter hooks, from commands the learner typed
 //   log.md                               -> appended by the CLI and adapter hooks
 //   activity.jsonl                       -> appended by adapter hooks
+//   inbox.jsonl                          -> appended by the task window (button presses)
+//   listener.json                        -> the adapter's listener (a heartbeat)
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -41,6 +43,8 @@ export const SCHEMAS = {
   learner: loadSchema('learner'),
   activity: loadSchema('activity'),
   window: loadSchema('window'),
+  listener: loadSchema('listener'),
+  inboxEvent: loadSchema('inbox-event'),
 };
 
 /**
