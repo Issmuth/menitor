@@ -2,6 +2,19 @@
 
 All notable changes to Menitor. Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+
+- **The task window, redesigned** for phones, the pop-out, tablets and desktops:
+  - one column with the actions in a bar fixed to the bottom on narrow screens, and a 12-column layout with the actions beside the title on wide ones;
+  - the last check's result under the title, where it's read first;
+  - a plan ledger: one cell per task, marked by who did it;
+  - a hint ladder, with pseudocode and snippets set as code;
+  - quieter, read-only steps on delegated tasks;
+  - Instrument Sans, bundled under the SIL Open Font License, so the page still loads nothing from outside.
+- Ticking a step with the keyboard keeps focus on it, and screen readers hear when the task, the check result or the hints change.
+
 ## 0.1.0 (2026-11-04)
 
 The first build of v1, ready for its first testers. It covers the v1 scope in the [PRD](docs/prd.md).

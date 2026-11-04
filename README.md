@@ -91,16 +91,17 @@ Plain questions still work: ask anything. Commands are only for actions that cha
 
 `/menitor:go` opens a page in your browser with one task card. Keep it beside your editor, or pop it out.
 
-![The task window, light and dark](docs/images/window.png)
+![The task window: the desktop layout in light mode, and the pop-out in dark mode](docs/images/window.png)
 
 - **Live:** it updates as soon as anything changes. You never need to reload.
 - **Ticks:** tick checklist items as you go. Fixes from a failed check appear as new items.
 - **Buttons:** **Check my work**, **Hint** and **I'm stuck** go straight to your Claude Code session. If no session is open, they copy the command for you to paste. The card tells you which of the two will happen.
 - **Pop out:** an always-on-top mini window in desktop Chrome, Edge and other Chromium browsers. Other browsers get a small separate window.
-- **Progress:** milestone bars, and how many tasks you wrote versus how many were delegated.
-- **Layout:** works from 320 px wide, in light and dark mode, and by keyboard.
+- **The plan:** every task in your plan as one cell, marked by who did it: you, Menitor, skipped, the one you're on, or still to do.
+- **Hints:** the four-rung ladder shows which hints are open, with their text beside it. Code hints are set as code.
+- **Layout:** one column on a phone or in the pop-out, with the buttons always at the bottom of the screen. On a desktop, the steps sit beside the plan and the buttons sit beside the title. It works from 320 px wide, in light and dark mode, and by keyboard.
 
-The window only works on your machine. It listens on 127.0.0.1 and needs the link your session gives you.
+The window only works on your machine. It listens on 127.0.0.1 and needs the link your session gives you. It loads nothing from outside: even its typeface, Instrument Sans, is bundled under the SIL Open Font License.
 
 ## What the agent can and can't do
 

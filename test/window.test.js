@@ -61,10 +61,16 @@ test('only this server, on this host, with its token', async () => {
     assert.equal(page.status, 200);
     assert.match(page.body, /<script type="module" src="\/app\.js">/);
     assert.match(String(page.headers['content-security-policy']), /default-src 'none'; script-src 'self'/);
+    assert.match(String(page.headers['content-security-policy']), /font-src 'self';/, 'the bundled font loads from this server only');
     assert.equal(page.headers['referrer-policy'], 'no-referrer');
     assert.equal(page.headers['x-frame-options'], 'DENY');
 
     assert.equal((await request(port, { path: '/app.js', headers: auth })).headers['content-type'], 'text/javascript; charset=utf-8');
+    const font = await request(port, { path: '/fonts/instrument-sans-latin.woff2', headers: auth });
+    assert.equal(font.status, 200);
+    assert.equal(font.headers['content-type'], 'font/woff2');
+    assert.match(String(font.headers['cache-control']), /max-age=\d+/);
+    assert.equal((await request(port, { path: '/fonts/instrument-sans-latin.woff2' })).status, 401, 'fonts need the token too');
     assert.equal((await request(port, { path: '/nope', headers: auth })).status, 404);
   } finally {
     await win.close();
@@ -192,10 +198,20 @@ test('window state covers every phase, and never leaks locked hints', () => {
   assert.equal(s.phase, 'task');
   assert.equal(s.card?.task, 't1');
   assert.equal(s.milestones?.[0].current, true);
+  assert.deepEqual(
+    s.milestones?.map((m) => m.tasks.map((t) => `${t.number}:${t.id}${t.current ? '*' : ''}${t.done ? `:${t.by}` : ''}`)),
+    [['1:t1*', '2:t2'], ['3:t3']],
+    'every task, numbered in plan order, for the ledger',
+  );
+  assert.equal(s.milestones?.[0].tasks[0].goal, 'Show a hello page');
   cli(root, ['task', 'pass', '--override', 't']);
   cli(root, ['task', 'pass', '--override', 't']);
   s = windowState(paths, { commands: {} });
   assert.equal(s.card?.task, 't3');
+  assert.deepEqual(
+    s.milestones?.flatMap((m) => m.tasks.map((t) => `${t.id}${t.current ? '*' : ''}${t.done ? `:${t.by}` : ''}`)),
+    ['t1:learner', 't2:delegated', 't3*'],
+  );
   assert.deepEqual(s.card?.hints.rungs.map((r) => r.text), [null, null, null, null]);
   cli(root, ['task', 'hint']);
   s = windowState(paths, { commands: {} });

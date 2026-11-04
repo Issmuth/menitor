@@ -20,15 +20,18 @@ const HEARTBEAT_MS = 20000;
 const POLL_MS = 2000;
 
 const PAGE_DIR = new URL('./page/', import.meta.url);
-const STATIC = /** @type {Record<string, { file: string, type: string }>} */ ({
+const STATIC = /** @type {Record<string, { file: string, type: string, cache?: boolean }>} */ ({
   '/': { file: 'index.html', type: 'text/html; charset=utf-8' },
   '/app.js': { file: 'app.js', type: 'text/javascript; charset=utf-8' },
   '/style.css': { file: 'style.css', type: 'text/css; charset=utf-8' },
+  // Instrument Sans, bundled under the SIL Open Font License (fonts/OFL.txt), so the page loads nothing from outside.
+  '/fonts/instrument-sans-latin.woff2': { file: 'fonts/instrument-sans-latin.woff2', type: 'font/woff2', cache: true },
+  '/fonts/instrument-sans-latin-ext.woff2': { file: 'fonts/instrument-sans-latin-ext.woff2', type: 'font/woff2', cache: true },
 });
 
 const SECURITY_HEADERS = {
   'Content-Security-Policy':
-    "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer',
@@ -59,6 +62,18 @@ export function windowState(paths, options) {
     const card = plan && current ? cardData(plan, current.task.id, loadProgress(paths)) : null;
     const record = current ? session.tasks[current.task.id] : undefined;
     const phase = !plan ? 'no-plan' : !plan.approvedAt ? 'draft' : card ? 'task' : 'done';
+    // Every task, in plan order, with who did it: the window draws the whole plan as one ledger (W-8).
+    let number = 0;
+    const tasksOf = (/** @type {number} */ i) =>
+      (plan?.milestones[i]?.tasks ?? []).map((t) => ({
+        id: t.id,
+        number: ++number,
+        goal: t.goal,
+        done: t.status === 'done',
+        by: t.owner,
+        skipped: t.skipped ?? false,
+        current: t.id === session.currentTask,
+      }));
     return {
       ok: true,
       phase,
@@ -67,7 +82,7 @@ export function windowState(paths, options) {
       level: status.level,
       card,
       lastCheck: record?.lastCheck ?? null,
-      milestones: status.milestones.map((m) => ({ ...m, current: current?.milestone.id === m.id })),
+      milestones: status.milestones.map((m, i) => ({ ...m, current: current?.milestone.id === m.id, tasks: tasksOf(i) })),
       done: status.done,
       total: status.total,
       written: status.written,
@@ -234,7 +249,12 @@ export function createWindowServer(root, options = {}) {
 
     if (req.method === 'GET') {
       const asset = STATIC[url.pathname];
-      if (asset) return send(res, 200, /** @type {Buffer} */ (files.get(asset.file)), { 'Content-Type': asset.type });
+      if (asset) {
+        /** @type {Record<string, string>} */
+        const headers = { 'Content-Type': asset.type };
+        if (asset.cache) headers['Cache-Control'] = 'private, max-age=604800, immutable';
+        return send(res, 200, /** @type {Buffer} */ (files.get(asset.file)), headers);
+      }
       if (url.pathname === '/api/state') return send(res, 200, stateJson(), { 'Content-Type': 'application/json; charset=utf-8' });
       if (url.pathname === '/api/ping') return sendJson(res, 200, { ok: true, root, pid: process.pid });
       if (url.pathname === '/api/events') {

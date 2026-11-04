@@ -118,3 +118,20 @@ These settle the ambiguities and open questions in [prd.md](prd.md) before the b
   - If two sessions are open on one project, both receive every press.
   - `claude plugin validate` checks that the monitors file exists, but not its keys, so a test checks the keys.
 
+## Task window design (after milestone 7)
+
+The window was redesigned with the design-taste-frontend skill's app-screen rules, in its editorial-greeting style (seed 891914021).
+
+- **The screen's question** is "What do I do next, and am I done?" The steps answer it, so they are the biggest block and come first after the title. The last check's result sits on the line under the title, the screen's one finding.
+- **Three bands.**
+  - Up to 640px (phones and the pop-out): one column, no frame, and the actions in a bar fixed to the bottom.
+  - 641-1099px: the same column on a white sheet in a tinted frame.
+  - 1100px and up: a centred 1100px column on a 12-column grid. The steps take 8 columns and the rail (before you code, the plan) takes 4. The hints run all 12 below them, with the ladder on the left and the open hints on the right.
+- **Face and signature.** The panels are tinted one step toward Menitor's green instead of a neutral grey. The plan ledger draws every task as one cell, marked by who did it. Its legend counts come from the same cells.
+- **Colour** goes on data only: your ticks, your tasks in the ledger, the open hint rungs and links. Red marks only the failing fact. The primary button is near-black in light mode and white in dark mode.
+- **The typeface** is Instrument Sans, bundled as two woff2 subsets (41 KB) with its OFL license in `core/server/page/fonts/`. The CSP adds `font-src 'self'`, so the page still loads nothing from outside. Fonts are the only files the server lets the browser cache.
+- **The state** now lists every task per milestone (ID, number, goal, done, owner, skipped, current) for the ledger. Locked hint text still never leaves the server.
+- **Accessibility.**
+  - A tick re-renders the card, and focus returns to the same control by a `data-key`.
+  - A polite live region announces a new task, a new check result, an opened hint and added fixes, instead of reading the whole card on every update.
+

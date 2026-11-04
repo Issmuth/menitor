@@ -2,38 +2,51 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
     <title>Menitor</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232f6f5e'/%3E%3Cpath d='M9 22V10l7 7 7-7v12' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+    <link rel="preload" href="/fonts/instrument-sans-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/style.css" />
     <script type="module" src="/app.js"></script>
   </head>
   <body>
     <div id="app" class="app">
       <header class="bar">
-        <span class="brand" aria-hidden="true">M</span>
-        <span id="project" class="project">Menitor</span>
-        <span id="live" class="live" data-state="connecting" role="status" aria-live="polite">Connecting</span>
-        <button id="popout" class="ghost" type="button" hidden>Pop out</button>
+        <div class="bar-inner">
+          <span class="brand">
+            <svg class="mark" viewBox="0 0 32 32" width="24" height="24" aria-hidden="true" focusable="false">
+              <rect width="32" height="32" rx="8" />
+              <path d="M9 22V10l7 7 7-7v12" />
+            </svg>
+            <span class="brand-name">Menitor</span>
+            <span class="sep" aria-hidden="true">/</span>
+            <span id="project" class="project">Your project</span>
+          </span>
+          <span id="live" class="live" data-state="connecting" role="status">Connecting</span>
+          <button id="popout" class="btn ghost small" type="button" hidden>Pop out</button>
+        </div>
       </header>
 
-      <p id="banner" class="banner" role="status" hidden></p>
-
-      <main id="main">
-        <section id="card" class="card" aria-live="polite" aria-busy="true">
-          <p class="muted">Loading the current task…</p>
-        </section>
-
-        <section id="progress" class="progress" aria-label="Progress" hidden></section>
+      <main id="sheet" class="sheet">
+        <div id="content" class="content">
+          <div class="loading" aria-hidden="true">
+            <span class="bone title"></span>
+            <span class="bone line"></span>
+            <span class="bone line short"></span>
+            <span class="bone block"></span>
+          </div>
+          <p class="sr-only">Loading the current task.</p>
+        </div>
       </main>
     </div>
 
     <div id="away" class="away" hidden>
       <p>The card is in the pop-out window.</p>
-      <button id="bring-back" type="button">Bring it back</button>
+      <button id="bring-back" class="btn secondary" type="button">Bring it back</button>
     </div>
 
+    <p id="announce" class="sr-only" role="status" aria-live="polite"></p>
     <div id="toast" class="toast" role="status" aria-live="assertive" hidden></div>
   </body>
 </html>
