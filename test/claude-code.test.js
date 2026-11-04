@@ -105,7 +105,7 @@ test('PostToolUse logs agent activity and warns when a command changed learner f
   const lines = fs.readFileSync(paths.activity, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.deepEqual(lines.map((l) => l.tool), ['Bash', 'Write']);
   assert.deepEqual(lines[0].changed, ['src/app.js', 'docs/x.md']);
-  assert.deepEqual(lines[1].targets, [{ path: path.join('docs', 'a.md'), area: 'docs', kind: 'write' }]);
+  assert.deepEqual(lines[1].targets, [{ path: 'docs/a.md', area: 'docs', kind: 'write' }]);
   cleanup();
 });
 

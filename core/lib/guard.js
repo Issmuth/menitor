@@ -329,5 +329,13 @@ export function appendActivity(ctx, entry, options = {}) {
 export function projectFiles(ctx, files) {
   if (!ctx.root) return [];
   const root = ctx.root;
-  return files.filter((f) => ['project', 'unknown'].includes(classifyPath(root, root, f))).map((f) => path.relative(root, path.resolve(root, f)) || f);
+  return files.filter((f) => ['project', 'unknown'].includes(classifyPath(root, root, f))).map((f) => toPosix(path.relative(root, path.resolve(root, f)) || f));
+}
+
+/**
+ * Forward slashes on every platform, for text people and the check read.
+ * @param {string} p
+ */
+export function toPosix(p) {
+  return p.split(path.sep).join('/');
 }

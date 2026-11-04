@@ -1,14 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import { analyzeCommand, splitCommands, tokenize } from '../core/lib/shell.js';
+
+const P = path.resolve('/p');
 
 /**
  * Effects as short strings: "write:path", "delete:path", "git:git commit", and so on.
+ * A changed working folder follows an at sign, relative to the starting one.
  * @param {string} cmd
  * @param {'posix' | 'powershell'} [dialect]
  */
 const fx = (cmd, dialect = 'posix') =>
-  analyzeCommand(cmd, { dialect, cwd: '/p' }).map((e) => `${e.kind}:${e.path ?? e.via}${e.cwd && e.cwd !== '/p' ? `@${e.cwd}` : ''}`);
+  analyzeCommand(cmd, { dialect, cwd: P }).map((e) => {
+    const moved = e.cwd && e.cwd !== P ? `@${path.relative(P, e.cwd).split(path.sep).join('/')}` : '';
+    return `${e.kind}:${e.path ?? e.via}${moved}`;
+  });
 
 test('quotes, escapes and operators tokenize like a shell', () => {
   const words = (/** @type {string} */ s) => tokenize(s).map((t) => (t.type === 'word' ? t.value : `<${t.value}>`));
@@ -67,9 +74,9 @@ test('downloads into the project', () => {
 });
 
 test('cd changes where later paths land', () => {
-  assert.deepEqual(fx('cd src && echo x > a.js'), ['write:a.js@/p/src']);
+  assert.deepEqual(fx('cd src && echo x > a.js'), ['write:a.js@src']);
   assert.deepEqual(fx('cd "$DIR" && echo x > a.js').map((s) => s.split('@')[0]), ['write:a.js']);
-  const [effect] = analyzeCommand('cd $DIR && echo x > a.js', { cwd: '/p' });
+  const [effect] = analyzeCommand('cd $DIR && echo x > a.js', { cwd: P });
   assert.equal(effect.cwd, null, 'an unknown folder makes later relative paths unknown');
 });
 
@@ -109,7 +116,7 @@ test('git: read-only subcommands pass, the rest change the repo', () => {
   ]) {
     assert.deepEqual(fx(cmd), [`git:${via}`], cmd);
   }
-  assert.deepEqual(fx('git -C sub commit -m x'), ['git:git commit@/p/sub']);
+  assert.deepEqual(fx('git -C sub commit -m x'), ['git:git commit@sub']);
 });
 
 test('package managers: adding and scaffolding change files, restoring does not', () => {

@@ -11,6 +11,7 @@ import {
   findProjectRoot,
   loadGuardContext,
   projectFiles,
+  toPosix,
 } from '../../core/lib/guard.js';
 import { appendEvent } from '../../core/lib/log.js';
 import { statusData } from '../../core/lib/ops.js';
@@ -129,7 +130,7 @@ export function postToolUse(input, env) {
     const file = filePathOf(toolInput);
     if (!file) return {};
     const abs = path.resolve(input.cwd ?? root, file);
-    const rel = path.relative(root, abs) || '.';
+    const rel = toPosix(path.relative(root, abs) || '.');
     appendActivity(ctx, { tool, file: rel, targets: [{ path: rel, area: classifyPath(root, root, abs), kind: 'write' }] });
     return {};
   }

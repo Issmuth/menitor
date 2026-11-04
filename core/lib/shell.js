@@ -554,6 +554,26 @@ const PS_PATH_PARAMS = new Set(['-path', '-literalpath', '-filepath', '-destinat
 const PS_VALUE_PARAMS = new Set(['-value', '-encoding', '-itemtype', '-type', '-name', '-newname', '-delimiter', '-inputobject', '-width', '-filter', '-include', '-exclude', '-credential', '-uri', '-method', '-body', '-headers', '-contenttype', '-source']);
 
 /**
+ * Join paths written with either slash, keeping forward slashes.
+ * @param {string} dir
+ * @param {string} name
+ */
+function joinLoose(dir, name) {
+  const d = dir.replace(/\\/g, '/').replace(/\/+$/, '');
+  return d === '' || d === '.' ? name : `${d}/${name}`;
+}
+
+/**
+ * The folder part of a path written with either slash.
+ * @param {string} p
+ */
+function dirnameLoose(p) {
+  const n = p.replace(/\\/g, '/');
+  const slash = n.lastIndexOf('/');
+  return slash === -1 ? '.' : n.slice(0, slash) || '/';
+}
+
+/**
  * @param {string[]} args
  */
 function psArgs(args) {
@@ -644,7 +664,7 @@ export function analyzeCommand(source, options = {}) {
       if (PS_WRITE.has(name)) {
         const { pathParams, values, pos } = psArgs(args);
         const targets = [...pathParams, ...pos.slice(0, 1)];
-        if (values['-name']) targets.push(targets.length ? path.join(targets[0], values['-name']) : values['-name']);
+        if (values['-name']) targets.push(targets.length ? joinLoose(targets[0], values['-name']) : values['-name']);
         for (const t of targets) write(t, name);
         continue;
       }
@@ -660,7 +680,7 @@ export function analyzeCommand(source, options = {}) {
         if (PS_MOVE.has(name) && all[0]) del(all[0], name);
         if (isRename) {
           const newName = values['-newname'] ?? pos[1];
-          if (newName && all[0]) write(path.join(path.dirname(all[0]), newName), name);
+          if (newName && all[0]) write(joinLoose(dirnameLoose(all[0]), newName), name);
         } else if (all.length >= 2) {
           write(all[all.length - 1], name);
         } else if (all.length === 1 && PS_COPY.has(name)) {
