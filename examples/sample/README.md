@@ -93,15 +93,16 @@ Try skip in a fresh copy, because it hands your task over:
 
 | # | Try | You should see |
 | --- | --- | --- |
-| 1 | Type `/menitor:check` | A clean check run, a short review, and one or two questions about the code in `src/app.js` |
-| 2 | Give a weak answer on purpose | A short explanation, then one follow-up question. After two tries the task passes, with the concept noted to revisit |
+| 1 | Type `/menitor:check` | A clean check run and a short review. Then a question about your code appears in the window, with an answer box |
+| 2 | Give a weak answer in the window on purpose, and press **Send answer** | Menitor's short explanation shows under your answer, with one follow-up question. After two tries the task passes, with the concept noted to revisit |
 | 3 | If it raises a must-fix, dispute it | Claude must show a concrete failing case, or withdraw it |
 
 ### Scenario `delegated`
 
 | # | Try | You should see |
 | --- | --- | --- |
-| 1 | Type `/menitor:go` | Claude sees task 2 is delegated and builds it: `GET /health` plus `test/health.test.js` |
+| 0 | Look at the window first | "Menitor's turn" at the top, with **Start it**. With no session listening, the button copies `/menitor:go` |
+| 1 | Type `/menitor:go`, or press **Start it** | Claude sees task 2 is delegated and builds it: `GET /health` plus `test/health.test.js` |
 | 2 | Run `git log -1 --format=%B` after it's done | The commit message ends with `Menitor-Delegated: true` |
 | 3 | Look at the window | Task 2 shows Menitor's two-line note. The card moves on to task 3, the deploy, which is yours |
 

@@ -105,6 +105,9 @@ In both modes the agent never writes your code, and every check still asks you t
 
 - **Live:** it updates as soon as anything changes. You never need to reload.
 - **Ticks:** tick checklist items as you go. Fixes from a failed check appear as new items.
+- **Explain your code:** when a check asks about your code, the question appears in the window with an answer box. Send your answer there, or in your session. Menitor's reply, and any follow-up question, show up under it.
+- **Whose turn it is:** anything holding up your next task shows at the top. That covers a task that's Menitor's (with a **Start it** button), a skip waiting for your confirm, and anything Menitor is waiting on, such as a sign-in or your deployed URL.
+- **Before you code** comes first: the one thing to read, the doc section and the branch. On a desktop it sits beside the steps.
 - **Buttons:** **Check my work**, **Hint** and **I'm stuck** go straight to your Claude Code session. If no session is open, they copy the command for you to paste. The card tells you which of the two will happen.
 - **Pop out:** an always-on-top mini window in desktop Chrome, Edge and other Chromium browsers. Other browsers get a small separate window.
 - **The plan:** every task in your plan as one cell, marked by who did it: you, Menitor, skipped, the one you're on, or still to do.
@@ -150,6 +153,7 @@ Menitor keeps its state in `.menitor/` in your project. The plan is committed, s
 | `guard.json` | mentor mode and skip grants, from commands you typed | no |
 | `activity.jsonl` | every command and file write the agent ran | no |
 | `solutions.json` | type-along: each step's instructions and code | no |
+| `answers.json` | your answers to explain-back questions, typed in the window | no |
 | `window.json`, `inbox.jsonl`, `listener.json` | the running window and its buttons | no |
 
 Your lean docs go in `docs/`, one page each: product requirements, technical requirements, app flow, design brief, data and API contract, and testing approach. Decision records go in `docs/adr/`. You write the first one, for your stack.

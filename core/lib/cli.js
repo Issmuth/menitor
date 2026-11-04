@@ -22,6 +22,10 @@ import {
   importHints,
   importPlan,
   importSteps,
+  askQuestion,
+  judgeQuestion,
+  questionState,
+  setWaiting,
   initProject,
   learnerAdd,
   learnerNote,
@@ -71,6 +75,15 @@ Tasks (the ID defaults to the current task)
         --override <reason>             Pass without the gate, only when a check itself is broken;
                                         the reason is logged and shown on the card
   menitor task skip [id]                Hand a task to the agent (learner tasks need the learner's grant)
+
+Explain-back and waiting
+  menitor question ask "<text>"         Ask an explain-back question; the window shows it with an answer box
+        --follow-up                     The second try, after a weak first answer
+  menitor question show                 The current task's questions and the learner's answers
+  menitor question judge <good|weak>    Judge the open answer and log it (the pass gate reads this)
+        --feedback "<text>"             A short reply or explanation, shown under their answer
+  menitor waiting "<text>"              Show the learner what you need before work can go on
+  menitor waiting --done                Clear it
 
 Checks
   menitor check run [id]                Run the deterministic checks: build, lint, test, verify
@@ -182,6 +195,9 @@ function renderBrief(b) {
     lines.push(`${i === 0 ? 'Verify' : ''}`.padEnd(11) + text);
   }
   if (b.verify.some((v) => 'url' in v && v.url.startsWith('$deployUrl'))) lines.push(`Deploy URL ${b.deployUrl ?? 'not recorded yet'}`);
+  if (b.waiting) lines.push(`Waiting    on the learner: ${b.waiting.text}`);
+  const open = b.questions.find((q) => q.outcome === null);
+  if (open) lines.push(`Question   ${open.id} is open${open.answer ? ': answered in the window. Read it with "question show", then judge it' : ': no answer yet'}`);
   if (b.typeAlong && b.card.owner === 'learner') {
     const { stored, missing } = b.stepCode;
     lines.push(`Type-along on · code stored for ${stored.length} of ${stored.length + missing.length} steps${missing.length ? ` · missing: ${missing.join(', ')}` : ''}`);
@@ -194,6 +210,20 @@ function renderBrief(b) {
   else lines.push(`Docs: ${where}`, doc.text);
   if (doc.truncated) lines.push('[cut at 4000 characters]');
   return lines.join('\n');
+}
+
+/**
+ * @param {ReturnType<typeof questionState>['questions']} questions
+ */
+function renderQuestions(questions) {
+  if (!questions.length) return 'No questions on this task yet.';
+  return questions
+    .map((q) => {
+      const head = `${q.id} (${q.try === 1 ? 'first try' : 'follow-up'})${q.outcome ? ` · judged ${q.outcome}` : ' · open'}`;
+      const answer = q.answer ? `A: ${q.answer.text}` : 'A: no answer in the window yet. They may answer in chat.';
+      return [head, `Q: ${q.text}`, answer, q.feedback ? `Feedback: ${q.feedback}` : ''].filter(Boolean).join('\n');
+    })
+    .join('\n\n');
 }
 
 /**
@@ -247,6 +277,9 @@ export function run(argv, ioOverrides = {}) {
         'no-diff': { type: 'boolean', default: false },
         timeout: { type: 'string' },
         command: { type: 'string', multiple: true },
+        'follow-up': { type: 'boolean', default: false },
+        feedback: { type: 'string' },
+        done: { type: 'boolean', default: false },
         'no-browser': { type: 'boolean', default: false },
         help: { type: 'boolean', short: 'h', default: false },
       },
@@ -299,6 +332,39 @@ export function run(argv, ioOverrides = {}) {
 
       case 'task':
         return runTask(sub, rest, values, io, paths, json);
+
+      case 'question': {
+        const p = paths();
+        if (sub === 'ask') {
+          if (!rest.length) throw new MenitorError('Usage: menitor question ask "<text>" [--follow-up]');
+          const { question } = askQuestion(p, rest.join(' '), { followUp: values['follow-up'] });
+          if (values.json) json(question);
+          else io.out(`Asked ${question.id}${question.try === 2 ? ' (the follow-up)' : ''}. The window shows it with an answer box; they may answer in chat instead.`);
+          return EXIT.ok;
+        }
+        if (sub === 'show') {
+          const s = questionState(p);
+          if (values.json) json(s);
+          else io.out(renderQuestions(s.questions));
+          return EXIT.ok;
+        }
+        if (sub === 'judge') {
+          if (!rest[0]) throw new MenitorError('Usage: menitor question judge <good|weak> [--feedback "<text>"]');
+          const { question } = judgeQuestion(p, rest[0], { feedback: values.feedback });
+          if (values.json) json(question);
+          else io.out(`Judged ${question.id} ${question.outcome}, and logged the explain-back.${question.outcome === 'weak' && question.try === 1 ? ' Ask one follow-up with "question ask --follow-up".' : ''}`);
+          return EXIT.ok;
+        }
+        throw new MenitorError('Usage: menitor question <ask|show|judge>');
+      }
+
+      case 'waiting': {
+        if (!values.done && !sub) throw new MenitorError('Usage: menitor waiting "<text>" | menitor waiting --done');
+        const w = setWaiting(paths(), values.done ? null : [sub, ...rest].join(' '));
+        if (values.json) json({ waiting: w });
+        else io.out(w ? 'The window now shows what you are waiting on. Clear it with "menitor waiting --done".' : 'Cleared.');
+        return EXIT.ok;
+      }
 
       case 'steps': {
         if (sub !== 'import' || !rest[0]) throw new MenitorError('Usage: menitor steps import <file|->');

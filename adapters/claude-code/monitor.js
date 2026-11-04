@@ -20,6 +20,8 @@ export const NOTIFICATIONS = {
   check: (/** @type {string} */ task) => `Menitor window: the learner pressed "Check my work" on task ${task}. Run the menitor:check skill now, exactly as if they had typed /menitor:check.`,
   hint: (/** @type {string} */ task) => `Menitor window: the learner pressed "Hint" on task ${task}. Run the menitor:hint skill now, exactly as if they had typed /menitor:hint.`,
   stuck: (/** @type {string} */ task) => `Menitor window: the learner pressed "I'm stuck" on task ${task}. Run the menitor:stuck skill now, exactly as if they had typed /menitor:stuck.`,
+  go: (/** @type {string} */ task) => `Menitor window: the learner pressed "Start it" on task ${task}, which is yours. Run the menitor:go skill now, exactly as if they had typed /menitor:go.`,
+  answer: (/** @type {string} */ task) => `Menitor window: the learner answered your explain-back question on task ${task} in the window. Run the menitor:check skill now to read the answer with "question show" and judge it.`,
 };
 
 /** @type {import('../../core/lib/paths.js').StatePaths | null} */

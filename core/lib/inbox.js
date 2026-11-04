@@ -22,7 +22,8 @@ const MAX_LINES = 500;
 
 /**
  * @typedef {import('./paths.js').StatePaths} StatePaths
- * @typedef {{ id: string, at: string, type: 'check' | 'hint' | 'stuck', task: string | null }} InboxEvent
+ * @typedef {'check' | 'hint' | 'stuck' | 'go' | 'answer'} InboxType
+ * @typedef {{ id: string, at: string, type: InboxType, task: string | null }} InboxEvent
  * @typedef {{ version: 1, pid: number, beatAt: string, startedAt: string, agent: string }} Listener
  */
 
@@ -114,7 +115,7 @@ export function readInbox(paths) {
 /**
  * Append one button press. For the window server only. Keeps the file short.
  * @param {StatePaths} paths
- * @param {{ type: 'check' | 'hint' | 'stuck', task: string | null }} event
+ * @param {{ type: InboxType, task: string | null }} event
  * @param {Date} [now]
  * @returns {InboxEvent}
  */
@@ -133,7 +134,7 @@ export function appendInbox(paths, event, now = new Date()) {
  * Deliver a button press to a listening session, if there is one. Repeated presses of the same
  * button within a few seconds count once.
  * @param {StatePaths} paths
- * @param {{ type: 'check' | 'hint' | 'stuck', task: string | null }} event
+ * @param {{ type: InboxType, task: string | null }} event
  * @param {Date} [now]
  * @returns {{ delivered: boolean, duplicate: boolean }}
  */

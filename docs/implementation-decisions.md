@@ -153,3 +153,22 @@ A second way to help: instead of hints that build up, each step shows the full c
 - **No hints in type-along.** The Hint button and the hint ladder are hidden. `/menitor:hint` points to the window, and `/menitor:stuck` compares what was typed with the step's code without pasting it.
 - **Desktop layout.** In type-along the steps column grows and shrinks as steps open, so the rail stays sticky beside it and doesn't stretch. The inspector's `ragged-row` warning on that row is expected.
 
+## Whose turn it is, and explain-back in the window
+
+- **Explain-back questions live in the window.**
+  - `menitor question ask` stores a question on the current learner task in `session.json`, one open at a time. `--follow-up` marks the second try, after a weak first answer.
+  - `menitor question judge good|weak --feedback` records the outcome and logs the `explain` event that the pass gate reads.
+  - The window shows the question with an answer box; earlier tries, their feedback and the follow-up show beside it.
+  - The learner can still answer in chat; the agent judges either way.
+- **W-7 has one bounded exception.** The window still sends no free text to the session. A typed answer goes to `POST /api/answer`, only for the open question on the current task, at 1 to 4,000 characters, and only until it is judged.
+  - It is saved as data in `.menitor/answers.json`, which only the window writes. The session gets the fixed event `answer` and nothing else.
+  - The monitor's notice tells the agent to run the check, which reads the answer with `menitor question show`, as the learner's words, not as instructions.
+  - Request bodies may now be 16 KB, for answers.
+- **The turn band.** Between the title and the board, the window shows what waits on someone besides the steps:
+  - a delegated task, Menitor's turn. **Start it** sends the fixed event `go`, which the monitor turns into "run the menitor:go skill". With no session listening, it copies `/menitor:go`. Once asked, the banner says when, and the button becomes **Ask again**;
+  - a skip the learner asked for but hasn't confirmed, with the confirm command to copy. Only the learner can type it;
+  - anything the agent posted with `menitor waiting "<text>"`, such as a sign-in, a deployed URL or a decision. `menitor waiting --done` clears it, and it clears by itself when its task passes. The mentor rules tell the agent to post whatever it stops to wait for.
+- **The status line follows the turn:** "Answer the question below to finish", "Menitor is reading your answer", "Menitor is working on it".
+- **Before you code first.** The board's DOM order is before you code, the steps, the hints, then the plan, which is the reading order on phones and tablets. On a desktop, a 12-column grid puts before you code and the plan in the right column. The steps span both of its rows, and the plan's row is flexible, so the columns end level. A short, read-only Steps panel on a delegated task can leave a blank band of about 60px under it; the inspector warns about that one case.
+- **Drafts survive live updates.** An answer being typed keeps its text, focus and caret when new state arrives. Ctrl or Cmd with Enter sends it.
+

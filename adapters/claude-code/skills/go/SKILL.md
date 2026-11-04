@@ -23,7 +23,7 @@ Run `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" status`.
 
 ## 2. Open the window
 
-Run `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" window open --command check=/menitor:check --command hint=/menitor:hint --command stuck=/menitor:stuck --command go=/menitor:go --command start=/menitor:start`. It starts the task window if it isn't running, and opens it in the browser. If it couldn't open a browser, give the learner the link it printed. The link only works on this machine.
+Run `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" window open --command check=/menitor:check --command hint=/menitor:hint --command stuck=/menitor:stuck --command go=/menitor:go --command start=/menitor:start --command skip=/menitor:skip`. It starts the task window if it isn't running, and opens it in the browser. If it couldn't open a browser, give the learner the link it printed. The link only works on this machine.
 
 ## 3. Rebuild the context
 
@@ -56,7 +56,7 @@ If the brief says the owner is Menitor, do the task now:
 4. Pass it with a two-line note on what you did and where: `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" task pass --note "<note>"`.
 5. Go back to step 3 for the next task.
 
-Steps that need the learner's own accounts, such as signing in to the host, are theirs. Ask them to do those, then carry on.
+Steps that need the learner's own accounts, such as signing in to the host, are theirs. Ask them in chat, and post the same request with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" waiting "<what you need>"` so the window shows it. Clear it with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" waiting --done` once they've done it, then carry on.
 
 ## 7. A learner task
 

@@ -9,13 +9,14 @@ import { statePaths } from '../lib/paths.js';
 import { statusData } from '../lib/ops.js';
 import { cardData } from '../lib/card.js';
 import { findTask } from '../lib/plan.js';
-import { loadPlan, loadProgress, loadSession, loadSolutions, saveProgress } from '../lib/state.js';
-import { deliverToListener, liveListener } from '../lib/inbox.js';
+import { loadAnswers, loadGuard, loadPlan, loadProgress, loadSession, loadSolutions, saveAnswers, saveProgress } from '../lib/state.js';
+import { deliverToListener, liveListener, readInbox } from '../lib/inbox.js';
 
 /** The only events a button can send (W-7). */
-export const EVENTS = /** @type {const} */ (['check', 'hint', 'stuck']);
+export const EVENTS = /** @type {const} */ (['check', 'hint', 'stuck', 'go']);
 const COMMAND_KEYS = ['start', 'go', 'check', 'hint', 'stuck', 'skip'];
-const MAX_BODY = 2048;
+const MAX_BODY = 16384;
+const MAX_ANSWER = 4000;
 const HEARTBEAT_MS = 20000;
 const POLL_MS = 2000;
 
@@ -52,6 +53,7 @@ export function randomToken() {
  * Everything the page shows, built fresh from the state files.
  * @param {StatePaths} paths
  * @param {{ commands: Commands }} options
+ * @returns {Record<string, any>} JSON for the page; it reads fields loosely, as the browser does
  */
 export function windowState(paths, options) {
   try {
@@ -80,6 +82,7 @@ export function windowState(paths, options) {
       project: status.project,
       mentorMode: status.mentorMode,
       typeAlong: status.typeAlong && card?.owner === 'learner' ? typeAlongSteps(paths, card) : null,
+      ...turnOf(paths, session, current?.task ?? null),
       level: status.level,
       card,
       lastCheck: record?.lastCheck ?? null,
@@ -93,6 +96,30 @@ export function windowState(paths, options) {
   } catch (err) {
     return { ok: false, error: /** @type {Error} */ (err).message, commands: options.commands };
   }
+}
+
+/**
+ * What stands between the learner and the next task, besides the steps themselves: the agent's
+ * questions and the answers typed here, anything the agent is waiting on, a skip that waits for
+ * the learner's confirm, and a delegated task waiting for the session to pick it up.
+ * @param {StatePaths} paths
+ * @param {import('../lib/state.js').Session} session
+ * @param {import('../lib/plan.js').Task | null} task
+ */
+export function turnOf(paths, session, task) {
+  const waiting = session.waiting && (!session.waiting.task || session.waiting.task === task?.id) ? session.waiting : null;
+  if (!task) return { waiting, questions: [], skipRequested: false, goAskedAt: null };
+  const guard = loadGuard(paths);
+  const answers = loadAnswers(paths).answers;
+  const learner = task.owner === 'learner';
+  const questions = learner ? (session.tasks[task.id]?.questions ?? []).map((q) => ({ ...q, answer: answers[q.id] ?? null })) : [];
+  const goes = learner ? [] : readInbox(paths).filter((e) => e.type === 'go' && e.task === task.id);
+  return {
+    waiting,
+    questions,
+    skipRequested: learner && Boolean(guard.skipRequests[task.id]) && !guard.grants[task.id],
+    goAskedAt: goes.length ? goes[goes.length - 1].at : null,
+  };
 }
 
 /**
@@ -182,7 +209,7 @@ export function cleanCommands(raw) {
 /**
  * Create the server. Call listen() to start it.
  * @param {string} root
- * @param {{ token?: string, commands?: Record<string, unknown>, deliver?: (event: { type: string, task: string | null }) => boolean }} [options]
+ * @param {{ token?: string, commands?: Record<string, unknown>, deliver?: (event: { type: import('../lib/inbox.js').InboxType, task: string | null }) => boolean }} [options]
  */
 export function createWindowServer(root, options = {}) {
   const paths = statePaths(root);
@@ -302,6 +329,7 @@ export function createWindowServer(root, options = {}) {
       }
 
       if (url.pathname === '/api/tick') return tick(res, body);
+      if (url.pathname === '/api/answer') return answer(res, body);
       if (url.pathname === '/api/event') {
         const type = body.type;
         if (typeof type !== 'string' || !(/** @type {readonly string[]} */ (EVENTS)).includes(type)) return send(res, 400, 'Unknown event.');
@@ -311,7 +339,7 @@ export function createWindowServer(root, options = {}) {
         } catch {
           task = null;
         }
-        const event = { type: /** @type {'check' | 'hint' | 'stuck'} */ (type), task };
+        const event = { type: /** @type {'check' | 'hint' | 'stuck' | 'go'} */ (type), task };
         const delivered = options.deliver ? options.deliver(event) : deliverToListener(paths, event).delivered;
         return sendJson(res, 200, { delivered, command: /** @type {Record<string, string>} */ (commands)[type] });
       }
@@ -345,6 +373,35 @@ export function createWindowServer(root, options = {}) {
       saveProgress(paths, progress);
       refresh();
       return send(res, 200, lastJson, { 'Content-Type': 'application/json; charset=utf-8' });
+    } catch (err) {
+      return send(res, 500, /** @type {Error} */ (err).message);
+    }
+  }
+
+  /**
+   * C-5: save the learner's answer to the open question, as data in answers.json. The session
+   * gets only a fixed event; the agent reads the answer through the CLI.
+   * @param {http.ServerResponse} res
+   * @param {Record<string, unknown>} body
+   */
+  function answer(res, body) {
+    const { question, text } = body;
+    if (typeof question !== 'string' || typeof text !== 'string') return send(res, 400, 'Send { question, text }.');
+    const clean = text.trim();
+    if (!clean || clean.length > MAX_ANSWER) return send(res, 400, `An answer is 1 to ${MAX_ANSWER} characters.`);
+    try {
+      const session = loadSession(paths);
+      const task = session.currentTask;
+      const q = task ? (session.tasks[task]?.questions ?? []).find((x) => x.id === question) : undefined;
+      if (!q) return send(res, 409, 'That question is not open on the current task.');
+      if (q.outcome !== null) return send(res, 409, 'That answer has already been judged.');
+      const answers = loadAnswers(paths);
+      answers.answers[question] = { text: clean, at: new Date().toISOString() };
+      saveAnswers(paths, answers);
+      const event = { type: /** @type {const} */ ('answer'), task };
+      const delivered = options.deliver ? options.deliver(event) : deliverToListener(paths, event).delivered;
+      refresh();
+      return sendJson(res, 200, { delivered, command: /** @type {Record<string, string>} */ (commands).check, state: JSON.parse(lastJson) });
     } catch (err) {
       return send(res, 500, /** @type {Error} */ (err).message);
     }

@@ -23,6 +23,10 @@ let accordion = { task: /** @type {string | null} */ (null), current: /** @type 
 /** Set when a tick moved the open step, so the next render brings it into view. */
 let revealNext = false;
 let lastNudge = 0;
+/** Answers being typed, by question ID, so a live update never wipes them. */
+const drafts = new Map();
+/** Answers sent but being changed again. */
+const editing = new Set();
 
 const RUNGS = /** @type {Record<string, string>} */ ({ concept: 'Concept', approach: 'Approach', pseudocode: 'Pseudocode', snippet: 'Snippet' });
 const CODE_RUNGS = new Set(['pseudocode', 'snippet']);
@@ -117,7 +121,7 @@ async function onTick(item, box) {
 
 /**
  * W-6: ask the session to act. If nothing is listening, copy the command to type instead.
- * @param {'check' | 'hint' | 'stuck'} type
+ * @param {'check' | 'hint' | 'stuck' | 'go'} type
  * @param {Event} e
  */
 async function onAction(type, e) {
@@ -125,7 +129,7 @@ async function onAction(type, e) {
   try {
     const r = await post('/api/event', { type });
     if (r.delivered) {
-      const what = { check: 'check your work', hint: 'give you the next hint', stuck: 'help you debug' }[type];
+      const what = { check: 'check your work', hint: 'give you the next hint', stuck: 'help you debug', go: 'start this task' }[type];
       showToast(`Sent. Your session will ${what} now.`, undefined, doc);
       return;
     }
@@ -146,8 +150,12 @@ async function onAction(type, e) {
 function findingOf(s) {
   const c = s.card;
   if (c.owner === 'delegated') {
-    return { tone: '', text: c.skipped ? 'You skipped this one, so Menitor is doing it' : 'Outside your focus areas, so Menitor is doing it' };
+    if (s.goAskedAt) return { tone: 'ask', text: 'Menitor is working on it' };
+    return { tone: '', text: c.skipped ? 'You skipped this one, so Menitor does it' : 'Outside your focus areas, so Menitor does it' };
   }
+  const open = openQuestion(s);
+  if (open) return { tone: 'ask', text: open.answer ? 'Menitor is reading your answer' : 'Answer the question below to finish' };
+  if (s.skipRequested) return { tone: '', text: 'You asked to skip this task' };
   const lc = s.lastCheck;
   if (!lc) return { tone: '', text: 'Not checked yet' };
   if (lc.ok) return { tone: 'good', text: 'The last check passed' };
@@ -162,8 +170,156 @@ function actions(s) {
     h('p', { class: 'how' }, s.listening ? 'Buttons go straight to your coding session.' : 'No session is listening, so buttons copy the command.'),
     s.typeAlong ? null : h('button', { type: 'button', class: 'btn secondary', 'data-key': 'act:hint', onclick: (/** @type {Event} */ e) => onAction('hint', e) }, 'Hint'),
     h('button', { type: 'button', class: 'btn secondary', 'data-key': 'act:stuck', onclick: (/** @type {Event} */ e) => onAction('stuck', e) }, "I'm stuck"),
-    h('button', { type: 'button', class: 'btn primary', 'data-key': 'act:check', onclick: (/** @type {Event} */ e) => onAction('check', e) }, 'Check my work'),
+    h('button', { type: 'button', class: `btn ${openQuestion(s) ? 'secondary' : 'primary'}`, 'data-key': 'act:check', onclick: (/** @type {Event} */ e) => onAction('check', e) }, 'Check my work'),
   );
+}
+
+/** @param {any} s */
+function openQuestion(s) {
+  return (s.questions ?? []).find((/** @type {any} */ q) => q.outcome === null) ?? null;
+}
+
+/** @param {string} iso */
+function clock(iso) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+/**
+ * A banner for what stands between the learner and the next task, besides the steps.
+ * @param {'you' | 'menitor'} whose
+ * @param {string} title
+ * @param {string} text
+ * @param {...(Node | null)} extra
+ */
+function callout(whose, title, text, ...extra) {
+  return h('section', { class: `callout ${whose}`, 'aria-labelledby': `callout-${whose}` }, h('div', { class: 'callout-text' }, h('h2', { id: `callout-${whose}` }, title), h('p', null, text)), h('div', { class: 'callout-actions' }, ...extra));
+}
+
+/**
+ * @param {string} text
+ * @param {Event} e
+ */
+async function copyCommand(text, e) {
+  const doc = docOf(e);
+  try {
+    await (doc.defaultView ?? window).navigator.clipboard.writeText(text);
+    showToast('Copied. Paste it into your coding session:', text, doc);
+  } catch {
+    showToast('Type this in your coding session:', text, doc);
+  }
+}
+
+/**
+ * C-5: send the answer typed here. It's saved as data; the session only hears that it arrived.
+ * @param {any} q
+ * @param {HTMLTextAreaElement} box
+ * @param {Event} e
+ */
+async function sendAnswer(q, box, e) {
+  const doc = docOf(e);
+  const text = box.value.trim();
+  if (!text) {
+    showToast('Write your answer first, in your own words.', undefined, doc);
+    box.focus();
+    return;
+  }
+  try {
+    const r = await post('/api/answer', { question: q.id, text });
+    drafts.delete(q.id);
+    editing.delete(q.id);
+    render(r.state);
+    if (r.delivered) showToast('Sent. Menitor will read it now.', undefined, doc);
+    else showToast('Saved. To have Menitor read it, run this in your coding session:', r.command, doc);
+  } catch (err) {
+    showToast(`Couldn't send that: ${/** @type {Error} */ (err).message}`, undefined, doc);
+  }
+}
+
+/** @param {any} q One question with its answer, the outcome and Menitor's reply. */
+function pastQuestion(q) {
+  return h(
+    'li',
+    { class: 'past' },
+    h('p', { class: 'past-q' }, q.text),
+    q.answer ? h('p', { class: 'past-a' }, q.answer.text) : h('p', { class: 'empty' }, 'Answered in your session.'),
+    h('p', { class: `finding ${q.outcome === 'good' ? 'good' : ''}` }, q.outcome === 'good' ? 'Good answer' : 'Not quite yet'),
+    q.feedback ? h('p', { class: 'feedback' }, q.feedback) : null,
+  );
+}
+
+/** @param {any} s C-5, C-6: the explain-back questions, answered right here. */
+function questionPanel(s) {
+  const open = openQuestion(s);
+  const past = (s.questions ?? []).filter((/** @type {any} */ q) => q.outcome !== null);
+  /** @type {(Node | null)[]} */
+  const main = [h('header', { class: 'panel-head' }, h('h2', { id: 'qa-title' }, 'Explain your code'), open ? h('span', { class: 'count' }, open.try === 1 ? 'One question' : 'One more question') : null)];
+  if (open) {
+    main.push(h('p', { class: 'question' }, open.text));
+    if (open.answer && !editing.has(open.id)) {
+      main.push(
+        h('div', { class: 'answer' }, h('p', { class: 'answer-text' }, open.answer.text)),
+        h(
+          'div',
+          { class: 'qa-actions' },
+          h('p', { class: 'how' }, `Sent at ${clock(open.answer.at)}. Menitor replies here.`),
+          h('button', { type: 'button', class: 'btn secondary small', 'data-key': `edit:${open.id}`, onclick: () => (editing.add(open.id), drafts.set(open.id, open.answer.text), render(state)) }, 'Change answer'),
+        ),
+      );
+    } else {
+      const helpId = `help-${open.id}`;
+      const box = /** @type {HTMLTextAreaElement} */ (h('textarea', { id: `answer-${open.id}`, rows: 4, maxlength: 4000, 'aria-describedby': helpId, 'data-key': `answer:${open.id}` }));
+      box.value = drafts.get(open.id) ?? '';
+      box.addEventListener('input', () => drafts.set(open.id, box.value));
+      box.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendAnswer(open, box, e);
+      });
+      main.push(
+        h('label', { class: 'field-label', for: `answer-${open.id}` }, 'Your answer'),
+        h('p', { class: 'field-help', id: helpId }, 'In your own words. A sentence or two is enough.'),
+        box,
+        h('div', { class: 'qa-actions' }, h('p', { class: 'how' }, 'You can answer in your session instead.'), h('button', { type: 'button', class: 'btn primary', 'data-key': `send:${open.id}`, onclick: (/** @type {Event} */ e) => sendAnswer(open, box, e) }, 'Send answer')),
+      );
+    }
+  }
+  const side = past.length ? h('div', { class: 'qa-side' }, h('h3', null, 'Earlier'), h('ol', { class: 'past-list' }, ...past.map(pastQuestion))) : null;
+  return h('section', { class: 'panel qa', 'aria-labelledby': 'qa-title' }, h('div', { class: 'qa-main' }, ...main), side);
+}
+
+/** @param {any} s Everything that waits on someone before the next task, in the order it matters. */
+function turnView(s) {
+  const c = s.card;
+  const cmd = (/** @type {string} */ k, /** @type {string} */ fallback) => s.commands?.[k] ?? fallback;
+  /** @type {Node[]} */
+  const nodes = [];
+  if (s.waiting) nodes.push(callout('you', 'Menitor is waiting on you', s.waiting.text));
+  if (c.owner === 'delegated') {
+    const asked = s.goAskedAt;
+    nodes.push(
+      callout(
+        'menitor',
+        "Menitor's turn",
+        asked
+          ? `Asked at ${clock(asked)}. Menitor is working on this task; your next one shows here when it's done.`
+          : `${c.skipped ? 'You skipped this task' : 'This task is outside your focus areas'}, so Menitor does it. Start it, and your next task shows here when it's done.`,
+        h('button', { type: 'button', class: `btn ${asked ? 'secondary' : 'primary'}`, 'data-key': 'act:go', onclick: (/** @type {Event} */ e) => onAction('go', e) }, asked ? 'Ask again' : 'Start it'),
+      ),
+    );
+  }
+  if (s.skipRequested) {
+    const confirm = `${cmd('skip', '/menitor:skip')} --confirm`;
+    nodes.push(
+      callout(
+        'you',
+        'You asked to skip this task',
+        'Only you can hand it over: type this in your session. Or keep going here.',
+        h('code', { class: 'command' }, confirm),
+        h('button', { type: 'button', class: 'btn secondary small', 'data-key': 'copy:skip', onclick: (/** @type {Event} */ e) => copyCommand(confirm, e) }, 'Copy'),
+      ),
+    );
+  }
+  if ((s.questions ?? []).length) nodes.push(questionPanel(s));
+  return nodes.length ? [h('div', { class: 'turn' }, ...nodes)] : [];
 }
 
 /**
@@ -428,14 +584,17 @@ function taskView(s) {
   );
   // DOM order is the phone's reading order: steps, hints, then the rail. Desktop places the rail beside the steps.
   const typeAlong = learner && s.typeAlong;
+  // DOM order is the reading order on a phone: before you code, the steps, hints, then the plan.
+  // On a desktop the grid puts before you code and the plan in the right-hand column.
   const board = h(
     'div',
     { class: `board${typeAlong ? ' typealong' : ''}` },
+    learnPanel(c),
     typeAlong ? typeAlongPanel(c, s) : stepsPanel(c),
     learner && !typeAlong ? hintsPanel(c) : null,
-    h('div', { class: 'col rail' }, learnPanel(c), planPanel(s)),
+    planPanel(s),
   );
-  return { nodes: [head, board], bar: learner };
+  return { nodes: [head, ...turnView(s), board], bar: learner };
 }
 
 /** @param {any} s */
@@ -469,6 +628,20 @@ function announceChanges(prev, s) {
     announce(`Now on task ${s.card.number} of ${s.card.total}: ${s.card.goal}`);
     return;
   }
+  const asked = openQuestion(s);
+  if (asked && asked.id !== openQuestion(prev)?.id) {
+    announce(`Menitor asks: ${asked.text}`);
+    return;
+  }
+  const judged = (s.questions ?? []).find((/** @type {any} */ q) => q.outcome && !(prev.questions ?? []).some((/** @type {any} */ p) => p.id === q.id && p.outcome));
+  if (judged) {
+    announce(`${judged.outcome === 'good' ? 'Good answer.' : 'Not quite yet.'} ${judged.feedback ?? ''}`);
+    return;
+  }
+  if (s.waiting && s.waiting.text !== prev.waiting?.text) {
+    announce(`Menitor is waiting on you: ${s.waiting.text}`);
+    return;
+  }
   const next = (/** @type {any} */ x) => x.card.checklist.find((/** @type {any} */ i) => !i.ticked);
   if (s.typeAlong && next(s) && next(s)?.id !== next(prev)?.id) {
     announce(`Next step open: ${next(s).text}`);
@@ -485,7 +658,9 @@ function render(s) {
   state = s;
   // Keep the keyboard where it was: a tick re-renders the card.
   const doc = app.ownerDocument;
-  const focusKey = /** @type {HTMLElement | null} */ (doc.activeElement)?.dataset?.key;
+  const active = /** @type {HTMLElement | null} */ (doc.activeElement);
+  const focusKey = active?.dataset?.key;
+  const caret = active instanceof (doc.defaultView ?? window).HTMLTextAreaElement ? [active.selectionStart, active.selectionEnd] : null;
 
   let view;
   if (!s.ok) view = problemView("Menitor's state has a problem", `${s.error} Ask your coding session to validate Menitor's state and fix it.`);
@@ -498,7 +673,11 @@ function render(s) {
 
   $('project').textContent = s.project ?? 'Your project';
   doc.title = s.card ? `${s.card.number}/${s.card.total} · ${s.card.goal}` : 'Menitor';
-  if (focusKey) /** @type {HTMLElement | null} */ (content.querySelector(`[data-key="${CSS.escape(focusKey)}"]`))?.focus({ preventScroll: true });
+  if (focusKey) {
+    const again = /** @type {HTMLElement | null} */ (content.querySelector(`[data-key="${CSS.escape(focusKey)}"]`));
+    again?.focus({ preventScroll: true });
+    if (caret && again && 'setSelectionRange' in again) /** @type {HTMLTextAreaElement} */ (again).setSelectionRange(caret[0], caret[1]);
+  }
   if (revealNext && s.typeAlong) {
     revealNext = false;
     const open = content.querySelector('.step.expanded');

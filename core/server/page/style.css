@@ -57,6 +57,7 @@
   --notice-ink: #92400e;
   --bone: #e9ece8;
   --code-bg: #f2f6f3;
+  --callout-bg: #e1eee8; /* a turn that waits on the learner: Menitor's green, pale */
   --focus: #1f5fbf;
   --toast-bg: #1f201d;
   --toast-ink: #ffffff;
@@ -108,6 +109,7 @@
     --notice-ink: #f3c87a;
     --bone: #232523;
     --code-bg: #181a18;
+    --callout-bg: #1d2c26;
     --focus: #8ab4ff;
     --toast-bg: #f1f2f1;
     --toast-ink: #141514;
@@ -455,10 +457,6 @@ h1 {
 .board {
   display: grid;
   gap: var(--gap);
-}
-
-.col {
-  display: contents;
 }
 
 .panel {
@@ -843,6 +841,165 @@ h1 {
   }
 }
 
+/* The turn band: what waits on someone before the next task, besides the steps */
+
+.turn {
+  display: grid;
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+}
+
+.callout {
+  display: grid;
+  gap: 12px 24px;
+  padding: var(--panel-pad);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+
+.callout.you {
+  background: var(--callout-bg);
+}
+
+.callout h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.callout p {
+  max-width: 68ch;
+  text-wrap: pretty;
+}
+
+.callout-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.callout-actions:empty {
+  display: none;
+}
+
+.command {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--raised);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.finding.ask::before {
+  background: var(--accent);
+}
+
+/* Explain your code: the agent's question, answered here */
+
+.qa {
+  display: grid;
+  gap: 20px;
+}
+
+.question {
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.4;
+  max-width: 64ch;
+  text-wrap: pretty;
+}
+
+.field-label {
+  display: block;
+  margin-top: 16px;
+  font-size: var(--fs-meta);
+  font-weight: 600;
+}
+
+.field-help {
+  margin: 2px 0 8px;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+.qa textarea {
+  display: block;
+  width: 100%;
+  min-height: 112px;
+  padding: 10px 12px;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-inner);
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.qa textarea:hover {
+  border-color: var(--muted);
+}
+
+.answer {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-inner);
+  background: var(--raised);
+}
+
+.answer-text,
+.past-a {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.qa-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 16px;
+  margin-top: 12px;
+}
+
+.qa-actions .how {
+  display: block;
+  margin-right: auto;
+}
+
+.qa-side h3 {
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.past-list {
+  display: grid;
+  gap: 16px;
+}
+
+.past {
+  display: grid;
+  gap: 6px;
+  font-size: var(--fs-meta);
+}
+
+.past-q {
+  font-weight: 500;
+}
+
+.past-a {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--raised);
+}
+
+.feedback {
+  max-width: 68ch;
+  text-wrap: pretty;
+}
+
 /* Before you code: the read-first link, the doc section and the branch */
 
 .learn-link {
@@ -1137,41 +1294,58 @@ h1 {
     text-align: right;
   }
 
-  /* Row 1: the steps (8 columns) beside the rail (4). Row 2: the hints across all 12. */
+  /* The steps take 8 columns and span two rows. Before you code (row 1) and the plan (row 2) take
+   * the other 4. The plan's row is flexible, so it absorbs any difference and the columns end
+   * level. The hints run all 12 columns below. */
   .board {
     grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-template-rows: auto 1fr auto;
+  }
+
+  .board > .learn {
+    grid-column: 9 / span 4;
+    grid-row: 1;
+    align-self: start;
   }
 
   .board > .steps {
     grid-column: 1 / span 8;
-    grid-row: 1;
+    grid-row: 1 / span 2;
   }
 
-  .board > .rail {
+  .board > .plan {
     grid-column: 9 / span 4;
-    grid-row: 1;
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap);
-    min-width: 0;
+    grid-row: 2;
   }
 
-  /* The rail's last panel takes up any difference, so the row ends level. */
-  .rail > .plan {
-    flex: 1 0 auto;
-  }
-
-  .board.typealong {
-    align-items: start;
-  }
-
-  .board.typealong > .rail {
+  /* Type-along steps grow as code opens: the plan stays in view beside them instead of stretching. */
+  .board.typealong > .plan {
+    align-self: start;
     position: sticky;
     top: 16px;
   }
 
-  .board.typealong .rail > .plan {
-    flex: none;
+  .board > .hints {
+    grid-row: 3;
+  }
+
+  .turn .callout {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .qa {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: var(--gap);
+    align-items: start;
+  }
+
+  .qa-main {
+    grid-column: 1 / span 8;
+  }
+
+  .qa-side {
+    grid-column: 9 / span 4;
   }
 
   .board > .hints {
@@ -1194,12 +1368,9 @@ h1 {
     margin-top: 0;
   }
 
-  .board.single {
-    grid-template-columns: minmax(0, 728px);
-  }
-
   .board.single > .plan {
-    grid-column: 1;
+    grid-column: 1 / span 8;
+    grid-row: 1;
   }
 
   .toast {

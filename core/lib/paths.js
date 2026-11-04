@@ -21,6 +21,7 @@ export const STATE_DIR = '.menitor';
  * @property {string} inbox    inbox.jsonl, button presses appended by the window server
  * @property {string} listener listener.json, a heartbeat from the session that listens for them
  * @property {string} solutions solutions.json, each step's code for type-along, written by the CLI
+ * @property {string} answers  answers.json, explain-back answers typed in the window, written by the window
  * @property {string} gitignore .menitor/.gitignore
  */
 
@@ -44,6 +45,7 @@ export function statePaths(root) {
     inbox: path.join(dir, 'inbox.jsonl'),
     listener: path.join(dir, 'listener.json'),
     solutions: path.join(dir, 'solutions.json'),
+    answers: path.join(dir, 'answers.json'),
     gitignore: path.join(dir, '.gitignore'),
   };
 }

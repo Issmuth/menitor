@@ -44,7 +44,7 @@ If the brief says the owner is Menitor, do the task now:
 4. Pass it with a two-line note on what you did and where: `{{cli}} task pass --note "<note>"`.
 5. Go back to step 3 for the next task.
 
-Steps that need the learner's own accounts, such as signing in to the host, are theirs. Ask them to do those, then carry on.
+Steps that need the learner's own accounts, such as signing in to the host, are theirs. Ask them in chat, and post the same request with `{{cli}} waiting "<what you need>"` so the window shows it. Clear it with `{{cli}} waiting --done` once they've done it, then carry on.
 
 ## 7. A learner task
 

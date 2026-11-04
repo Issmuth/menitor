@@ -20,6 +20,7 @@ import {
   SCHEMAS,
   defaultSession,
   isInitialized,
+  loadAnswers,
   loadGuard,
   loadLearner,
   loadSolutions,
@@ -49,6 +50,7 @@ learner.md
 log.md
 activity.jsonl
 solutions.json
+answers.json
 window.json
 inbox.jsonl
 listener.json
@@ -290,6 +292,8 @@ export function passTask(paths, id, options = {}) {
     saveLearner(paths, learner);
   }
 
+  // Whatever the agent was waiting on for this task is settled once it passes.
+  if (session.waiting && (session.waiting.task ?? null) === task.id) session.waiting = null;
   const next = nextTodo(plan);
   if (next) {
     startTask(paths, session, next, now);
@@ -377,6 +381,99 @@ export function importSteps(paths, raw, options = {}) {
   ignoreSolutions(paths);
   appendEvent(paths.log, 'steps', { count: ids.length }, options.now);
   return { ids, warnings };
+}
+
+/**
+ * The current learner task and its session record, for explain-back.
+ * @param {StatePaths} paths
+ */
+function currentLearnerTask(paths) {
+  const plan = requireApprovedPlan(paths);
+  const session = loadSession(paths);
+  const entry = resolveTask(plan, session, undefined);
+  if (entry.task.owner !== 'learner') throw refused(`${entry.task.id} is delegated; explain-back is for the learner's own tasks`);
+  const record = session.tasks[entry.task.id];
+  if (!record) throw new MenitorError(`${entry.task.id} has no session record yet`);
+  return { session, entry, record };
+}
+
+/**
+ * C-5: ask an explain-back question. The window shows it with an answer box. One open question at
+ * a time; a follow-up (the second try, C-6) comes only after a weak first answer.
+ * @param {StatePaths} paths
+ * @param {string} text
+ * @param {{ followUp?: boolean, now?: Date }} [options]
+ */
+export function askQuestion(paths, text, options = {}) {
+  const now = options.now ?? new Date();
+  const { session, entry, record } = currentLearnerTask(paths);
+  const questions = record.questions ?? [];
+  const open = questions.find((q) => q.outcome === null);
+  if (open) throw new MenitorError(`${open.id} is still open. Judge it with "menitor question judge" first.`);
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (!clean) throw new MenitorError('A question needs some text');
+  if (options.followUp && !questions.some((q) => q.try === 1 && q.outcome === 'weak')) {
+    throw new MenitorError('A follow-up comes only after a weak first answer');
+  }
+  /** @type {import('./state.js').Question} */
+  const question = { id: `${entry.task.id}.q${questions.length + 1}`, text: clean, try: options.followUp ? 2 : 1, askedAt: now.toISOString(), outcome: null, feedback: null, judgedAt: null };
+  record.questions = [...questions, question];
+  saveSession(paths, session);
+  return { entry, question };
+}
+
+/**
+ * The current task's questions with the answers typed in the window, as data.
+ * @param {StatePaths} paths
+ */
+export function questionState(paths) {
+  const plan = requireApprovedPlan(paths);
+  const session = loadSession(paths);
+  const entry = resolveTask(plan, session, undefined);
+  const answers = loadAnswers(paths).answers;
+  const questions = (session.tasks[entry.task.id]?.questions ?? []).map((q) => ({ ...q, answer: answers[q.id] ?? null }));
+  return { task: entry.task.id, questions, open: questions.find((q) => q.outcome === null) ?? null };
+}
+
+/**
+ * C-5, C-6: judge the open question. Logs the explain-back, which the pass gate reads. The
+ * feedback shows in the window under the learner's answer.
+ * @param {StatePaths} paths
+ * @param {string} outcome
+ * @param {{ feedback?: string, now?: Date }} [options]
+ */
+export function judgeQuestion(paths, outcome, options = {}) {
+  const now = options.now ?? new Date();
+  if (outcome !== 'good' && outcome !== 'weak') throw new MenitorError('Judge an answer as good or weak');
+  const { session, entry, record } = currentLearnerTask(paths);
+  const question = (record.questions ?? []).find((q) => q.outcome === null);
+  if (!question) throw new MenitorError(`No open question on ${entry.task.id}. Ask one with "menitor question ask".`);
+  question.outcome = outcome;
+  question.feedback = options.feedback?.trim() || null;
+  question.judgedAt = now.toISOString();
+  saveSession(paths, session);
+  appendEvent(paths.log, 'explain', { task: entry.task.id, outcome, try: question.try }, now);
+  return { entry, question };
+}
+
+/**
+ * Post what the agent needs from the learner outside the steps (an account sign-in, a deployed
+ * URL, a decision), so the window shows it until it's done.
+ * @param {StatePaths} paths
+ * @param {string | null} text  null clears it
+ * @param {{ now?: Date }} [options]
+ */
+export function setWaiting(paths, text, options = {}) {
+  const session = loadSession(paths);
+  if (text === null) {
+    session.waiting = null;
+  } else {
+    const clean = text.replace(/\s+/g, ' ').trim();
+    if (!clean) throw new MenitorError('Say what you are waiting on');
+    session.waiting = { text: clean, at: (options.now ?? new Date()).toISOString(), task: session.currentTask };
+  }
+  saveSession(paths, session);
+  return session.waiting ?? null;
 }
 
 /**
@@ -535,6 +632,8 @@ export function briefData(paths, id) {
     deployUrl: plan.project.deployUrl ?? null,
     doc: readDocLink(paths.root, task.docs),
     typeAlong: Boolean(loadGuard(paths).typeAlong),
+    questions: (start?.questions ?? []).map((q) => ({ ...q, answer: loadAnswers(paths).answers[q.id] ?? null })),
+    waiting: session.waiting ?? null,
     stepCode: (() => {
       const steps = loadSolutions(paths).steps;
       const ids = task.checklist.map((i) => i.id);

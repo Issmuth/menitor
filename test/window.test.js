@@ -86,7 +86,7 @@ test('POSTs need JSON from the same origin', async () => {
     assert.equal((await request(port, { method: 'POST', path: '/api/event', headers: { ...auth, 'Content-Type': 'application/json', Origin: 'http://evil.example' }, body })).status, 403);
     assert.equal((await request(port, { method: 'POST', path: '/api/event', headers: { ...auth, 'Content-Type': 'text/plain' }, body })).status, 415);
     assert.equal((await request(port, { method: 'POST', path: '/api/event', headers: { ...auth, 'Content-Type': 'application/json' }, body: '{bad' })).status, 400);
-    assert.equal((await request(port, { method: 'POST', path: '/api/event', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'x'.repeat(3000) }) })).status, 413);
+    assert.equal((await request(port, { method: 'POST', path: '/api/event', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'x'.repeat(20000) }) })).status, 413);
     assert.equal((await request(port, { method: 'PUT', path: '/api/event', headers: auth })).status, 405);
   } finally {
     await win.close();

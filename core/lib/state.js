@@ -3,7 +3,8 @@
 // Each file has one writer, so the window and the agent never overwrite each other:
 //   plan.json, session.json, learner.md,
 //   solutions.json                       -> the CLI (the agent goes through it)
-//   progress.json, window.json           -> the task window
+//   progress.json, window.json,
+//   answers.json                         -> the task window
 //   guard.json                           -> agent-adapter hooks, from commands the learner typed
 //   log.md                               -> appended by the CLI and adapter hooks
 //   activity.jsonl                       -> appended by adapter hooks
@@ -23,7 +24,10 @@ import { planProblems } from './plan.js';
  * @typedef {import('./plan.js').Plan} Plan
  * @typedef {import('./learner.js').Learner} Learner
  * @typedef {{ at: string, ok: boolean, head: string | null, problems?: number }} LastCheck
- * @typedef {{ version: 1, currentTask: string | null, tasks: Record<string, { startCommit: string | null, startedAt: string, lastCheck?: LastCheck }> }} Session
+ * @typedef {{ id: string, text: string, try: 1 | 2, askedAt: string, outcome: null | 'good' | 'weak', feedback?: string | null, judgedAt?: string | null }} Question
+ * @typedef {{ text: string, at: string, task?: string | null }} Waiting
+ * @typedef {{ version: 1, currentTask: string | null, waiting?: Waiting | null, tasks: Record<string, { startCommit: string | null, startedAt: string, lastCheck?: LastCheck, questions?: Question[] }> }} Session
+ * @typedef {{ version: 1, answers: Record<string, { text: string, at: string }> }} Answers
  * @typedef {{ version: 1, ticks: Record<string, string> }} Progress
  * @typedef {{ version: 1, mentorMode: 'on' | 'off', modeChangedAt?: string | null, typeAlong?: boolean, skipRequests: Record<string, string>, grants: Record<string, string> }} Guard
  * @typedef {{ where?: string, text: string }} CodeBlock
@@ -50,6 +54,7 @@ export const SCHEMAS = {
   listener: loadSchema('listener'),
   inboxEvent: loadSchema('inbox-event'),
   solutions: loadSchema('solutions'),
+  answers: loadSchema('answers'),
 };
 
 /**
@@ -213,6 +218,29 @@ export function loadSolutions(paths) {
 export function saveSolutions(paths, solutions) {
   assertValid('solutions', solutions, 'The step code');
   writeJsonAtomic(paths.solutions, solutions);
+}
+
+// answers.json (the window writes it; the CLI only reads it)
+
+/**
+ * @param {StatePaths} paths
+ * @returns {Answers}
+ */
+export function loadAnswers(paths) {
+  const answers = readJsonOrNull(paths.answers);
+  if (answers === null) return { version: 1, answers: {} };
+  assertValid('answers', answers, 'answers.json');
+  return /** @type {Answers} */ (answers);
+}
+
+/**
+ * For the task window only.
+ * @param {StatePaths} paths
+ * @param {Answers} answers
+ */
+export function saveAnswers(paths, answers) {
+  assertValid('answers', answers, 'The answers');
+  writeJsonAtomic(paths.answers, answers);
 }
 
 // learner.md

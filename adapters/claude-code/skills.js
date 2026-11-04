@@ -100,7 +100,7 @@ export function renderInstructions(text, vars) {
     }
     if (key === 'cli') return vars.cli;
     if (key === 'window') {
-      const pairs = ['check', 'hint', 'stuck', 'go', 'start'].map((k) => `--command ${k}=${/** @type {Record<string, string>} */ (COMMAND_NAMES)[k]}`);
+      const pairs = ['check', 'hint', 'stuck', 'go', 'start', 'skip'].map((k) => `--command ${k}=${/** @type {Record<string, string>} */ (COMMAND_NAMES)[k]}`);
       return `${vars.cli} window open ${pairs.join(' ')}`;
     }
     if (key === 'templates') return vars.templates;
