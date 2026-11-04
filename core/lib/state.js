@@ -19,7 +19,8 @@ import { planProblems } from './plan.js';
  * @typedef {import('./paths.js').StatePaths} StatePaths
  * @typedef {import('./plan.js').Plan} Plan
  * @typedef {import('./learner.js').Learner} Learner
- * @typedef {{ version: 1, currentTask: string | null, tasks: Record<string, { startCommit: string | null, startedAt: string }> }} Session
+ * @typedef {{ at: string, ok: boolean, head: string | null, problems?: number }} LastCheck
+ * @typedef {{ version: 1, currentTask: string | null, tasks: Record<string, { startCommit: string | null, startedAt: string, lastCheck?: LastCheck }> }} Session
  * @typedef {{ version: 1, ticks: Record<string, string> }} Progress
  * @typedef {{ version: 1, mentorMode: 'on' | 'off', modeChangedAt?: string | null, skipRequests: Record<string, string>, grants: Record<string, string> }} Guard
  */

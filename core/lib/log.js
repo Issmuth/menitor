@@ -36,6 +36,7 @@ export const EVENTS = {
   deploy: { url: 'text' },
   fix: { task: 'id', item: 'text' },
   pass: { task: 'id', by: 'learner|delegated' },
+  override: { task: 'id', reason: 'text' },
   level: { from: 'text', to: 'guided|standard|fast' },
   mode: { value: 'on|off' },
   note: { text: 'text' },

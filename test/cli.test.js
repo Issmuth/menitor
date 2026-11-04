@@ -94,6 +94,12 @@ test('tasks pass in order and record the next start commit', () => {
   execFileSync('git', ['add', '.'], { cwd: root });
   execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-q', '-m', 'feat(web): add home page'], { cwd: root });
 
+  const gate = cli(root, ['task', 'pass']);
+  assert.equal(gate.code, EXIT.refused);
+  assert.match(gate.err, /No check has run for t1 yet/);
+  assert.equal(cli(root, ['check', 'run', '--no-diff']).code, 0);
+  assert.match(cli(root, ['task', 'pass']).err, /hasn't explained their code/);
+  cli(root, ['log', 'explain', 'task=t1', 'outcome=good', 'try=1']);
   const pass = cli(root, ['task', 'pass', '--revisit', 'semantic HTML']);
   assert.equal(pass.code, 0, pass.err);
   assert.match(pass.out, /Passed t1 \(written by the learner\)/);
@@ -104,18 +110,18 @@ test('tasks pass in order and record the next start commit', () => {
   assert.notEqual(session.tasks.t2.startCommit, session.tasks.t1.startCommit);
   assert.match(fs.readFileSync(paths.learner, 'utf8'), /revisit:\n {2}- semantic HTML/);
 
-  const delegated = cli(root, ['task', 'pass', '--note', 'Deployed main to Vercel.']);
+  const delegated = cli(root, ['task', 'pass', '--note', 'Deployed main to Vercel.', '--override', 'test: no deploy here']);
   assert.match(delegated.out, /Passed t2 \(delegated\)/);
-  assert.equal(loadPlan(paths)?.milestones[0].tasks[1].note, 'Deployed main to Vercel.');
+  assert.equal(loadPlan(paths)?.milestones[0].tasks[1].note, 'Deployed main to Vercel. Passed without a clean check: test: no deploy here');
 
-  cli(root, ['task', 'pass']);
+  cli(root, ['task', 'pass', '--override', 'test']);
   assert.equal(loadSession(paths).currentTask, null);
   const done = cli(root, ['task', 'show']);
   assert.equal(done.code, EXIT.error);
   assert.match(done.err, /Every task is done/);
 
   const log = events(paths.log).map((e) => `${e.event}${e.fields.task ? ` ${e.fields.task}` : ''}`);
-  assert.deepEqual(log.slice(-8), ['plan-approved', 'task-start t1', 'pass t1', 'revisit t1', 'task-start t2', 'pass t2', 'task-start t3', 'pass t3']);
+  assert.deepEqual(log.slice(-9), ['explain t1', 'pass t1', 'revisit t1', 'task-start t2', 'override t2', 'pass t2', 'task-start t3', 'override t3', 'pass t3']);
   cleanup();
 });
 
@@ -138,7 +144,7 @@ test('a learner task can be skipped only with a grant the learner gave', () => {
   assert.equal(task?.skipped, true);
   assert.equal(events(paths.log).at(-1)?.event, 'delegated');
 
-  cli(root, ['task', 'pass']);
+  cli(root, ['task', 'pass', '--override', 'test']);
   const status = JSON.parse(cli(root, ['status', '--json']).out);
   assert.deepEqual(status.written, { learner: 0, delegated: 1, skipped: 1, focusTasksDone: 1 });
   cleanup();

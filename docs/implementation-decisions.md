@@ -72,4 +72,16 @@ These settle the ambiguities and open questions in [prd.md](prd.md) before the b
 - **Fewer prompts.** Each skill pre-approves the state CLI and, where it needs them, `git status`, `git diff` and `git log`. Nothing that writes is pre-approved.
 - **Doc templates moved up.** `/menitor:start` needs them, so `core/templates/docs/` landed in this milestone instead of milestone 7.
 - **One call per task context (C-10).** `menitor task brief` prints the card with IDs, the start commit, the checks, the verify steps and only the doc section the task links to.
-- **Check before the runner.** Until milestone 4, `/menitor:check` gathers the diff and runs the checks with plain git and the plan's commands. Milestone 4 moves that into a deterministic `menitor check run`.
+- **Check before the runner.** In milestone 3, `/menitor:check` gathered the diff and ran the checks with plain git. Milestone 4 replaced that with `menitor check run`.
+
+## Check runner (milestone 4)
+
+- **The CLI enforces the gate.** `task pass` refuses unless the last `check run` was clean at the current commit. A learner task also needs an explain-back logged since then: a good answer, or a second try. A clean re-run at the same commit keeps the first clean time, so an earlier explain-back still counts. `--no-commands` runs never count.
+- **Override with a reason.** `task pass --override "<reason>"` exists for a check that is broken itself, such as a typo in a verify command or a host outage. It logs an `override` event that only the CLI can write, and adds the reason to the card's note.
+- **What blocks.** A failing or timed-out command, a failing or missing deploy URL, no git repo, no commit since the start, and no Conventional Commits message all block. So do a `Menitor-Delegated` trailer on learner work, a missing trailer on delegated work, and uncommitted changes outside build folders.
+- **What only warns.** Extra commits with other messages, the wrong branch, and project files the agent touched on a learner task. The branch is already a checklist item, and agent touches need a human conversation, not a block.
+- **Skipping project checks.** An `npm`, `pnpm`, `yarn` or `bun` script check is skipped while package.json or that script doesn't exist yet. Task verify steps never skip.
+- **Running commands.** Commands run through the shell from the project root, with `CI=1` and colors off, and a 180-second timeout each. Only the last 30 lines of output are kept, with blank runs removed.
+- **Fetching URLs.** URLs are fetched in a child Node process, so the CLI stays synchronous. `$deployUrl` comes from `plan deploy-url`.
+- **The diff.** It's capped at 40,000 characters. Untracked text files are shown in full up to 20 KB each.
+

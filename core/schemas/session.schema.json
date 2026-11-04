@@ -18,7 +18,19 @@
         "additionalProperties": false,
         "properties": {
           "startCommit": { "type": ["string", "null"], "pattern": "^[0-9a-f]{7,64}$" },
-          "startedAt": { "type": "string" }
+          "startedAt": { "type": "string" },
+          "lastCheck": {
+            "description": "The latest deterministic check run for this task. A task passes only after a clean run at the current HEAD.",
+            "type": "object",
+            "required": ["at", "ok", "head"],
+            "additionalProperties": false,
+            "properties": {
+              "at": { "type": "string" },
+              "ok": { "type": "boolean" },
+              "head": { "type": ["string", "null"], "pattern": "^[0-9a-f]{7,64}$" },
+              "problems": { "type": "integer", "minimum": 0 }
+            }
+          }
         }
       }
     }

@@ -13,8 +13,8 @@ It is free (MIT), runs fully locally on your existing Claude plan, and has no ac
 | 1. State CLI and schemas | Done |
 | 2. Guard hooks | Done |
 | 3. Skills and doc templates | Done |
-| 4. Check runner | Next |
-| 5. Task window | Planned |
+| 4. Check runner | Done |
+| 5. Task window | Next |
 | 6. Window buttons through plugin monitors | Planned |
 | 7. README, ADRs and doc templates | Planned |
 
@@ -112,7 +112,19 @@ A learner's project keeps its state in `.menitor/`, split by writer so nothing o
 node core/bin/menitor.js help
 ```
 
-Common commands: `init`, `plan import`, `plan approve`, `task show`, `task hint`, `task fix`, `task pass`, `task skip`, `log`, `stats`, `status` and `validate`. Every write is schema-validated and atomic.
+Common commands: `init`, `plan import`, `plan approve`, `task show`, `task brief`, `task hint`, `task fix`, `check run`, `task pass`, `task skip`, `log`, `stats`, `status` and `validate`. Every write is schema-validated and atomic.
+
+## The check
+
+`menitor check run` does the part of a check that needs no judgment, before any AI review:
+
+- **The learner's work:** the diff from the commit where the task started to the working tree, with new files included. `.menitor/` and lockfile contents are left out.
+- **Deterministic checks:** the project's build, lint and test commands, then the task's own verify steps, each with a timeout. A project check waits until its npm script exists, so early tasks aren't blocked by a build that isn't set up yet.
+- **The deploy:** fetches the deployed URL and checks the status and content.
+- **Git:** at least one commit with a Conventional Commits message, the task's branch, no uncommitted work, and honest `Menitor-Delegated` trailers.
+- **Context:** checklist ticks from the window, and any project file the agent touched on the learner's task.
+
+`menitor task pass` enforces the three-part gate. A task passes only after a clean check run at the current commit. A learner task also needs an explain-back logged since that run. `--override "<reason>"` exists for a check that is itself broken. The reason is logged and shown on the card.
 
 ## Development
 

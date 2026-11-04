@@ -24,8 +24,8 @@ If the card says the hints are "not written yet", the milestone has just started
 If the brief says the owner is Menitor, do the task now:
 
 1. Do the work the card describes, matching the docs. Keep it small.
-2. Run the project checks and the task's verify steps.
-3. Commit on the task's branch with a Conventional Commits message and the trailer: `git commit -m "<type(scope): summary>" --trailer "Menitor-Delegated: true"`.
+2. Commit on the task's branch with a Conventional Commits message and the trailer: `git commit -m "<type(scope): summary>" --trailer "Menitor-Delegated: true"`.
+3. Run `{{cli}} check run`, and fix anything it marks "MUST FIX".
 4. Pass it with a two-line note on what you did and where: `{{cli}} task pass --note "<note>"`.
 5. Go back to step 2 for the next task.
 

@@ -13,6 +13,7 @@ import { allTasks, appendFixes, findTask, isFocusTask, nextTodo, normalizePlanIn
 import { validate } from './schema.js';
 import { cardData } from './card.js';
 import { readDocLink } from './docs.js';
+import { runCheck } from './check.js';
 import {
   SCHEMAS,
   defaultSession,
@@ -170,10 +171,82 @@ function requireCurrent(session, entry) {
 }
 
 /**
+ * C-1, C-2, G-7: run the deterministic check for the current task and remember the result,
+ * so a pass can require a clean run at the current commit.
+ * @param {StatePaths} paths
+ * @param {string | undefined} id
+ * @param {{ commands?: boolean, timeoutSeconds?: number, now?: Date }} [options]
+ */
+export function checkTask(paths, id, options = {}) {
+  const now = options.now ?? new Date();
+  const plan = requireApprovedPlan(paths);
+  const session = loadSession(paths);
+  const entry = resolveTask(plan, session, id);
+  requireCurrent(session, entry);
+  const start = session.tasks[entry.task.id] ?? null;
+  const report = runCheck(
+    {
+      root: paths.root,
+      plan,
+      entry,
+      startCommit: start?.startCommit ?? null,
+      startedAt: start?.startedAt ?? null,
+      ticks: loadProgress(paths).ticks,
+      activityFile: paths.activity,
+    },
+    options,
+  );
+  if (report.ranCommands && start) {
+    // Read the session again: the checks may have run for minutes.
+    const fresh = loadSession(paths);
+    const record = fresh.tasks[entry.task.id];
+    if (record) {
+      // A clean re-run at the same commit keeps the first clean time, so an explain-back
+      // given after it still counts.
+      const prev = record.lastCheck;
+      const at = report.ok && prev?.ok && prev.head === report.head ? prev.at : now.toISOString();
+      record.lastCheck = { at, ok: report.ok, head: report.head, problems: report.problems.filter((p) => p.severity === 'blocking').length };
+      saveSession(paths, fresh);
+    }
+  }
+  return report;
+}
+
+/**
+ * Has the learner explained their code since the last check run (C-5, C-6)?
+ * A good answer counts, and so does a second try, which passes either way.
+ * @param {StatePaths} paths
+ * @param {string} taskId
+ * @param {string} since
+ */
+function explainedSince(paths, taskId, since) {
+  const text = fs.existsSync(paths.log) ? fs.readFileSync(paths.log, 'utf8') : '';
+  return parseLog(text).some((e) => e.event === 'explain' && e.fields.task === taskId && e.at >= since && (e.fields.outcome === 'good' || e.fields.try === '2'));
+}
+
+/**
+ * The three-part gate: a clean check run at the current commit, and for learner tasks an
+ * explain-back. Returns why the task can't pass yet, or null.
+ * @param {StatePaths} paths
+ * @param {Session} session
+ * @param {import('./plan.js').Task} task
+ */
+export function passBlocker(paths, session, task) {
+  const last = session.tasks[task.id]?.lastCheck;
+  if (!last) return `No check has run for ${task.id} yet. Run "menitor check run" first; a task passes only after its deterministic checks pass.`;
+  if (!last.ok) return `The last check run for ${task.id} found must-fix problems. Fix them, then run "menitor check run" again.`;
+  if (last.head !== headCommit(paths.root)) return `There are new commits since the last check run. Run "menitor check run" again.`;
+  if (task.owner === 'learner' && !explainedSince(paths, task.id, last.at)) {
+    return `The learner hasn't explained their code since the last check run. Ask the explain-back questions and log them with "menitor log explain" first.`;
+  }
+  return null;
+}
+
+/**
  * C-8: mark the current task done and start the next one.
  * @param {StatePaths} paths
  * @param {string | undefined} id
- * @param {{ note?: string, revisit?: string[], now?: Date }} [options]
+ * @param {{ note?: string, revisit?: string[], override?: string, now?: Date }} [options]
  */
 export function passTask(paths, id, options = {}) {
   const now = options.now ?? new Date();
@@ -183,9 +256,18 @@ export function passTask(paths, id, options = {}) {
   requireCurrent(session, entry);
 
   const { task } = entry;
+  const override = options.override?.trim();
+  if (options.override !== undefined && !override) throw new MenitorError('An override needs a reason');
+  if (!override) {
+    const blocker = passBlocker(paths, session, task);
+    if (blocker) throw refused(blocker);
+  }
+  if (override) appendEvent(paths.log, 'override', { task: task.id, reason: override }, now);
+
   task.status = 'done';
   task.passedAt = now.toISOString();
   if (options.note) task.note = options.note.trim();
+  if (override) task.note = [task.note, `Passed without a clean check: ${override}`].filter(Boolean).join(' ');
   const warnings = savePlan(paths, plan);
   appendEvent(paths.log, 'pass', { task: task.id, by: task.owner }, now);
 

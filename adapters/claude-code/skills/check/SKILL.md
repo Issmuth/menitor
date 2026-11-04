@@ -16,21 +16,21 @@ A task passes only when three things hold: the deterministic checks pass, the do
 
 ## 1. Gather the evidence
 
-1. Run `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" task brief`. It gives the checklist with IDs and ticks, the start commit, the checks, the verify steps and the linked doc section. Load no other docs.
-2. Review only the learner's work: the changes from the start commit to the working tree. Run `git diff <start commit>` and `git status --short`, and read any new files. With no start commit, every file is theirs.
-3. Run the deterministic checks before any review, in this order: the project's build, lint and test commands, then the task's verify steps. Read only the end of long output. For a url step, fetch the URL; `$deployUrl` is the project's deployed URL. If none is recorded yet, ask the learner for it and record it with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" plan deploy-url <url>`.
-4. A failing check is a must-fix. Report it, and skip the deeper review until it passes.
+1. Run `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" task brief` for the checklist with IDs and ticks, the done-when criteria and the linked doc section. Load no other docs.
+2. Run `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" check run`, with a long command timeout, since builds and tests can take minutes. It runs the project's build, lint and test, then the task's verify steps. It also checks the commits, the branch, uncommitted work, the ticks and agent activity. It ends with the diff since the task started, which is only the learner's work.
+3. Every "MUST FIX" line it prints is a must-fix. While a check fails, skip the deeper review and report that first.
+4. If it asks for a deployed URL, ask the learner for it. Record it with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" plan deploy-url <url>`, then run the check again.
 
 ## 2. Review against the card
 
 - For each checklist item, decide: done, missing, or ticked but not found.
 - For each done-when criterion, decide: met or not, with the evidence.
-- Commit hygiene: there is at least one commit since the start, on the task's branch. Its message follows Conventional Commits (`type(scope): summary`). Learner work carries no "Menitor-Delegated" trailer.
-- Read the lines in .menitor/activity.jsonl since the task started. If an agent command touched project files on this learner task, say so plainly.
+- Read the diff like a senior developer: broken behavior, missed edge cases, security holes, and code that doesn't match the docs.
+- Pass on each "NOTE" line from the check run, such as a branch mix-up or files the agent touched.
 
 Sort what you find:
 
-- must-fix: a failing check, a missed done-when criterion, a checklist item not done, a missing commit, broken behavior, or a security hole. Only these block a pass.
+- must-fix: every "MUST FIX" line from the check run, and any missed done-when criterion. Also a checklist item not done, broken behavior, or a security hole. Only these block a pass.
 - nice-to-have: naming, style, small refactors and other polish.
 
 ## 3. If anything is must-fix
@@ -56,6 +56,8 @@ When nothing is must-fix, ask one or two open questions about their own code. As
 1. Log it with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" log check task=<id> result=pass mustFix=0 nice=<n>`.
 2. If a deploy check passed on this task, log `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" log deploy url=<url>`.
 3. Run `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" task pass`, with `--revisit "<concept>"` for each concept that took two tries. It records the next task's start commit and prints its card.
+   - It refuses unless the last check run was clean at the current commit, and the explain-back is logged since then. If the learner committed again, run the check again first.
+   - Use `--override "<reason>"` only when a check itself is broken, such as a verify command with a typo or a host outage. Never use it to skip a real failure. Tell the learner the reason; it's logged and shown on the card.
 4. If you saw a clear strength or a recurring mistake, record it with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" learner add strengths "<text>"` or `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" learner add mistakes "<text>"`.
 5. Give one line of praise that names something specific, then show the next card.
 

@@ -103,7 +103,7 @@ test('a learner task blocks project writes, git and installs; read-only work pas
 
 test('delegated tasks open project writes', () => {
   const { root, cleanup } = approvedProject();
-  cli(root, ['task', 'pass']);
+  cli(root, ['task', 'pass', '--override', 'test']);
   const ctx = loadGuardContext(root);
   assert.equal(ctx.task, 't2');
   assert.equal(ctx.writes, 'delegated');
@@ -123,8 +123,8 @@ test('skip needs one pushback, then the learner confirm, and grants one task onl
 
   assert.equal(cli(root, ['task', 'skip']).code, 0);
   assert.equal(loadPlan(paths)?.milestones[0].tasks[0].owner, 'delegated');
-  cli(root, ['task', 'pass']);
-  cli(root, ['task', 'pass']);
+  cli(root, ['task', 'pass', '--override', 'test']);
+  cli(root, ['task', 'pass', '--override', 'test']);
   const ctx = loadGuardContext(root);
   assert.equal(ctx.task, 't3');
   assert.equal(ctx.writes, 'no', 'the grant does not carry over to the next task');

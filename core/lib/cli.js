@@ -10,11 +10,13 @@ import { parseJsonInput } from './fsx.js';
 import { appendAgentEvent, parseFieldArgs, parseLog } from './log.js';
 import { cardData, renderCard } from './card.js';
 import { computeStats, renderStats } from './stats.js';
+import { renderCheck } from './check.js';
 import { allTasks } from './plan.js';
 import { loadLearner, loadProgress, loadSession, requirePlan } from './state.js';
 import {
   approvePlan,
   briefData,
+  checkTask,
   fixTask,
   importHints,
   importPlan,
@@ -57,10 +59,22 @@ Tasks (the ID defaults to the current task)
   menitor task brief [id]               Card, start commit, checks and the linked doc section
   menitor task hint [id]                Reveal the next hint rung
   menitor task fix <text>... [--id id]  Add fixes to the checklist as new items
-  menitor task pass [id]                Mark the task done and start the next one
+  menitor task pass [id]                Mark the task done and start the next one. Needs a clean
+                                        check run at the current commit, and for learner tasks an
+                                        explain-back logged since then
         --note <text>                   A short note shown on the card (delegated work)
         --revisit <concept>             A concept to revisit (repeatable)
+        --override <reason>             Pass without the gate, only when a check itself is broken;
+                                        the reason is logged and shown on the card
   menitor task skip [id]                Hand a task to the agent (learner tasks need the learner's grant)
+
+Checks
+  menitor check run [id]                Run the deterministic checks: build, lint, test, verify
+                                        steps, deploy URL, commits, ticks and agent activity, then
+                                        print the diff since the task started
+        --no-commands                   Skip build, lint, test and verify (doesn't count for a pass)
+        --no-diff                       Leave the diff out
+        --timeout <seconds>             Per command (default 180)
 
 History
   menitor log <event> key=value...      Log check, explain, stuck, dispute, deploy or note
@@ -212,6 +226,10 @@ export function run(argv, ioOverrides = {}) {
         note: { type: 'string' },
         revisit: { type: 'string', multiple: true },
         id: { type: 'string' },
+        override: { type: 'string' },
+        'no-commands': { type: 'boolean', default: false },
+        'no-diff': { type: 'boolean', default: false },
+        timeout: { type: 'string' },
         help: { type: 'boolean', short: 'h', default: false },
       },
     });
@@ -264,6 +282,16 @@ export function run(argv, ioOverrides = {}) {
       case 'task':
         return runTask(sub, rest, values, io, paths, json);
 
+      case 'check': {
+        if (sub !== 'run') throw new MenitorError('Usage: menitor check run [id]');
+        const timeout = values.timeout === undefined ? undefined : Number(values.timeout);
+        if (timeout !== undefined && !(timeout > 0)) throw new MenitorError('--timeout takes a number of seconds');
+        const report = checkTask(paths(), rest[0], { commands: !values['no-commands'], timeoutSeconds: timeout });
+        if (values.json) json(values['no-diff'] ? { ...report, diff: '' } : report);
+        else io.out(renderCheck(report, { diff: !values['no-diff'] }));
+        return EXIT.ok;
+      }
+
       case 'learner':
         return runLearner(sub, rest, values, io, paths, json);
 
@@ -311,7 +339,7 @@ function requirePlanOrNull(p) {
 }
 
 /**
- * @typedef {{ root?: string, json: boolean, ids: boolean, note?: string, revisit?: string[], id?: string }} Values
+ * @typedef {{ root?: string, json: boolean, ids: boolean, note?: string, revisit?: string[], id?: string, override?: string }} Values
  * @typedef {() => import('./paths.js').StatePaths} PathsFn
  * @typedef {(value: unknown) => void} JsonFn
  */
@@ -413,7 +441,7 @@ function runTask(sub, rest, values, io, paths, json) {
       return EXIT.ok;
     }
     case 'pass': {
-      const { passed, next, plan } = passTask(p, rest[0], { note: values.note, revisit: values.revisit });
+      const { passed, next, plan } = passTask(p, rest[0], { note: values.note, revisit: values.revisit, override: values.override });
       if (values.json) {
         json({ passed: passed.task.id, by: passed.task.owner, next: next?.task.id ?? null });
       } else {
