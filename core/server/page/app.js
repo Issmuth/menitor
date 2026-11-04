@@ -244,7 +244,7 @@ function renderProgress(s) {
   const w = s.written;
   const skipped = w.skipped ? ` (${w.skipped} skipped)` : '';
   progress.replaceChildren(
-    h('h2', null, `${s.done} of ${s.total} tasks done`),
+    h('h2', null, `${s.done} of ${s.total} task${s.total === 1 ? '' : 's'} done`),
     meter('All tasks', s.done, s.total),
     list,
     h('p', { class: 'counts' }, `Written by you: ${w.learner} · Delegated: ${w.delegated}${skipped}`),
