@@ -178,6 +178,27 @@ test('failures show the end of the output; slow commands time out', async () => 
   cleanup();
 });
 
+test('a timeout kills the whole process tree, not just the shell', async () => {
+  const { root, cleanup } = await shapedProject((plan) => {
+    plan.checks = { test: 'node slow.js' };
+  });
+  // slow.js starts a grandchild that would write late.txt after 2.5 seconds.
+  write(
+    root,
+    'slow.js',
+    [
+      "const { spawn } = require('node:child_process');",
+      "spawn(process.execPath, ['-e', \"setTimeout(() => require('node:fs').writeFileSync('late.txt', 'x'), 2500)\"], { stdio: 'inherit' });",
+      'setTimeout(() => {}, 10000);',
+    ].join('\n'),
+  );
+  const r = check(root, ['--timeout', '1']);
+  assert.equal(r.commands[0].status, 'timeout');
+  await new Promise((resolve) => setTimeout(resolve, 3500));
+  assert.equal(fs.existsSync(path.join(root, 'late.txt')), false, 'the grandchild was stopped');
+  cleanup();
+});
+
 test('build output and lockfiles stay out of the way', async () => {
   const { root, cleanup } = await shapedProject((plan) => {
     plan.checks = {};

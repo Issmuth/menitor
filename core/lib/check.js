@@ -202,6 +202,44 @@ function skipReason(root, command) {
   return null;
 }
 
+// Runs a command in a child Node process that owns it, so a timeout can kill the whole process
+// tree (a shell plus whatever it started), not just the shell. Output keeps its real order.
+const RUN_SCRIPT = `
+import { spawn, spawnSync } from 'node:child_process';
+const [command, ms] = process.argv.slice(1);
+const windows = process.platform === 'win32';
+const child = spawn(command, {
+  shell: true,
+  detached: !windows,
+  stdio: ['ignore', 'pipe', 'pipe'],
+  env: { ...process.env, CI: '1', FORCE_COLOR: '0', NO_COLOR: '1' },
+  windowsHide: true,
+});
+let out = '';
+const take = (chunk) => {
+  out += chunk;
+  if (out.length > 4000000) out = out.slice(-2000000);
+};
+child.stdout.on('data', take);
+child.stderr.on('data', take);
+let timedOut = false;
+const timer = setTimeout(() => {
+  timedOut = true;
+  if (windows) spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+  else {
+    try { process.kill(-child.pid, 'SIGKILL'); } catch {}
+  }
+}, Number(ms));
+child.on('error', (err) => {
+  clearTimeout(timer);
+  process.stdout.write(JSON.stringify({ code: null, timedOut: false, out: String(err.message) }));
+});
+child.on('close', (code) => {
+  clearTimeout(timer);
+  process.stdout.write(JSON.stringify({ code, timedOut, out }));
+});
+`;
+
 /**
  * Run one command through the shell, without color, with a timeout.
  * @param {string} root
@@ -212,26 +250,28 @@ function skipReason(root, command) {
  */
 function runCommand(root, name, command, timeoutSeconds) {
   const started = Date.now();
-  const r = spawnSync(command, {
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', RUN_SCRIPT, command, String(timeoutSeconds * 1000)], {
     cwd: root,
-    shell: true,
     encoding: 'utf8',
-    timeout: timeoutSeconds * 1000,
-    maxBuffer: 20 * 1024 * 1024,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, CI: '1', FORCE_COLOR: '0', NO_COLOR: '1' },
+    timeout: timeoutSeconds * 1000 + 15000,
+    maxBuffer: 50 * 1024 * 1024,
     windowsHide: true,
   });
   const seconds = Math.round((Date.now() - started) / 100) / 10;
-  const timedOut = /** @type {NodeJS.ErrnoException | undefined} */ (r.error)?.code === 'ETIMEDOUT';
-  const output = `${r.stdout ?? ''}${r.stderr ? `\n${r.stderr}` : ''}`;
+  /** @type {{ code: number | null, timedOut: boolean, out: string }} */
+  let result;
+  try {
+    result = JSON.parse(r.stdout);
+  } catch {
+    result = { code: null, timedOut: true, out: r.stderr ?? '' };
+  }
   return {
     name,
     command,
-    status: timedOut ? 'timeout' : r.status === 0 ? 'pass' : 'fail',
-    exitCode: r.status,
+    status: result.timedOut ? 'timeout' : result.code === 0 ? 'pass' : 'fail',
+    exitCode: result.code,
     seconds,
-    tail: timedOut ? `${tail(output)}\n[stopped after ${timeoutSeconds} seconds]`.trim() : tail(output),
+    tail: result.timedOut ? `${tail(result.out)}\n[stopped after ${timeoutSeconds} seconds]`.trim() : tail(result.out),
   };
 }
 
