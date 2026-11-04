@@ -11,5 +11,6 @@
   "repository": "https://github.com/Issmuth/menitor",
   "license": "MIT",
   "keywords": ["learning", "mentor", "education", "beginners", "sprint", "tutor"],
-  "hooks": "./adapters/claude-code/hooks.json"
+  "hooks": "./adapters/claude-code/hooks.json",
+  "skills": ["./adapters/claude-code/skills/"]
 }

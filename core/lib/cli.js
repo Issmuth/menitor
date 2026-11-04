@@ -14,6 +14,7 @@ import { allTasks } from './plan.js';
 import { loadLearner, loadProgress, loadSession, requirePlan } from './state.js';
 import {
   approvePlan,
+  briefData,
   fixTask,
   importHints,
   importPlan,
@@ -53,6 +54,7 @@ Plan
 
 Tasks (the ID defaults to the current task)
   menitor task show [id]                Print the task card
+  menitor task brief [id]               Card, start commit, checks and the linked doc section
   menitor task hint [id]                Reveal the next hint rung
   menitor task fix <text>... [--id id]  Add fixes to the checklist as new items
   menitor task pass [id]                Mark the task done and start the next one
@@ -136,6 +138,31 @@ function renderOutline(plan, current) {
     const owner = task.owner === 'delegated' ? (task.skipped ? ' · skipped' : ' · delegated') : '';
     lines.push(`  ${mark} ${task.id.padEnd(4)} ${task.goal}${owner}`);
   }
+  return lines.join('\n');
+}
+
+/**
+ * @param {ReturnType<typeof briefData>} b
+ */
+function renderBrief(b) {
+  const lines = [renderCard(b.card, { ids: true }), ''];
+  lines.push(`Owner      ${b.card.owner === 'learner' ? 'the learner' : b.card.skipped ? 'Menitor (skipped by the learner)' : 'Menitor (delegated)'} · focus: ${b.focus.length ? b.focus.join(', ') : 'none'}`);
+  if (b.card.branch) lines.push(`Branch     ${b.card.branch}`);
+  lines.push(`Start      ${b.startCommit ? `${b.startCommit.slice(0, 12)} (${b.startedAt?.slice(0, 10)})` : b.startedAt ? 'no commit yet: review every file' : 'not started'}`);
+  const checks = Object.entries(b.checks).filter(([, cmd]) => cmd).map(([name, cmd]) => `${name}: ${cmd}`);
+  lines.push(`Checks     ${checks.length ? checks.join(' · ') : 'none set'}`);
+  for (const [i, v] of b.verify.entries()) {
+    const text = 'run' in v ? `run: ${v.run}` : `url: ${v.url}${v.status ? ` → ${v.status}` : ''}${v.contains ? ` containing "${v.contains}"` : ''}`;
+    lines.push(`${i === 0 ? 'Verify' : ''}`.padEnd(11) + text);
+  }
+  if (b.verify.some((v) => 'url' in v && v.url.startsWith('$deployUrl'))) lines.push(`Deploy URL ${b.deployUrl ?? 'not recorded yet'}`);
+  lines.push('');
+  const { doc } = b;
+  const where = doc.anchor ? `${doc.file}#${doc.anchor}` : doc.file;
+  if (doc.found === 'missing-file') lines.push(`Docs: ${where} (the file does not exist yet)`);
+  else if (doc.found === 'missing-section') lines.push(`Docs: ${where} (no heading matches; showing the whole file)`, doc.text);
+  else lines.push(`Docs: ${where}`, doc.text);
+  if (doc.truncated) lines.push('[cut at 4000 characters]');
   return lines.join('\n');
 }
 
@@ -367,6 +394,12 @@ function runTask(sub, rest, values, io, paths, json) {
       else io.out(renderCard(card, { ids: values.ids }));
       return EXIT.ok;
     }
+    case 'brief': {
+      const brief = briefData(p, rest[0]);
+      if (values.json) json(brief);
+      else io.out(renderBrief(brief));
+      return EXIT.ok;
+    }
     case 'hint': {
       const { entry, hint, number } = revealHint(p, rest[0]);
       if (values.json) json({ task: entry.task.id, number, rung: hint.rung, text: hint.text });
@@ -398,7 +431,7 @@ function runTask(sub, rest, values, io, paths, json) {
       return EXIT.ok;
     }
     default:
-      throw new MenitorError('Usage: menitor task <show|hint|fix|pass|skip> [id]');
+      throw new MenitorError('Usage: menitor task <show|brief|hint|fix|pass|skip> [id]');
   }
 }
 

@@ -12,8 +12,8 @@ It is free (MIT), runs fully locally on your existing Claude plan, and has no ac
 | --- | --- |
 | 1. State CLI and schemas | Done |
 | 2. Guard hooks | Done |
-| 3. Skills (`/menitor:start`, `go`, `check`, `hint`, `stuck`, `skip`) | Next |
-| 4. Check runner | Planned |
+| 3. Skills and doc templates | Done |
+| 4. Check runner | Next |
 | 5. Task window | Planned |
 | 6. Window buttons through plugin monitors | Planned |
 | 7. README, ADRs and doc templates | Planned |
@@ -51,6 +51,20 @@ flowchart LR
   next --> read
 ```
 
+## Commands
+
+| Command | What it does | Who runs it |
+| --- | --- | --- |
+| `/menitor:start` | Interview, calibrate your level, set focus areas, write lean docs and the plan | You, typed |
+| `/menitor:go` | Show the current task; picks up where you left off in a fresh session | You, or the agent when you ask to continue |
+| `/menitor:check` | Run the checks, review your work, ask you to explain it, then pass or add fixes | You, or the agent when you say you're done |
+| `/menitor:hint` | Reveal the next hint: concept, approach, pseudocode, then a partial snippet | You, or the agent when you ask for a hint |
+| `/menitor:stuck` | Debug with you: what you tried, the error, the smallest useful hint | You, or the agent when you're stuck |
+| `/menitor:skip [--explain]` | Hand the task to the agent, after one pushback; confirm with `--confirm` | You, typed only |
+| `/menitor:off` and `/menitor:on` | Turn mentor mode off or back on | You, typed only |
+
+Plain questions typed into the session still work. Commands are only for actions that change progress.
+
 ## The guard
 
 While mentor mode is on, hooks keep the agent's hands off the learner's code:
@@ -69,10 +83,12 @@ Delegated tasks, and tasks the learner skipped, open project writes for that one
 ```text
 core/                     agent-neutral: works with any coding agent
   bin/menitor.js          the state CLI (the agent changes state only through it)
-  lib/                    plan, learner, log, stats, card, shell analysis and guard
+  lib/                    plan, learner, log, stats, card, docs, shell analysis and guard
   schemas/                JSON Schemas for every file in .menitor/
-  instructions/           mentor rules in neutral words
-adapters/claude-code/     the thin Claude Code layer: hooks and command names
+  instructions/           what each command does, in neutral words
+  templates/docs/         lean doc templates: PRD, tech, flow, design, data and API, testing, ADR
+adapters/claude-code/     the thin Claude Code layer: hooks, command names and skills
+  skills/                 generated from core/instructions by build-skills.js
 .claude-plugin/           plugin and marketplace manifests
 test/                     node:test suites
 docs/                     PRD and implementation decisions
@@ -108,7 +124,13 @@ npm install
 npm run check
 ```
 
-`npm run check` runs the type checker and the tests. There is no build step.
+`npm run check` runs the type checker, checks that the generated skills are current, and runs the tests.
+
+The skills in `adapters/claude-code/skills/` are generated. Edit the neutral source in `core/instructions/`, then regenerate them:
+
+```bash
+npm run build:skills
+```
 
 ## Prior art
 

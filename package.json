@@ -19,7 +19,8 @@
   "scripts": {
     "test": "node --test \"test/**/*.test.js\"",
     "typecheck": "tsc -p .",
-    "check": "npm run typecheck && npm test"
+    "build:skills": "node adapters/claude-code/build-skills.js",
+    "check": "npm run typecheck && node adapters/claude-code/build-skills.js --check && npm test"
   },
   "devDependencies": {
     "@types/node": "22.20.5",

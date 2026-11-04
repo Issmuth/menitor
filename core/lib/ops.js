@@ -11,6 +11,8 @@ import { appendEvent, LOG_HEADER, parseLog } from './log.js';
 import { defaultLearner, addNote, LEVELS, LEARNER_LISTS } from './learner.js';
 import { allTasks, appendFixes, findTask, isFocusTask, nextTodo, normalizePlanInput, planProblems, revealNextHint, setHints } from './plan.js';
 import { validate } from './schema.js';
+import { cardData } from './card.js';
+import { readDocLink } from './docs.js';
 import {
   SCHEMAS,
   defaultSession,
@@ -374,6 +376,31 @@ export function learnerNote(paths, text, options = {}) {
 }
 
 // Read-only views
+
+/**
+ * Everything the agent needs to work on or check one task, in one call: the card, where the task
+ * started, the deterministic checks, and only the doc section the task links to (C-10).
+ * @param {StatePaths} paths
+ * @param {string | undefined} id
+ */
+export function briefData(paths, id) {
+  const plan = requirePlan(paths);
+  const session = loadSession(paths);
+  const entry = resolveTask(plan, session, id);
+  const { task } = entry;
+  const start = session.tasks[task.id] ?? null;
+  return {
+    card: cardData(plan, task.id, loadProgress(paths)),
+    focus: task.focus ?? [],
+    current: session.currentTask === task.id,
+    startCommit: start?.startCommit ?? null,
+    startedAt: start?.startedAt ?? null,
+    checks: plan.checks ?? {},
+    verify: task.verify ?? [],
+    deployUrl: plan.project.deployUrl ?? null,
+    doc: readDocLink(paths.root, task.docs),
+  };
+}
 
 /**
  * A summary of where the project stands, for `menitor status` and the window.

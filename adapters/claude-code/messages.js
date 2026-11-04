@@ -3,18 +3,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { COMMAND_NAMES, renderInstructions } from './skills.js';
 
-export const COMMANDS = {
-  start: '/menitor:start',
-  go: '/menitor:go',
-  check: '/menitor:check',
-  hint: '/menitor:hint',
-  stuck: '/menitor:stuck',
-  skip: '/menitor:skip',
-  confirm: '/menitor:skip --confirm',
-  off: '/menitor:off',
-  on: '/menitor:on',
-};
+export const COMMANDS = COMMAND_NAMES;
 
 export const CLI_PATH = fileURLToPath(new URL('../../core/bin/menitor.js', import.meta.url));
 export const CLI = `node "${CLI_PATH}"`;
@@ -24,7 +15,11 @@ export const CLI = `node "${CLI_PATH}"`;
  */
 export function mentorRules() {
   const text = fs.readFileSync(new URL('../../core/instructions/mentor-rules.md', import.meta.url), 'utf8');
-  return text.replace(/\{\{(\w+)\}\}/g, (m, key) => /** @type {Record<string, string>} */ (COMMANDS)[key] ?? m).trim();
+  return renderInstructions(text, {
+    cli: CLI,
+    templates: fileURLToPath(new URL('../../core/templates/docs', import.meta.url)),
+    args: '',
+  }).trim();
 }
 
 /**

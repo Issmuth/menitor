@@ -64,3 +64,12 @@ These settle the ambiguities and open questions in [prd.md](prd.md) before the b
 - **Failure handling.** Broken state blocks project writes but never read-only work. A crash in the guard blocks file writes but not shell commands, so a bug can't lock the learner out. `/menitor:off` always works, even with a broken `guard.json`.
 - **The guard never approves anything.** An allowed call gets no hook output, so Claude Code's own permission rules still apply.
 - **Inactive elsewhere.** In a project without `.menitor/`, every hook does nothing.
+
+## Skills (milestone 3)
+
+- **One source for instructions.** What each command does lives in `core/instructions/<command>.md`, in neutral words with placeholders such as `{{cli}}` and `{{cmd:hint}}`. `adapters/claude-code/build-skills.js` turns them into `SKILL.md` files, and `npm run check` fails if a generated file is stale. A v2 adapter renders the same sources its own way.
+- **Who can invoke what.** `start`, `skip`, `off` and `on` set `disable-model-invocation`, so only the learner can run them, by typing them. `go`, `check`, `hint` and `stuck` stay model-invocable. That lets the window buttons (milestone 6) and plain requests like "check my work" reach them.
+- **Fewer prompts.** Each skill pre-approves the state CLI and, where it needs them, `git status`, `git diff` and `git log`. Nothing that writes is pre-approved.
+- **Doc templates moved up.** `/menitor:start` needs them, so `core/templates/docs/` landed in this milestone instead of milestone 7.
+- **One call per task context (C-10).** `menitor task brief` prints the card with IDs, the start commit, the checks, the verify steps and only the doc section the task links to.
+- **Check before the runner.** Until milestone 4, `/menitor:check` gathers the diff and runs the checks with plain git and the plan's commands. Milestone 4 moves that into a deterministic `menitor check run`.
