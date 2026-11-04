@@ -102,7 +102,7 @@ function formatWarnings(warnings) {
 /**
  * @param {ReturnType<typeof statusData>} s
  */
-function renderStatus(s) {
+export function renderStatus(s) {
   const lines = [];
   lines.push(`${s.project ?? 'No plan yet'} · ${s.approved ? 'plan approved' : 'plan not approved'} · mentor mode ${s.mentorMode}`);
   lines.push(`Level ${s.level ?? 'not set'} · focus: ${s.focusAreas.length ? s.focusAreas.join(', ') : 'none set'}`);

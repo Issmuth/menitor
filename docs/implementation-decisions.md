@@ -52,3 +52,15 @@ These settle the ambiguities and open questions in [prd.md](prd.md) before the b
 - **Commands are skills.** Each command is a skill. `skip`, `off` and `on` are typed-only, so the agent can't invoke them.
 - **Menitor stays out of the way elsewhere.** Hooks do nothing in a project without a `.menitor/` folder.
 - **Log writes.** `log.md` is appended with `O_APPEND`, not rewritten through temp-and-rename, so hooks and the CLI can both add lines without losing each other's. Every other state file is written atomically.
+
+## Guard details (milestone 2)
+
+- **Learner commands come from `UserPromptSubmit`.** That hook receives the line exactly as typed, such as `/menitor:skip --confirm`. Only `/menitor:skip`, `/menitor:off` and `/menitor:on` change the guard, and a `Skill` call naming them is denied.
+- **A confirm counts only after a request.** `/menitor:skip --confirm` with no earlier `/menitor:skip` for that task counts as the request, so the pushback (H-6) always happens once.
+- **Protected state files.** These are any `.json` or `.jsonl` file directly in `.menitor/`, plus `learner.md`, `log.md` and `.gitignore`. Subfolders such as `.menitor/warmup/` stay writable.
+- **Write areas.** Paths outside the project, `/dev/null`, `docs/` and `.menitor/` subfolders are always fine. Deleting build output (`node_modules`, `dist`, `.next` and similar) is fine. A path with a variable at its start, or with an unknown working folder, counts as project code.
+- **Installs.** Restoring dependencies (`npm install` with no package, `npm ci`) is allowed. Adding, removing or upgrading packages, and scaffolders (`create-*`, `init`, `add`, `generate`, `migrate`), are the learner's on their tasks.
+- **Activity log.** `.menitor/activity.jsonl` is a new state file, appended only by hooks. When Claude Code reports the files a shell command changed (`bashEditDiff`), the hook logs them and warns the agent if it touched the learner's files.
+- **Failure handling.** Broken state blocks project writes but never read-only work. A crash in the guard blocks file writes but not shell commands, so a bug can't lock the learner out. `/menitor:off` always works, even with a broken `guard.json`.
+- **The guard never approves anything.** An allowed call gets no hook output, so Claude Code's own permission rules still apply.
+- **Inactive elsewhere.** In a project without `.menitor/`, every hook does nothing.

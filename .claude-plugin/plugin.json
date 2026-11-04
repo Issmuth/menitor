@@ -1,0 +1,15 @@
+{
+  "name": "menitor",
+  "displayName": "Menitor",
+  "version": "0.1.0",
+  "description": "A senior dev who runs your project like a sprint and makes you do the work: lean docs, an ordered task plan, one task at a time, checked before you move on.",
+  "author": {
+    "name": "Ismael",
+    "url": "https://github.com/issmuth"
+  },
+  "homepage": "https://github.com/Issmuth/menitor",
+  "repository": "https://github.com/Issmuth/menitor",
+  "license": "MIT",
+  "keywords": ["learning", "mentor", "education", "beginners", "sprint", "tutor"],
+  "hooks": "./adapters/claude-code/hooks.json"
+}

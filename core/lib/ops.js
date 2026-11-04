@@ -40,6 +40,7 @@ session.json
 guard.json
 learner.md
 log.md
+activity.jsonl
 warmup/
 *.tmp
 `;

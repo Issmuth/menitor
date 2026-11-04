@@ -11,12 +11,30 @@ It is free (MIT), runs fully locally on your existing Claude plan, and has no ac
 | Milestone | State |
 | --- | --- |
 | 1. State CLI and schemas | Done |
-| 2. Guard hooks | Next |
-| 3. Skills (`/menitor:start`, `go`, `check`, `hint`, `stuck`, `skip`) | Planned |
+| 2. Guard hooks | Done |
+| 3. Skills (`/menitor:start`, `go`, `check`, `hint`, `stuck`, `skip`) | Next |
 | 4. Check runner | Planned |
 | 5. Task window | Planned |
 | 6. Window buttons through plugin monitors | Planned |
 | 7. README, ADRs and doc templates | Planned |
+
+## Install
+
+Menitor isn't ready for learners yet. To try the work in progress, in Claude Code 2.1.275 or later:
+
+```text
+/plugin install menitor --marketplace Issmuth/menitor
+```
+
+On older versions, add the marketplace first, then install:
+
+```text
+/plugin marketplace add Issmuth/menitor
+```
+
+```text
+/plugin install menitor@menitor
+```
 
 ## How it works
 
@@ -33,15 +51,31 @@ flowchart LR
   next --> read
 ```
 
+## The guard
+
+While mentor mode is on, hooks keep the agent's hands off the learner's code:
+
+- **File writes** outside `docs/` and `.menitor/` are denied on the learner's tasks. A deny holds even in bypass-permissions mode.
+- **Shell commands** that would write project files are denied on a best-effort match. That covers redirects, `tee`, `sed -i`, copies, moves, deletes, downloads, inline scripts, git commands that change the repo, and installs or scaffolders.
+- **Read-only work always runs:** builds, tests, linters, `git status`, `git diff` and `git log`.
+- **State files** in `.menitor/` change only through the state CLI, even with mentor mode off.
+- **Learner-only commands:** only the learner can hand a task over or turn mentor mode off, by typing `/menitor:skip --confirm` or `/menitor:off`. The guard reads the learner's typed prompt, so the agent can't fake either one.
+- **Activity log:** every agent command and file write goes to `.menitor/activity.jsonl`, so the check can flag anything that slipped past.
+
+Delegated tasks, and tasks the learner skipped, open project writes for that one task.
+
 ## Layout
 
 ```text
-core/                 agent-neutral: works with any coding agent
-  bin/menitor.js      the state CLI (the agent changes state only through it)
-  lib/                plan, learner, log, stats, card and file helpers
-  schemas/            JSON Schemas for every file in .menitor/
-test/                 node:test suites
-docs/                 PRD and implementation decisions
+core/                     agent-neutral: works with any coding agent
+  bin/menitor.js          the state CLI (the agent changes state only through it)
+  lib/                    plan, learner, log, stats, card, shell analysis and guard
+  schemas/                JSON Schemas for every file in .menitor/
+  instructions/           mentor rules in neutral words
+adapters/claude-code/     the thin Claude Code layer: hooks and command names
+.claude-plugin/           plugin and marketplace manifests
+test/                     node:test suites
+docs/                     PRD and implementation decisions
 ```
 
 A learner's project keeps its state in `.menitor/`, split by writer so nothing overwrites anything else:
@@ -54,6 +88,7 @@ A learner's project keeps its state in `.menitor/`, split by writer so nothing o
 | `guard.json` | hooks, from commands the learner typed | mentor mode, skip grants | no |
 | `learner.md` | the CLI | level, focus areas, strengths, mistakes, hint use | no |
 | `log.md` | the CLI and hooks | dated history of checks, hints, skips and disputes | no |
+| `activity.jsonl` | hooks | every agent command and file write, for the check | no |
 
 ## The state CLI
 

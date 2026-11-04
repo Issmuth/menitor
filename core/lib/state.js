@@ -5,6 +5,7 @@
 //   progress.json                        -> the task window
 //   guard.json                           -> agent-adapter hooks, from commands the learner typed
 //   log.md                               -> appended by the CLI and adapter hooks
+//   activity.jsonl                       -> appended by adapter hooks
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -37,6 +38,7 @@ export const SCHEMAS = {
   progress: loadSchema('progress'),
   guard: loadSchema('guard'),
   learner: loadSchema('learner'),
+  activity: loadSchema('activity'),
 };
 
 /**

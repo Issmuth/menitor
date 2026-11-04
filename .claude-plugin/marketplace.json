@@ -1,0 +1,18 @@
+{
+  "name": "menitor",
+  "owner": {
+    "name": "Ismael",
+    "url": "https://github.com/issmuth"
+  },
+  "metadata": {
+    "description": "Menitor: learn by building your own project, one checked task at a time."
+  },
+  "plugins": [
+    {
+      "name": "menitor",
+      "source": "./",
+      "description": "A senior dev who runs your project like a sprint and makes you do the work.",
+      "category": "learning"
+    }
+  ]
+}
