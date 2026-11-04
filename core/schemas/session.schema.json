@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Issmuth/menitor/blob/main/core/schemas/session.schema.json",
+  "title": "Menitor session (.menitor/session.json)",
+  "description": "The current task and where each task started. Written by the agent through the menitor CLI.",
+  "type": "object",
+  "required": ["version", "currentTask", "tasks"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "currentTask": { "type": ["string", "null"] },
+    "tasks": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["startCommit", "startedAt"],
+        "additionalProperties": false,
+        "properties": {
+          "startCommit": { "type": ["string", "null"], "pattern": "^[0-9a-f]{7,64}$" },
+          "startedAt": { "type": "string" }
+        }
+      }
+    }
+  }
+}

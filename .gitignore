@@ -1,0 +1,5 @@
+node_modules/
+*.tmp
+.DS_Store
+# Menitor's own state, if you dogfood Menitor on this repo
+.menitor/

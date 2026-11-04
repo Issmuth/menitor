@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Issmuth/menitor/blob/main/core/schemas/progress.schema.json",
+  "title": "Menitor progress (.menitor/progress.json)",
+  "description": "Checklist ticks, keyed by stable checklist item ID. Written only by the task window.",
+  "type": "object",
+  "required": ["version", "ticks"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "ticks": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]{0,31}\\.[cf][0-9]{1,3}$" },
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

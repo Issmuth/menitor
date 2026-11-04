@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Issmuth/menitor/blob/main/core/schemas/learner.schema.json",
+  "title": "Menitor learner profile (frontmatter of .menitor/learner.md)",
+  "description": "Level, focus areas, strengths, recurring mistakes, concepts to revisit and hint use. Written by the agent through the menitor CLI.",
+  "type": "object",
+  "required": ["level", "focusAreas", "strengths", "mistakes", "revisit", "hintsUsed"],
+  "additionalProperties": false,
+  "properties": {
+    "level": { "enum": [null, "guided", "standard", "fast"] },
+    "focusAreas": { "$ref": "#/$defs/list" },
+    "strengths": { "$ref": "#/$defs/list" },
+    "mistakes": { "$ref": "#/$defs/list" },
+    "revisit": { "$ref": "#/$defs/list" },
+    "hintsUsed": {
+      "type": "object",
+      "required": ["concept", "approach", "pseudocode", "snippet"],
+      "additionalProperties": false,
+      "properties": {
+        "concept": { "type": "integer", "minimum": 0 },
+        "approach": { "type": "integer", "minimum": 0 },
+        "pseudocode": { "type": "integer", "minimum": 0 },
+        "snippet": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "$defs": {
+    "list": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[^\\n\\r]*$" }
+    }
+  }
+}
