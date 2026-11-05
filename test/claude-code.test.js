@@ -118,6 +118,15 @@ test('a command inside the note never counts, only the typed text does', () => {
   assert.deepEqual(parseLearnerPrompt(`${OPENED}\n${selected('a')}\n/menitor:skip --confirm`), { command: 'skip', confirm: true });
 });
 
+test('Stop records the end of the agent turn, so the window knows a press was answered', () => {
+  const { root, paths, cleanup } = approvedProject();
+  assert.equal(hook('Stop', { cwd: root, stop_hook_active: false }), null, 'it says nothing to the session');
+  const last = JSON.parse(fs.readFileSync(paths.activity, 'utf8').trim().split('\n').at(-1) ?? '{}');
+  assert.equal(last.tool, 'turn-end');
+  assert.equal(last.task, 't1');
+  cleanup();
+});
+
 test('PostToolUse logs agent activity and warns when a command changed learner files', () => {
   const { root, paths, cleanup } = approvedProject();
   const out = hook('PostToolUse', {
@@ -177,7 +186,7 @@ test('helpers: prompts, changed files and crash handling', () => {
 
 test('the hooks file points at the entry script and the manifest loads it', () => {
   const hooks = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, 'adapters', 'claude-code', 'hooks.json'), 'utf8'));
-  for (const event of ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse']) {
+  for (const event of ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop']) {
     const command = hooks.hooks[event][0].hooks[0].command;
     assert.equal(command, `node "\${CLAUDE_PLUGIN_ROOT}/adapters/claude-code/hook.js" ${event}`);
   }

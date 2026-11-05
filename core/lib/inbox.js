@@ -232,6 +232,77 @@ export function appendInbox(paths, event, now = new Date()) {
   return e;
 }
 
+/** The activity log's mark for "the agent ended its turn", written by the adapter's stop hook. */
+export const TURN_END = 'turn-end';
+/** Button presses, as opposed to answers sent from the window. */
+const BUTTONS = new Set(['check', 'hint', 'stuck', 'go']);
+/** A press older than this is over, whatever happened to it. */
+export const PRESS_WINDOW_MS = 30 * 60 * 1000;
+/** How much of the end of the activity log to read for the last turn end. */
+const ACTIVITY_TAIL = 64 * 1024;
+
+/**
+ * @typedef {{ type: InboxType, task: string | null, at: string, claimedAt: string | null, state: 'sent' | 'working' | 'done', doneAt: string | null }} Press
+ */
+
+/**
+ * Where the last button press stands, so the window can show it: sent until a listener claims it,
+ * working until the agent ends its turn or listens again, then done. Null when there is no recent
+ * press, or when one was never picked up and nobody is listening any more.
+ * @param {StatePaths} paths
+ * @param {number} [now]
+ * @returns {Press | null}
+ */
+export function pressState(paths, now = Date.now()) {
+  const e = readInbox(paths).filter((x) => BUTTONS.has(x.type)).at(-1);
+  if (!e || now - Date.parse(e.at) > PRESS_WINDOW_MS) return null;
+  let claimedAt = null;
+  try {
+    claimedAt = fs.statSync(path.join(paths.claims, e.id)).mtime.toISOString();
+  } catch {
+    claimedAt = null;
+  }
+  const listener = liveListener(paths, now);
+  const base = { type: e.type, task: e.task, at: e.at, claimedAt };
+  if (!claimedAt) return listener ? { ...base, state: 'sent', doneAt: null } : null;
+  const doneAt = lastTurnEnd(paths.activity, claimedAt) ?? (listener && listener.startedAt > claimedAt ? listener.startedAt : null);
+  return { ...base, state: doneAt ? 'done' : 'working', doneAt };
+}
+
+/**
+ * The time of the last turn end in the activity log after `after`, reading only the log's end.
+ * @param {string} file
+ * @param {string} after an ISO time
+ */
+function lastTurnEnd(file, after) {
+  let text;
+  try {
+    const fd = fs.openSync(file, 'r');
+    try {
+      const size = fs.fstatSync(fd).size;
+      const length = Math.min(size, ACTIVITY_TAIL);
+      const buf = Buffer.alloc(length);
+      fs.readSync(fd, buf, 0, length, size - length);
+      text = buf.toString('utf8');
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
+  const lines = text.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!lines[i].includes(TURN_END)) continue;
+    try {
+      const entry = JSON.parse(lines[i]);
+      if (entry.tool === TURN_END && typeof entry.at === 'string') return entry.at > after ? entry.at : null;
+    } catch {
+      // A torn first line from reading mid-file.
+    }
+  }
+  return null;
+}
+
 /**
  * Deliver a button press to a listening session, if there is one. Repeated presses of the same
  * button within a few seconds count once.

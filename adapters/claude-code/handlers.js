@@ -13,6 +13,7 @@ import {
   projectFiles,
   toPosix,
 } from '../../core/lib/guard.js';
+import { TURN_END } from '../../core/lib/inbox.js';
 import { appendEvent } from '../../core/lib/log.js';
 import { statusData } from '../../core/lib/ops.js';
 import { cardData, renderCard } from '../../core/lib/card.js';
@@ -265,9 +266,23 @@ export function sessionStart(input, env) {
   return { output: { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: sessionContext(ctx) } } };
 }
 
+/**
+ * Stop: the agent ended its turn. The window reads this as the answer to a button press, so it
+ * can stop showing that Menitor is working. It says nothing to the session.
+ * @param {HookInput} input
+ * @param {NodeJS.ProcessEnv} env
+ * @returns {HookResult}
+ */
+export function stop(input, env) {
+  const ctx = contextFor(input, env);
+  if (ctx.active) appendActivity(ctx, { tool: TURN_END });
+  return {};
+}
+
 const HANDLERS = /** @type {Record<string, (input: HookInput, env: NodeJS.ProcessEnv) => HookResult>} */ ({
   PreToolUse: preToolUse,
   PostToolUse: postToolUse,
+  Stop: stop,
   UserPromptSubmit: userPromptSubmit,
   SessionStart: sessionStart,
 });
