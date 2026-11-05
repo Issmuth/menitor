@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { fetchSync } from './check.js';
 import { readJsonOrNull } from './fsx.js';
+import { codeFingerprint } from './fingerprint.js';
 import { validate } from './schema.js';
 import { SCHEMAS } from './state.js';
 
@@ -36,18 +37,30 @@ export function readWindowInfo(paths) {
 }
 
 /**
+ * Ask the window server at the address window.json gives who it is. Null when nothing for this
+ * project answers. `code` is the fingerprint of the code it runs; servers before it have none.
+ * @param {StatePaths} paths
+ * @param {WindowInfo} info
+ * @returns {{ code: string | null } | null}
+ */
+export function pingWindow(paths, info) {
+  const res = fetchSync(`http://127.0.0.1:${info.port}/api/ping`, 3000, { headers: { 'X-Menitor-Token': info.token } });
+  if (res.status !== 200 || !res.body) return null;
+  try {
+    const body = JSON.parse(res.body);
+    return body.root === paths.root ? { code: typeof body.code === 'string' ? body.code : null } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Is a window server for this project answering at the address window.json gives?
  * @param {StatePaths} paths
  * @param {WindowInfo} info
  */
 export function isAlive(paths, info) {
-  const res = fetchSync(`http://127.0.0.1:${info.port}/api/ping`, 3000, { headers: { 'X-Menitor-Token': info.token } });
-  if (res.status !== 200 || !res.body) return false;
-  try {
-    return JSON.parse(res.body).root === paths.root;
-  } catch {
-    return false;
-  }
+  return pingWindow(paths, info) !== null;
 }
 
 /**
@@ -82,15 +95,19 @@ export function openBrowser(url, env = process.env) {
 }
 
 /**
- * Start the window server if it isn't running, then return its link (W-1).
+ * Start the window server if it isn't running, then return its link (W-1). A server started from
+ * older code is stopped and started again, since it keeps the code and schemas it began with.
  * @param {StatePaths} paths
  * @param {{ commands?: Record<string, string>, browser?: boolean, env?: NodeJS.ProcessEnv }} [options]
- * @returns {{ url: string, started: boolean, opened: boolean, info: WindowInfo }}
+ * @returns {{ url: string, started: boolean, restarted: boolean, opened: boolean, info: WindowInfo }}
  */
 export function openWindow(paths, options = {}) {
   let info = readWindowInfo(paths);
   let started = false;
-  if (!info || !isAlive(paths, info)) {
+  const ping = info ? pingWindow(paths, info) : null;
+  const restarted = ping !== null && ping.code !== codeFingerprint();
+  if (restarted) stopWindow(paths);
+  if (!info || !ping || restarted) {
     const before = info?.pid;
     const child = spawn(process.execPath, [MAIN, paths.root, JSON.stringify(options.commands ?? {})], {
       detached: true,
@@ -114,7 +131,7 @@ export function openWindow(paths, options = {}) {
   }
   const url = windowUrl(info);
   const opened = options.browser === false ? false : openBrowser(url, options.env);
-  return { url, started, opened, info };
+  return { url, started, restarted, opened, info };
 }
 
 /**
