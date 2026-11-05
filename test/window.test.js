@@ -7,10 +7,8 @@ import path from 'node:path';
 import http from 'node:http';
 import { approvedProject, cli, makeProject } from './helpers.js';
 import { createWindowServer, cleanCommands, windowState } from '../core/server/server.js';
-import { loadProgress } from '../core/lib/state.js';
-import { appBrowser, readWindowInfo } from '../core/lib/window.js';
 import { loadProgress, loadSession } from '../core/lib/state.js';
-import { readWindowInfo } from '../core/lib/window.js';
+import { appBrowser, readWindowInfo } from '../core/lib/window.js';
 import { codeFingerprint } from '../core/lib/fingerprint.js';
 import { claimEvent, readInbox } from '../core/lib/inbox.js';
 
@@ -454,6 +452,8 @@ test('the window opens as an app in the first Chromium browser found, on each pl
 
   assert.equal(appBrowser('win32', { ...winEnv, MENITOR_WINDOW_APP: '0' }, only(edge)), null, 'the setting keeps tabs');
   assert.equal(appBrowser('win32', winEnv, () => false), null, 'none installed: a tab as before');
+});
+
 test('menitor open works from a terminal, with the button commands the last window had', () => {
   const { root, paths, cleanup } = approvedProject();
   try {
