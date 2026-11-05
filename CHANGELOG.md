@@ -1,0 +1,69 @@
+# Changelog
+
+All notable changes to Menitor. Versions follow [Semantic Versioning](https://semver.org/).
+
+## Unreleased
+
+### Added
+
+- **Type-along mode** (`/menitor:typealong`, learner-only):
+  - each step in the window opens to plain instructions and the full code for that step, with line numbers;
+  - the code can't be selected or copied there, so the learner types it by hand;
+  - a step opens when the one before it is ticked, and closes when it is ticked;
+  - the agent writes the code per milestone with `menitor steps import`, into a gitignored `.menitor/solutions.json`;
+  - the window receives a step's code only once that step is open.
+- A `typealong` scenario in the sample project.
+- **Explain-back in the window.** The agent asks with `menitor question ask` and judges with `menitor question judge`. The learner answers in the window or in chat, and the reply and any follow-up show under the answer. Answers are saved as data in `.menitor/answers.json`.
+- **Whose turn it is, in the window.** A banner shows anything holding up the next task:
+  - a delegated task, with a **Start it** button that runs `/menitor:go`;
+  - a skip waiting for the learner's confirm;
+  - anything the agent is waiting on, posted with `menitor waiting`.
+- On phones and tablets, **Before you code** now comes before the steps.
+- **Window buttons drive the session in every Claude Code surface,** including VS Code. The plugin ships an MCP server with one tool, `wait_for_learner`. Claude calls it when the next move is the learner's, and it returns the moment a button is pressed. A press is claimed once, so the wait tool and the monitor never both handle it (ADR 14).
+
+### Changed
+
+- **The task window, redesigned** for phones, the pop-out, tablets and desktops:
+  - one column with the actions in a bar fixed to the bottom on narrow screens, and a 12-column layout with the actions beside the title on wide ones;
+  - the last check's result under the title, where it's read first;
+  - a plan ledger: one cell per task, marked by who did it;
+  - a hint ladder, with pseudocode and snippets set as code;
+  - quieter, read-only steps on delegated tasks;
+  - Instrument Sans, bundled under the SIL Open Font License, so the page still loads nothing from outside.
+- Ticking a step with the keyboard keeps focus on it, and screen readers hear when the task, the check result or the hints change.
+
+## 0.1.0 (2026-11-04)
+
+The first build of v1, ready for its first testers. It covers the v1 scope in the [PRD](docs/prd.md).
+
+### Added
+
+- **Setup** (`/menitor:start`): an interview one question at a time, a warm-up to set the level, focus areas, a stack recommendation, a PRD core drafted by the learner, lean docs from templates, a plan ordered for learning with a deployed walking skeleton first, and learner approval.
+- **The task loop:**
+  - `/menitor:go` resumes from Menitor's files and git, even in a fresh session.
+  - `/menitor:check` runs deterministic checks first, then the review, then explain-back questions.
+  - `/menitor:hint` reveals a four-rung hint ladder, one rung at a time.
+  - `/menitor:stuck` debugs with the learner.
+  - `/menitor:skip` gives one pushback, then hands the task over once the learner confirms.
+- **The guard:**
+  - Hooks deny agent writes to the learner's code on their tasks, even in bypass-permissions mode.
+  - A best-effort shell analyzer, for bash and PowerShell, catches commands that would write their files.
+  - State files in `.menitor/` change only through the CLI.
+  - Skip grants and mentor mode come only from what the learner types.
+  - Every agent command is logged.
+- **The check runner** (`menitor check run`):
+  - the diff since the task started;
+  - build, lint and test, then the task's verify steps, each with a timeout that kills the whole process tree;
+  - deploy URL checks;
+  - commit hygiene and honest `Menitor-Delegated` trailers;
+  - files the agent touched.
+- **The pass gate:** `menitor task pass` requires a clean check at the current commit and, for learner tasks, an explain-back since then. A logged override exists for broken checks.
+- **The task window:**
+  - a live page on 127.0.0.1, protected by a token, a cookie, Host and Origin checks, and a strict CSP;
+  - checklist ticks, milestone progress, and learner-written versus delegated counts;
+  - a Document Picture-in-Picture pop-out;
+  - a layout that works from 320 px.
+- **Window buttons:** Check, Hint and Stuck reach the session through a Claude Code plugin monitor, and copy the command when no session is listening.
+- **The state CLI:** schema-validated, atomic writes; `menitor stats` for the success metrics.
+- **A sample project:** `examples/sample/create.js` builds "Recipe box" with an approved plan, in three scenarios (`start`, `check`, `delegated`), plus a test script.
+- **Docs:** 13 decision records in [docs/adr](docs/adr/README.md), and the [implementation decisions](docs/implementation-decisions.md).

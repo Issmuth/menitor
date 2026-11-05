@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Issmuth/menitor/blob/main/core/schemas/inbox-event.schema.json",
+  "title": "Menitor window event (one line of .menitor/inbox.jsonl)",
+  "description": "A button press in the task window. Appended only by the window server, and only fixed event types: the window never sends free text (W-7).",
+  "type": "object",
+  "required": ["id", "at", "type", "task"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{8,64}$" },
+    "at": { "type": "string" },
+    "type": { "enum": ["check", "hint", "stuck", "go", "answer"] },
+    "task": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9-]{0,31}$" }
+  }
+}

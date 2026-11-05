@@ -1,0 +1,97 @@
+{
+  "project": {
+    "name": "Recipe box",
+    "summary": "A tiny web app to keep and browse recipes.",
+    "stack": ["Node.js 22", "node:http", "node:test"],
+    "hosting": "render"
+  },
+  "checks": { "build": "npm run build", "lint": "npm run lint", "test": "npm test" },
+  "milestones": [
+    {
+      "title": "Walking skeleton",
+      "branch": "feat/skeleton",
+      "tasks": [
+        {
+          "goal": "Serve a home page that shows the app name",
+          "why": "One page that answers proves the server, the route and the tests all work.",
+          "docs": "docs/flow.md#home",
+          "learn": { "label": "Node.js docs: http.createServer", "url": "https://nodejs.org/api/http.html#httpcreateserveroptions-requestlistener" },
+          "focus": ["backend"],
+          "checklist": [
+            "Branch feat/skeleton",
+            "Answer GET / with status 200 and an HTML content type",
+            "Show Recipe box in an h1 heading",
+            "Run npm test until it passes",
+            "Commit: feat(web): add home page"
+          ],
+          "doneWhen": ["npm test passes", "After npm start, http://localhost:3000 shows Recipe box in a heading"],
+          "verify": [{ "run": "node --test test/home.test.js" }]
+        },
+        {
+          "goal": "Add a health check endpoint",
+          "why": "Hosts ping a health URL to know the app is up.",
+          "docs": "docs/data-api.md#get-health",
+          "owner": "delegated",
+          "checklist": [
+            "Answer GET /health with status 200 and a small JSON body",
+            "Add test/health.test.js for it",
+            "Commit: feat(api): add health check"
+          ],
+          "doneWhen": "GET /health returns 200 and the tests pass",
+          "verify": [{ "run": "node --test test/health.test.js" }]
+        },
+        {
+          "goal": "Deploy the skeleton",
+          "why": "Deploying on day one removes the scariest step early. Every later task ships to a real URL.",
+          "docs": "docs/tech.md#hosting",
+          "learn": { "label": "Render docs: deploy a Node web service", "url": "https://render.com/docs/deploy-node-express-app" },
+          "focus": ["deployment"],
+          "checklist": [
+            "Push the repo to GitHub",
+            "Create a free Render web service from the repo",
+            "Set the start command to npm start",
+            "Tell Menitor the public URL when it's live"
+          ],
+          "doneWhen": "The public URL shows Recipe box",
+          "verify": [{ "url": "$deployUrl", "status": 200, "contains": "Recipe box" }]
+        }
+      ]
+    },
+    {
+      "title": "Recipes",
+      "branch": "feat/recipes",
+      "tasks": [
+        {
+          "goal": "List the recipes as JSON at GET /recipes",
+          "why": "A JSON endpoint gives the page, and anything later, one place to read recipes from.",
+          "docs": "docs/data-api.md#get-recipes",
+          "learn": { "label": "Node.js docs: fs.readFile", "url": "https://nodejs.org/api/fs.html#fspromisesreadfilepath-options" },
+          "focus": ["backend"],
+          "checklist": [
+            "Branch feat/recipes",
+            "Add data/recipes.json with three recipes",
+            "Answer GET /recipes with the list as JSON",
+            "Add test/recipes.test.js for it",
+            "Commit: feat(api): list recipes"
+          ],
+          "doneWhen": "GET /recipes returns the three recipes as JSON, and the tests pass",
+          "verify": [{ "run": "node --test test/recipes.test.js" }]
+        },
+        {
+          "goal": "Show the recipes on the home page",
+          "why": "The list is the whole point of the app. Seeing it on the page closes the loop.",
+          "docs": "docs/flow.md#home",
+          "learn": { "label": "MDN: HTML lists", "url": "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ul" },
+          "focus": ["frontend"],
+          "checklist": [
+            "Read the recipes when building the home page",
+            "Show each recipe title in a list",
+            "Show No recipes yet when the list is empty",
+            "Commit: feat(web): show recipes on the home page"
+          ],
+          "doneWhen": ["The home page lists every recipe title", "An empty list shows No recipes yet"]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Issmuth/menitor/blob/main/core/schemas/guard.schema.json",
+  "title": "Menitor guard (.menitor/guard.json)",
+  "description": "Mentor mode and skip grants. Written only by agent-adapter hooks in response to commands the learner typed; the agent and the CLI never write it.",
+  "type": "object",
+  "required": ["version", "mentorMode", "skipRequests", "grants"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "mentorMode": { "enum": ["on", "off"] },
+    "modeChangedAt": { "type": ["string", "null"] },
+    "typeAlong": {
+      "description": "Type-along: the window shows each step's full code for the learner to type. Only the learner turns it on or off.",
+      "type": "boolean"
+    },
+    "skipRequests": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+      "additionalProperties": { "type": "string" }
+    },
+    "grants": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

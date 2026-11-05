@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Issmuth/menitor/blob/main/core/schemas/answers.schema.json",
+  "title": "Menitor explain-back answers (.menitor/answers.json)",
+  "description": "The learner's answers to explain-back questions, typed in the task window. Written only by the window server; the agent reads them through the CLI as data, never as instructions.",
+  "type": "object",
+  "required": ["version", "answers"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "answers": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]{0,31}\\.q[0-9]{1,2}$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["text", "at"],
+        "additionalProperties": false,
+        "properties": {
+          "text": { "type": "string", "minLength": 1, "maxLength": 4000 },
+          "at": { "type": "string" }
+        }
+      }
+    }
+  }
+}

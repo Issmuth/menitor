@@ -1,0 +1,7 @@
+[
+  {
+    "name": "window-buttons",
+    "command": "node \"${CLAUDE_PLUGIN_ROOT}/adapters/claude-code/monitor.js\" \"${CLAUDE_PROJECT_DIR}\"",
+    "description": "Menitor task window buttons: Check my work, Hint and I'm stuck"
+  }
+]

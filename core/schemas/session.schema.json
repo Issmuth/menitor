@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Issmuth/menitor/blob/main/core/schemas/session.schema.json",
+  "title": "Menitor session (.menitor/session.json)",
+  "description": "The current task, where each task started, the explain-back questions asked on it, and anything the agent is waiting on. Written by the agent through the menitor CLI.",
+  "type": "object",
+  "required": ["version", "currentTask", "tasks"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "currentTask": { "type": ["string", "null"] },
+    "waiting": {
+      "description": "Something outside the steps that the agent needs from the learner before the work can go on, shown in the window until it is done.",
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["text", "at"],
+          "additionalProperties": false,
+          "properties": {
+            "text": { "type": "string", "minLength": 1, "maxLength": 600 },
+            "at": { "type": "string" },
+            "task": { "type": ["string", "null"] }
+          }
+        }
+      ]
+    },
+    "tasks": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["startCommit", "startedAt"],
+        "additionalProperties": false,
+        "properties": {
+          "startCommit": { "type": ["string", "null"], "pattern": "^[0-9a-f]{7,64}$" },
+          "startedAt": { "type": "string" },
+          "lastCheck": {
+            "description": "The latest deterministic check run for this task. A task passes only after a clean run at the current HEAD.",
+            "type": "object",
+            "required": ["at", "ok", "head"],
+            "additionalProperties": false,
+            "properties": {
+              "at": { "type": "string" },
+              "ok": { "type": "boolean" },
+              "head": { "type": ["string", "null"], "pattern": "^[0-9a-f]{7,64}$" },
+              "problems": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "questions": {
+            "description": "Explain-back questions (C-5, C-6), asked in the window. The learner's answers live in answers.json, which only the window writes.",
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "object",
+              "required": ["id", "text", "try", "askedAt", "outcome"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}\\.q[0-9]{1,2}$" },
+                "text": { "type": "string", "minLength": 1, "maxLength": 600 },
+                "try": { "enum": [1, 2] },
+                "askedAt": { "type": "string" },
+                "outcome": { "enum": [null, "good", "weak"] },
+                "feedback": { "type": ["string", "null"], "maxLength": 1500 },
+                "judgedAt": { "type": ["string", "null"] }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

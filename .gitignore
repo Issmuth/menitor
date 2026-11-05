@@ -1,0 +1,9 @@
+node_modules/
+*.tmp
+.DS_Store
+# Menitor's own state, if you dogfood Menitor on this repo
+.menitor/
+# Design tooling output (design-taste-frontend skill)
+.taste-skill/
+# Loads this clone as a plugin for dogfooding; holds a path on this machine
+.claude/settings.local.json

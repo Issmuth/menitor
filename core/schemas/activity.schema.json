@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Issmuth/menitor/blob/main/core/schemas/activity.schema.json",
+  "title": "Menitor agent activity (one line of .menitor/activity.jsonl)",
+  "description": "Every shell command and file write the agent ran. Appended only by agent-adapter hooks, so the check can flag project files the agent touched.",
+  "type": "object",
+  "required": ["at", "tool", "task", "writes"],
+  "additionalProperties": false,
+  "properties": {
+    "at": { "type": "string" },
+    "tool": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "task": { "type": ["string", "null"] },
+    "writes": {
+      "description": "Why the agent could write project files at the time: no, delegated, granted, or mentor mode off.",
+      "enum": ["no", "delegated", "granted", "mode-off", "inactive"]
+    },
+    "command": { "type": "string", "maxLength": 2000 },
+    "file": { "type": "string", "maxLength": 500 },
+    "targets": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": ["path", "area", "kind"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "maxLength": 500 },
+          "area": { "enum": ["null", "outside", "docs", "menitor", "state", "build", "project", "unknown"] },
+          "kind": { "enum": ["write", "delete"] }
+        }
+      }
+    },
+    "effects": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 200 } },
+    "changed": { "type": "array", "maxItems": 200, "items": { "type": "string", "maxLength": 500 } }
+  }
+}

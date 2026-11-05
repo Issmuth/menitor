@@ -1,0 +1,29 @@
+{
+  "name": "menitor",
+  "version": "0.1.0",
+  "description": "A Claude Code plugin that runs your project like a sprint and makes you do the work.",
+  "private": true,
+  "license": "MIT",
+  "author": "Ismael (https://github.com/issmuth)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Issmuth/menitor.git"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "menitor": "core/bin/menitor.js"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\"",
+    "typecheck": "tsc -p .",
+    "build:skills": "node adapters/claude-code/build-skills.js",
+    "check": "npm run typecheck && node adapters/claude-code/build-skills.js --check && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3"
+  }
+}

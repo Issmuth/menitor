@@ -1,0 +1,14 @@
+{
+  "t1": {
+    "concept": "A server answers each request with a status code, headers and a body. The browser reads the Content-Type header to know the body is HTML.",
+    "approach": "In handle, check the method and the URL first. For GET /, send status 200 with an HTML content type and a small page. Keep the 404 for everything else.",
+    "pseudocode": "if the request is GET and the path is \"/\":\n  send status 200 with the type text/html\n  send a page whose h1 says Recipe box\n  stop\notherwise:\n  keep the 404",
+    "snippet": "if (req.method === 'GET' && req.url === '/') {\n  res.writeHead(___, { 'Content-Type': '___' });\n  res.end('<!doctype html><title>Recipe box</title><h1>___</h1>');\n  return;\n}"
+  },
+  "t3": {
+    "concept": "A host runs your start command on its own machine and gives the app a public URL. Your server must listen on the port the host chooses.",
+    "approach": "Push the repo to GitHub, then create a free Render web service from it. Use npm start as the start command. The app already reads PORT from the environment.",
+    "pseudocode": "push the code\nconnect the repo on the host\nbuild command: none\nstart command: npm start\nwait for the URL, then open it",
+    "snippet": "Start command: ___\nsrc/server.js already reads the port from process.env.___"
+  }
+}
