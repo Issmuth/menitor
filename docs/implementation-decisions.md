@@ -91,6 +91,7 @@ These settle the ambiguities and open questions in [prd.md](prd.md) before the b
 ## Task window (milestone 5)
 
 - **One server per project.** `menitor window open` starts `core/server/main.js` detached and records the port, pid and token in `.menitor/window.json`. A second `open` reuses a server that answers `/api/ping` for the same project root. A stale `window.json` is replaced.
+- **A session that starts on a task opens the window.** The session-start hook opens it with the same button commands as `/menitor:go` and puts the link in the session context. A browser opens only when the server had to start, and only on a fresh start (`startup` or `clear`): a resume or a compaction gets the link alone. `MENITOR_WINDOW_AUTOSTART=0` turns it off. A window that can't start never blocks the session; the context says why.
 - **A window older than the code is restarted.** A server keeps the code, schemas and page it started with. It reports a fingerprint of `core/lib`, `core/schemas` and `core/server` on `/api/ping`, and `window open` restarts a server whose fingerprint differs from the code on disk. If an old server can't read the state, the page says the window is out of date, not that the state is broken.
 - **Security.**
   - The server binds to 127.0.0.1 and picks a random port.

@@ -100,7 +100,7 @@ In both modes the agent never writes your code, and every check still asks you t
 
 ## The task window
 
-`/menitor:go` opens a page in your browser with one task card. Keep it beside your editor, or pop it out.
+`/menitor:go` opens a page in your browser with one task card. Keep it beside your editor, or pop it out. When a session starts on a task, the window opens by itself; set `MENITOR_WINDOW_AUTOSTART=0` if you'd rather open it yourself.
 
 ![The task window: the desktop layout in light mode, and the pop-out in dark mode](docs/images/window.png)
 
