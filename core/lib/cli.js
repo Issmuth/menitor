@@ -417,8 +417,11 @@ export function run(argv, ioOverrides = {}) {
           } catch (err) {
             throw new MenitorError(/** @type {Error} */ (err).message);
           }
-          if (values.json) json({ url: r.url, started: r.started, opened: r.opened });
-          else io.out(`${r.started ? 'Started the task window' : 'The task window is already running'}: ${r.url}\n${r.opened ? 'Opened it in the browser.' : 'Open that link in a browser on this machine.'}`);
+          if (values.json) json({ url: r.url, started: r.started, restarted: r.restarted, opened: r.opened });
+          else {
+            const what = r.restarted ? "Restarted the task window, which was older than Menitor's code" : r.started ? 'Started the task window' : 'The task window is already running';
+            io.out(`${what}: ${r.url}\n${r.opened ? 'Opened it in the browser.' : 'Open that link in a browser on this machine.'}`);
+          }
           return EXIT.ok;
         }
         if (sub === 'status') {

@@ -43,6 +43,7 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
 ### Fixed
 
 - **Learner-only commands work on the first try in VS Code.** After the learner switched files, VS Code put a note about the open file before the typed text. The hook missed `/menitor:off`, `/menitor:on`, `/menitor:skip` and `/menitor:typealong`, so a second try was needed. The hook now skips that note and the selection note, and a command inside a selection never counts.
+- **A window started before an update no longer calls a healthy plan broken.** It kept checking the plan with the rules it started with. Now `menitor window open` restarts a window that's older than Menitor's code. An old window that can't read the plan says it's out of date.
 
 ## 0.1.0 (2026-11-04)
 
