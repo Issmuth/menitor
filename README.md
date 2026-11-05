@@ -104,6 +104,8 @@ In both modes the agent never writes your code, and every check still asks you t
 
 ![The task window: the desktop layout in light mode, and the pop-out in dark mode](docs/images/window.png)
 
+To open it yourself, without asking the agent, run `menitor open` in your project's folder. Its buttons keep the commands from the last time `/menitor:go` opened it. To get the `menitor` command, run `npm link` once in the folder Menitor is installed in: your clone, or the plugin's folder under `~/.claude/plugins/`. In a Claude Code session, `! menitor open` runs it straight away.
+
 - **Live:** it updates as soon as anything changes. You never need to reload.
 - **Ticks:** tick checklist items as you go. Fixes from a failed check appear as new items.
 - **Explain your code:** when a check asks about your code, the question appears in the window with an answer box. Send your answer there, or in your session. Menitor's reply, and any follow-up question, show up under it. When the task passes, the replies stay on screen until you press **Continue**.

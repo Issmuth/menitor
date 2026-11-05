@@ -26,7 +26,7 @@ import { planProblems } from './plan.js';
  * @typedef {{ at: string, ok: boolean, head: string | null, problems?: number }} LastCheck
  * @typedef {{ id: string, text: string, try: 1 | 2, askedAt: string, outcome: null | 'good' | 'weak', feedback?: string | null, judgedAt?: string | null }} Question
  * @typedef {{ text: string, at: string, task?: string | null }} Waiting
- * @typedef {{ version: 1, currentTask: string | null, waiting?: Waiting | null, tasks: Record<string, { startCommit: string | null, startedAt: string, lastCheck?: LastCheck, questions?: Question[] }> }} Session
+ * @typedef {{ version: 1, currentTask: string | null, windowCommands?: Record<string, string>, waiting?: Waiting | null, tasks: Record<string, { startCommit: string | null, startedAt: string, lastCheck?: LastCheck, questions?: Question[] }> }} Session
  * @typedef {{ version: 1, answers: Record<string, { text: string, at: string }> }} Answers
  * @typedef {{ version: 1, ticks: Record<string, string>, seen?: Record<string, string> }} Progress
  * @typedef {{ version: 1, mentorMode: 'on' | 'off', modeChangedAt?: string | null, typeAlong?: boolean, skipRequests: Record<string, string>, grants: Record<string, string> }} Guard
