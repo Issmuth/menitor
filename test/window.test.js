@@ -211,6 +211,20 @@ test('a finished plan gets its summary from real figures, and an added task brin
     assert.equal(again.phase, 'task', 'the card is back');
     assert.equal(again.finish, null);
   } finally {
+    cleanup();
+  }
+});
+
+test('the page has a view for every screen the server sends', () => {
+  // Merges have dropped a branch of render() before; the server tests can't see that.
+  const app = fs.readFileSync(new URL('../core/server/page/app.js', import.meta.url), 'utf8');
+  const chain = /function render\(s\) \{[\s\S]*?content\.replaceChildren/.exec(app)?.[0] ?? '';
+  for (const view of ['problemView', 'resultView', 'taskView', 'finishView', 'messageView']) {
+    assert.match(chain, new RegExp(`view = ${view}\\(`), `render() shows ${view}`);
+  }
+  assert.ok(chain.indexOf('resultView(') < chain.indexOf('taskView('), 'a passed result shows before the next card');
+});
+
 test('a press shows as sent, then working, then done; a second press meanwhile sends nothing', async () => {
   const { root, paths, cleanup } = approvedProject();
   const win = createWindowServer(root, { commands: { check: '/menitor:check' } });
