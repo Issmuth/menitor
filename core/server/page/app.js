@@ -863,6 +863,7 @@ function announceChanges(prev, s) {
   if (prev && s.finish && !s.result && !prev.finish) {
     announce(`Every task is done. ${s.written.learner} of ${s.total} written by you.`);
     return;
+  }
   const p = pressOf(s);
   const was = pressOf(prev);
   if (p && s.card && (p.at !== was?.at || p.state !== was?.state)) {
@@ -922,6 +923,7 @@ function render(s) {
   if (!s.ok && s.stale) {
     view = problemView('This window is out of date', 'Menitor was updated after this window started, so it reads your plan with old rules. Ask your coding session to open the window again.');
   } else if (!s.ok) view = problemView("Menitor's state has a problem", `${s.error} Ask your coding session to validate Menitor's state and fix it.`);
+  else if (s.result) view = resultView(s);
   else if (s.phase === 'task' && s.card) view = taskView(s);
   else if (s.phase === 'done' && s.finish) view = finishView(s);
   else view = messageView(s);
