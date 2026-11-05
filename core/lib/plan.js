@@ -224,7 +224,7 @@ export function insertTask(plan, input, options) {
   if (position <= locked) {
     const blocker = entries[locked].task;
     const why = blocker.status === 'done' ? 'is done' : 'is the current task';
-    throw refused(`A new task can't go before ${blocker.id}, which is ${why}. Put it after ${blocker.id} or later.`);
+    throw refused(`A new task can't go before ${blocker.id}, which ${why}. Put it after ${blocker.id} or later.`);
   }
 
   milestone.tasks.splice(index, 0, task);
