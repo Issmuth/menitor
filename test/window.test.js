@@ -3,9 +3,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import path from 'node:path';
 import http from 'node:http';
 import { approvedProject, cli, makeProject } from './helpers.js';
 import { createWindowServer, cleanCommands, windowState } from '../core/server/server.js';
+import { loadProgress } from '../core/lib/state.js';
+import { appBrowser, readWindowInfo } from '../core/lib/window.js';
 import { loadProgress, loadSession } from '../core/lib/state.js';
 import { readWindowInfo } from '../core/lib/window.js';
 import { codeFingerprint } from '../core/lib/fingerprint.js';
@@ -433,6 +436,24 @@ test('a window older than the code says it is out of date, not that the state is
   }
 });
 
+test('the window opens as an app in the first Chromium browser found, on each platform', () => {
+  const only = (/** @type {string} */ found) => (/** @type {string} */ p) => p === found;
+  // Windows: env names in any case, as a copied environment keeps them.
+  const winEnv = { ProgramFiles: 'C:\\Program Files', 'ProgramFiles(x86)': 'C:\\Program Files (x86)', LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local' };
+  const edge = path.win32.join('C:\\Program Files (x86)', 'Microsoft\\Edge\\Application\\msedge.exe');
+  assert.equal(appBrowser('win32', winEnv, only(edge)), edge);
+  const chrome = path.win32.join('C:\\Users\\me\\AppData\\Local', 'Google\\Chrome\\Application\\chrome.exe');
+  assert.equal(appBrowser('win32', winEnv, (p) => p === chrome || p === edge), chrome, 'Chrome before Edge');
+
+  const mac = '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge';
+  assert.equal(appBrowser('darwin', {}, only(mac)), mac);
+
+  const linux = '/usr/bin/chromium';
+  assert.equal(appBrowser('linux', { PATH: '/usr/local/bin:/usr/bin', DISPLAY: ':0' }, only(linux)), linux);
+  assert.equal(appBrowser('linux', { PATH: '/usr/bin' }, only(linux)), null, 'no desktop, no window');
+
+  assert.equal(appBrowser('win32', { ...winEnv, MENITOR_WINDOW_APP: '0' }, only(edge)), null, 'the setting keeps tabs');
+  assert.equal(appBrowser('win32', winEnv, () => false), null, 'none installed: a tab as before');
 test('menitor open works from a terminal, with the button commands the last window had', () => {
   const { root, paths, cleanup } = approvedProject();
   try {

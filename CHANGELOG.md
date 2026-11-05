@@ -20,6 +20,7 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
   - a delegated task, with a **Start it** button that runs `/menitor:go`;
   - a skip waiting for the learner's confirm;
   - anything the agent is waiting on, posted with `menitor waiting`.
+- **The window opens as its own app window** in Chrome, Edge, Chromium or Brave, with no tabs or address bar. Without one, or with `MENITOR_WINDOW_APP=0`, it opens in a tab as before.
 - On phones and tablets, **Before you code** now comes before the steps.
 - **A finish screen for a finished plan.** When every task passes, the window celebrates it with real figures: how many tasks you wrote, what Menitor did, hints opened and your explain-back record. Below that, every task and who did it, and a button to open your live app. Adding a task brings the card back.
 - **See that Menitor is working after a button press.** The pressed button says what's happening ("Checking…"), the line beside the buttons says it in words, and the other buttons wait, so a second press sends nothing. When Menitor is done, the line says what comes next. A new `Stop` hook records when the agent ends its turn.
