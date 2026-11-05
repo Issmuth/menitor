@@ -63,6 +63,51 @@ function check(root, args = []) {
 
 const ok = (/** @type {number} */ code) => `node -e "process.exit(${code})"`;
 
+test('with a branch per task, a task is measured from where its own branch starts', async () => {
+  const { root, cleanup } = await shapedProject((plan) => {
+    plan.checks = { build: null, lint: null, test: null };
+  });
+  const g = (/** @type {string[]} */ ...args) => execFileSync('git', ['-c', 'user.name=Learner', '-c', 'user.email=l@example.com', ...args], { cwd: root, encoding: 'utf8' }).trim();
+  const trunk = g('symbolic-ref', '--short', 'HEAD');
+  const files = (/** @type {any} */ r) => r.files.map((/** @type {any} */ f) => `${f.change} ${f.path}`);
+  const subjects = (/** @type {any} */ r) => r.commits.map((/** @type {any} */ c) => c.subject);
+  /** Commit only the task's own file: Menitor's state changes stay out of the branches. */
+  const commitFile = (/** @type {string} */ file, /** @type {string} */ message) => {
+    g('add', file);
+    g('commit', '-q', '-m', message);
+  };
+  try {
+    // Task 1 on its own branch. Passing it records task 2's start: the tip of task/a.
+    g('checkout', '-q', '-b', 'task/a');
+    write(root, 'a.txt', 'a\n');
+    commitFile('a.txt', 'feat: a');
+    cli(root, ['task', 'pass', '--override', 't']);
+
+    // Task 2 on a sibling branch from the trunk, with task/a not merged yet.
+    g('checkout', '-q', trunk);
+    g('checkout', '-q', '-b', 'task/b');
+    write(root, 'b.txt', 'b\n');
+    commitFile('b.txt', 'feat: b');
+    let r = check(root, ['--no-commands']);
+    assert.deepEqual(files(r), ['A b.txt'], "task/a's work does not show, not even as deleted");
+    assert.deepEqual(subjects(r), ['feat: b']);
+    cli(root, ['task', 'pass', '--override', 't']);
+
+    // Both merge into the trunk, and task 3 branches from there.
+    g('checkout', '-q', trunk);
+    g('merge', '-q', '--no-ff', 'task/a', '-m', 'Merge task/a');
+    g('merge', '-q', '--no-ff', 'task/b', '-m', 'Merge task/b');
+    g('checkout', '-q', '-b', 'task/c');
+    write(root, 'c.txt', 'c\n');
+    commitFile('c.txt', 'feat: c');
+    r = check(root, ['--no-commands']);
+    assert.deepEqual(files(r), ['A c.txt'], 'work merged in from other tasks is not counted as this one');
+    assert.deepEqual(subjects(r), ['feat: c']);
+  } finally {
+    cleanup();
+  }
+});
+
 test('npm scripts are recognized so missing ones can be skipped', () => {
   assert.equal(npmScriptOf('npm run build'), 'build');
   assert.equal(npmScriptOf('npm test'), 'test');

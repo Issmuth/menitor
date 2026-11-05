@@ -148,6 +148,36 @@ export function collectChanges(root, base) {
 }
 
 /**
+ * @param {string} root
+ * @param {string} a
+ * @param {string} b
+ */
+function isAncestor(root, a, b) {
+  return git(root, ['merge-base', '--is-ancestor', a, b]) !== null;
+}
+
+/**
+ * Where this task's own work begins. Usually that's the start commit recorded when the task began.
+ * With a branch per task, the start can be the previous task's tip on another branch: a sibling of
+ * this one, or merged in later along with other tasks' work. Then the task's work begins where its
+ * own branch forked: the parent of the oldest commit that no other branch has.
+ * @param {string} root
+ * @param {string | null} startCommit
+ * @param {string | null} branch the current branch; null when HEAD is detached
+ * @returns {string | null}
+ */
+export function taskBase(root, startCommit, branch) {
+  if (!startCommit || !branch) return startCommit;
+  const linear = isAncestor(root, startCommit, 'HEAD') && !git(root, ['rev-list', '--merges', '-n', '1', `${startCommit}..HEAD`]);
+  if (linear) return startCommit;
+  const own = git(root, ['rev-list', '--reverse', 'HEAD', '--not', `--exclude=${branch}`, '--branches', `--exclude=*/${branch}`, '--remotes']);
+  if (own === null) return startCommit;
+  const oldest = own.split('\n').find(Boolean);
+  const fork = oldest ? git(root, ['rev-parse', '--verify', '--quiet', `${oldest}^`]) : git(root, ['rev-parse', 'HEAD']);
+  return fork || git(root, ['merge-base', startCommit, 'HEAD']) || startCommit;
+}
+
+/**
  * Commits from the base to HEAD, oldest first, without merges.
  * @param {string} root
  * @param {string | null} startCommit
@@ -390,7 +420,10 @@ export function runCheck(input, options = {}) {
 
   const repo = git(root, ['rev-parse', '--is-inside-work-tree']) === 'true';
   const head = repo ? headCommit(root) : null;
-  const base = startCommit ?? (head ? EMPTY_TREE : null);
+  const currentBranch = repo ? git(root, ['symbolic-ref', '--short', '-q', 'HEAD']) : null;
+  // The task's own work, even when the start sits on another task's branch.
+  const ownStart = repo ? taskBase(root, startCommit, currentBranch) : startCommit;
+  const base = ownStart ?? (head ? EMPTY_TREE : null);
 
   // C-2: project checks first, then the task's own verify steps.
   /** @type {CommandResult[]} */
@@ -420,9 +453,8 @@ export function runCheck(input, options = {}) {
   }
 
   // G-6, G-7, H-8: commits, branch and honest trailers.
-  const commits = repo ? collectCommits(root, startCommit, head) : [];
+  const commits = repo ? collectCommits(root, ownStart, head) : [];
   const expectedBranch = task.branch ?? milestone.branch ?? null;
-  const currentBranch = repo ? git(root, ['symbolic-ref', '--short', '-q', 'HEAD']) : null;
   /** @type {string[]} */
   let uncommitted = [];
   if (!repo) {
