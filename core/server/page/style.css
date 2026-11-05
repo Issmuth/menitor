@@ -249,6 +249,43 @@ pre {
   opacity: 0.55;
 }
 
+/* A press on its way or being worked on: the button says what it's doing, with a slow pulse. */
+.btn.busy {
+  cursor: progress;
+}
+
+.btn.busy::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: press-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes press-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* While a press is pending, its line shows at every width, on a row of its own, even where the
+ * line about how buttons work is hidden. */
+.actions.pending {
+  flex-wrap: wrap;
+}
+
+.actions .how.working {
+  display: block;
+  flex-basis: 100%;
+  margin-right: 0;
+  color: var(--text);
+}
+
 /* The shell: a tinted top bar, then the white sheet */
 
 .app {

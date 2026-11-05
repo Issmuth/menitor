@@ -9,6 +9,7 @@ import { createWindowServer, cleanCommands, windowState } from '../core/server/s
 import { loadProgress } from '../core/lib/state.js';
 import { readWindowInfo } from '../core/lib/window.js';
 import { codeFingerprint } from '../core/lib/fingerprint.js';
+import { claimEvent, readInbox } from '../core/lib/inbox.js';
 
 /**
  * A raw HTTP request, so tests can set any Host or Origin header.
@@ -210,6 +211,44 @@ test('a finished plan gets its summary from real figures, and an added task brin
     assert.equal(again.phase, 'task', 'the card is back');
     assert.equal(again.finish, null);
   } finally {
+test('a press shows as sent, then working, then done; a second press meanwhile sends nothing', async () => {
+  const { root, paths, cleanup } = approvedProject();
+  const win = createWindowServer(root, { commands: { check: '/menitor:check' } });
+  const port = await win.listen(0);
+  const auth = { 'X-Menitor-Token': win.token };
+  /** @param {string} path @param {unknown} body */
+  const post = (path, body) => request(port, { method: 'POST', path, headers: { ...auth, 'Content-Type': 'application/json', Origin: `http://127.0.0.1:${port}` }, body: JSON.stringify(body) });
+  /** A session listening for presses, which started listening at `startedAt`. */
+  const listen = (/** @type {number} */ startedAt) => fs.writeFileSync(paths.listener, JSON.stringify({ version: 1, pid: process.pid, beatAt: new Date().toISOString(), startedAt: new Date(startedAt).toISOString(), agent: 'test' }));
+  const state = () => windowState(paths, { commands: {} });
+  try {
+    listen(Date.now() - 60000);
+    assert.equal(state().press, null, 'nothing pressed yet');
+    assert.equal(JSON.parse((await post('/api/event', { type: 'check' })).body).delivered, true);
+    assert.deepEqual([state().press?.type, state().press?.state], ['check', 'sent']);
+
+    const [event] = readInbox(paths);
+    assert.ok(claimEvent(paths, event.id), 'the session picks it up');
+    assert.equal(state().press?.state, 'working');
+    const again = JSON.parse((await post('/api/event', { type: 'hint' })).body);
+    assert.equal(again.busy, true);
+    assert.equal(readInbox(paths).length, 1, 'a second press while it works sends nothing');
+
+    // The agent ends its turn: the adapter's hook records it in the activity log.
+    const pause = () => new Promise((r) => setTimeout(r, 30));
+    await pause();
+    fs.appendFileSync(paths.activity, `${JSON.stringify({ at: new Date().toISOString(), tool: 'turn-end', task: 't1', writes: 'no' })}\n`);
+    assert.equal(state().press?.state, 'done');
+    await pause();
+
+    // Listening again after the claim also means the agent is done with the press.
+    assert.equal(JSON.parse((await post('/api/event', { type: 'stuck' })).body).delivered, true);
+    claimEvent(paths, readInbox(paths).at(-1)?.id ?? '');
+    assert.equal(state().press?.state, 'working');
+    listen(Date.now() + 1000);
+    assert.equal(state().press?.state, 'done');
+  } finally {
+    await win.close();
     cleanup();
   }
 });

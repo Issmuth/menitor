@@ -126,11 +126,17 @@ async function onTick(item, box) {
  */
 async function onAction(type, e) {
   const doc = docOf(e);
+  if (busyPress(state)) return;
   try {
     const r = await post('/api/event', { type });
+    if (r.busy) {
+      showToast('Menitor is still working on your last press.', undefined, doc);
+      return;
+    }
     if (r.delivered) {
-      const what = { check: 'check your work', hint: 'give you the next hint', stuck: 'help you debug', go: 'start this task' }[type];
-      showToast(`Sent. Your session will ${what} now.`, undefined, doc);
+      // Show it as sent at once; the server's next state takes over within a moment.
+      localPress = { type, at: new Date().toISOString(), claimedAt: null, state: 'sent', doneAt: null };
+      render(state);
       return;
     }
     let copied = false;
@@ -162,15 +168,92 @@ function findingOf(s) {
   return { tone: 'bad', text: `The last check found ${plural(lc.problems ?? 0, 'thing')} to fix` };
 }
 
+/** What a press is doing, in the button and in words. */
+const PRESS_WORDS = /** @type {Record<string, { busy: string, doing: string }>} */ ({
+  check: { busy: 'Checking…', doing: 'Menitor is checking your work.' },
+  hint: { busy: 'Writing…', doing: 'Menitor is writing your next hint.' },
+  stuck: { busy: 'Looking…', doing: 'Menitor is looking at what went wrong.' },
+  go: { busy: 'Starting…', doing: 'Menitor is working on this task.' },
+});
+/** A press shows as done for this long, saying what comes next. */
+const DONE_SHOWN_MS = 2 * 60 * 1000;
+/** A press this page just sent, until the server's state shows it. */
+/** @type {any} */
+let localPress = null;
+
+/**
+ * The press to show: the server's, or the one this page just sent if the server hasn't seen it yet.
+ * @param {any} s
+ */
+function pressOf(s) {
+  if (s?.press && (!localPress || s.press.at >= localPress.at)) return s.press;
+  return localPress && Date.now() - Date.parse(localPress.at) < 10000 ? localPress : (s?.press ?? null);
+}
+
+/** @param {any} s A press that is still on its way or being worked on. */
+function busyPress(s) {
+  const p = pressOf(s);
+  return p && p.state !== 'done' ? p : null;
+}
+
+/**
+ * A button that sends a press. While a press is pending, the pressed one shows what it's doing and
+ * the others wait; nothing more is sent.
+ * @param {any} s
+ * @param {'check' | 'hint' | 'stuck' | 'go'} type
+ * @param {string} label
+ * @param {string} kind
+ */
+function pressButton(s, type, label, kind) {
+  const busy = busyPress(s);
+  const mine = busy?.type === type;
+  return h(
+    'button',
+    {
+      type: 'button',
+      class: `btn ${kind}${mine ? ' busy' : ''}`,
+      'data-key': `act:${type}`,
+      disabled: Boolean(busy && !mine),
+      'aria-disabled': mine ? 'true' : undefined,
+      'aria-busy': mine ? 'true' : undefined,
+      onclick: (/** @type {Event} */ e) => onAction(type, e),
+    },
+    mine ? (busy.state === 'sent' ? 'Sent' : PRESS_WORDS[type].busy) : label,
+  );
+}
+
+/**
+ * The line above the buttons: what a press is doing, what comes next once it's done, or how the
+ * buttons reach the session.
+ * @param {any} s
+ */
+function pressLine(s) {
+  const p = pressOf(s);
+  if (p?.state === 'sent') return { busy: true, text: 'Sent. Waiting for your session to pick it up.' };
+  if (p?.state === 'working') return { busy: true, text: PRESS_WORDS[p.type].doing };
+  if (p?.state === 'done' && p.doneAt && Date.now() - Date.parse(p.doneAt) < DONE_SHOWN_MS && s.card) {
+    const checked = s.lastCheck?.at && p.claimedAt && s.lastCheck.at >= p.claimedAt;
+    const next = {
+      check: checked ? `${findingOf(s).text}.` : 'See your session for what it found.',
+      hint: 'Your hint is open below.',
+      stuck: 'The next step is in your session.',
+      go: '',
+    }[/** @type {string} */ (p.type)];
+    return { busy: false, text: `Menitor is done. ${next}`.trim() };
+  }
+  return { busy: false, text: s.listening ? 'Menitor is listening: buttons go straight to your session.' : "Menitor isn't listening right now, so buttons copy the command." };
+}
+
 /** @param {any} s The buttons; fixed to the bottom on narrow screens, beside the title on wide ones. */
 function actions(s) {
+  const line = pressLine(s);
   return h(
     'div',
-    { class: 'actions' },
-    h('p', { class: 'how' }, s.listening ? 'Menitor is listening: buttons go straight to your session.' : "Menitor isn't listening right now, so buttons copy the command."),
-    s.typeAlong ? null : h('button', { type: 'button', class: 'btn secondary', 'data-key': 'act:hint', onclick: (/** @type {Event} */ e) => onAction('hint', e) }, 'Hint'),
-    h('button', { type: 'button', class: 'btn secondary', 'data-key': 'act:stuck', onclick: (/** @type {Event} */ e) => onAction('stuck', e) }, "I'm stuck"),
-    h('button', { type: 'button', class: `btn ${openQuestion(s) ? 'secondary' : 'primary'}`, 'data-key': 'act:check', onclick: (/** @type {Event} */ e) => onAction('check', e) }, 'Check my work'),
+    { class: `actions${line.busy ? ' pending' : ''}` },
+    h('p', { class: `how${line.busy ? ' working' : ''}` }, line.text),
+    s.typeAlong ? null : pressButton(s, 'hint', 'Hint', 'secondary'),
+    pressButton(s, 'stuck', "I'm stuck", 'secondary'),
+    pressButton(s, 'check', 'Check my work', openQuestion(s) ? 'secondary' : 'primary'),
   );
 }
 
@@ -302,7 +385,7 @@ function turnView(s) {
         asked
           ? `Asked at ${clock(asked)}. Menitor is working on this task; your next one shows here when it's done.`
           : `${c.skipped ? 'You skipped this task' : 'This task is outside your focus areas'}, so Menitor does it. Start it, and your next task shows here when it's done.`,
-        h('button', { type: 'button', class: `btn ${asked ? 'secondary' : 'primary'}`, 'data-key': 'act:go', onclick: (/** @type {Event} */ e) => onAction('go', e) }, asked ? 'Ask again' : 'Start it'),
+        pressButton(s, 'go', asked ? 'Ask again' : 'Start it', asked ? 'secondary' : 'primary'),
       ),
     );
   }
@@ -780,6 +863,17 @@ function announceChanges(prev, s) {
   if (prev && s.finish && !s.result && !prev.finish) {
     announce(`Every task is done. ${s.written.learner} of ${s.total} written by you.`);
     return;
+  const p = pressOf(s);
+  const was = pressOf(prev);
+  if (p && s.card && (p.at !== was?.at || p.state !== was?.state)) {
+    if (p.state === 'working') {
+      announce(PRESS_WORDS[p.type].doing);
+      return;
+    }
+    if (p.state === 'done' && was && was.state !== 'done') {
+      announce(pressLine(s).text);
+      return;
+    }
   }
   if (prev?.result && !s.result && s.card) {
     announce(`Now on task ${s.card.number} of ${s.card.total}: ${s.card.goal}`);
@@ -923,4 +1017,12 @@ function setupPopout() {
 
 guardDocumentCopy(document);
 setupPopout();
+// A press's words change with time alone: "done" fades back to the usual line, and a press this
+// page sent stops showing if the server never saw it. Re-render only when the line would change.
+setInterval(() => {
+  if (!state?.ok || !state.card || state.result) return;
+  const shown = content.querySelector('.actions .how')?.textContent;
+  if (shown !== undefined && shown !== pressLine(state).text) render(state);
+}, 5000);
+
 connect();
