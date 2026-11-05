@@ -55,7 +55,8 @@ These settle the ambiguities and open questions in [prd.md](prd.md) before the b
 
 ## Guard details (milestone 2)
 
-- **Learner commands come from `UserPromptSubmit`.** That hook receives the line exactly as typed, such as `/menitor:skip --confirm`. Only `/menitor:skip`, `/menitor:off` and `/menitor:on` change the guard, and a `Skill` call naming them is denied.
+- **Learner commands come from `UserPromptSubmit`.** That hook receives the line as typed, such as `/menitor:skip --confirm`. Only `/menitor:skip`, `/menitor:off` and `/menitor:on` change the guard, and a `Skill` call naming them is denied.
+- **IDE notes come first.** In VS Code, after the learner switches files, the prompt starts with an `<ide_opened_file>` or `<ide_selection>` note, then a newline, then the typed text. The hook skips those notes before reading the command. A command inside a note never counts.
 - **A confirm counts only after a request.** `/menitor:skip --confirm` with no earlier `/menitor:skip` for that task counts as the request, so the pushback (H-6) always happens once.
 - **Protected state files.** These are any `.json` or `.jsonl` file directly in `.menitor/`, plus `learner.md`, `log.md` and `.gitignore`. Subfolders such as `.menitor/warmup/` stay writable.
 - **Write areas.** Paths outside the project, `/dev/null`, `docs/` and `.menitor/` subfolders are always fine. Deleting build output (`node_modules`, `dist`, `.next` and similar) is fine. A path with a variable at its start, or with an unknown working folder, counts as project code.

@@ -14,7 +14,6 @@ A `UserPromptSubmit` hook reads the line the learner typed, such as `/menitor:sk
 - `/menitor:skip --confirm` after that request records a grant for that one task.
 - A confirm with no earlier request counts as the request, so the pushback always happens.
 - `/menitor:off` and `/menitor:on` set mentor mode.
-- In VS Code, the prompt can start with a note about the open file or the selection. The hook skips those notes, then reads the command. A command inside a note never counts.
 
 The skills are typed-only (`disable-model-invocation`), and a `Skill` call naming them is denied. `menitor task skip` refuses without a grant.
 
