@@ -8,7 +8,7 @@ import http from 'node:http';
 import { approvedProject, cli, makeProject } from './helpers.js';
 import { createWindowServer, cleanCommands, windowState } from '../core/server/server.js';
 import { loadProgress, loadSession } from '../core/lib/state.js';
-import { appBrowser, readWindowInfo } from '../core/lib/window.js';
+import { appArgs, appBrowser, readWindowInfo } from '../core/lib/window.js';
 import { codeFingerprint } from '../core/lib/fingerprint.js';
 import { claimEvent, readInbox } from '../core/lib/inbox.js';
 
@@ -452,6 +452,19 @@ test('the window opens as an app in the first Chromium browser found, on each pl
 
   assert.equal(appBrowser('win32', { ...winEnv, MENITOR_WINDOW_APP: '0' }, only(edge)), null, 'the setting keeps tabs');
   assert.equal(appBrowser('win32', winEnv, () => false), null, 'none installed: a tab as before');
+});
+
+test('the app window opens full screen in its own browser profile, unless turned off', () => {
+  const url = 'http://127.0.0.1:5000/?t=x';
+  const args = appArgs(url, {});
+  assert.equal(args[0], `--app=${url}`);
+  assert.ok(args.includes('--start-fullscreen'));
+  // A browser that is already running ignores start-up flags, so the window gets a profile of its own.
+  const profile = args.find((a) => a.startsWith('--user-data-dir='));
+  assert.ok(profile?.endsWith('menitor-browser'), profile);
+  assert.ok(args.includes('--no-first-run'));
+
+  assert.deepEqual(appArgs(url, { MENITOR_WINDOW_FULLSCREEN: '0' }), [`--app=${url}`], 'off: a normal app window in the usual profile');
 });
 
 test('menitor open works from a terminal, with the button commands the last window had', () => {
