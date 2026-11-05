@@ -30,6 +30,7 @@ export const MAX_PLAN_ITEMS = 6;
  * @property {'todo' | 'done'} status
  * @property {string | null} [passedAt]
  * @property {string | null} [note]
+ * @property {string | null} [added]
  * @typedef {object} Milestone
  * @property {string} id
  * @property {string} title
@@ -75,6 +76,40 @@ export function normalizeHints(input) {
 }
 
 /**
+ * Fill in defaults and checklist IDs on one short-form task.
+ * @param {Record<string, any>} t
+ * @param {string} id
+ * @returns {Task} 
+ */
+export function normalizeTask(t, id) {
+  let itemNumber = 0;
+  const checklist = Array.isArray(t.checklist)
+    ? t.checklist.map((item) => {
+        itemNumber += 1;
+        const it = typeof item === 'string' ? {text: item} : item;
+        if (!isObject(it)) return it;
+        return { id: `${id}.c${itemNumber}`, text: item.text, source: 'plan', ...it};
+    })
+    : t.checklist;
+  return /** @type {Task} */ ({
+    ...t,
+    id,
+    learn: typeof t.learn === 'string' ? {label: t.learn} : t.learn,
+    focus: t.focus ?? [],
+    owner: t.owner ?? 'learner',
+    skipped: t.skipped ?? false,
+    checklist,
+    doneWhen: typeof t.doneWhen === 'string' ? [t.doneWhen] : t.doneWhen,
+    verify: t.verify ?? [],
+    hints: normalizeHints(t.hints),
+    hintsRevealed: t.hintsRevealed ?? 0,
+    status: t.status ?? 'todo',
+    passedAt: t.passedAt ?? null,
+    note: t.note ?? null,
+  })
+}
+
+/**
  * Fill in defaults and IDs on a draft plan so the agent can write the short form.
  * Unknown fields pass through untouched so validation can name them.
  * @param {unknown} raw
@@ -91,32 +126,7 @@ export function normalizePlanInput(raw) {
       ? m.tasks.map((t) => {
           if (!isObject(t)) return t;
           taskNumber += 1;
-          const id = typeof t.id === 'string' ? t.id : `t${taskNumber}`;
-          let itemNumber = 0;
-          const checklist = Array.isArray(t.checklist)
-            ? t.checklist.map((item) => {
-                itemNumber += 1;
-                const it = typeof item === 'string' ? { text: item } : item;
-                if (!isObject(it)) return it;
-                return { id: `${id}.c${itemNumber}`, text: it.text, source: 'plan', ...it };
-              })
-            : t.checklist;
-          return {
-            ...t,
-            id,
-            learn: typeof t.learn === 'string' ? { label: t.learn } : t.learn,
-            focus: t.focus ?? [],
-            owner: t.owner ?? 'learner',
-            skipped: t.skipped ?? false,
-            checklist,
-            doneWhen: typeof t.doneWhen === 'string' ? [t.doneWhen] : t.doneWhen,
-            verify: t.verify ?? [],
-            hints: normalizeHints(t.hints),
-            hintsRevealed: t.hintsRevealed ?? 0,
-            status: t.status ?? 'todo',
-            passedAt: t.passedAt ?? null,
-            note: t.note ?? null,
-          };
+          return normalizeTask(t, typeof t.id === 'string' ? t.id : `t${taskNumber}`);
         })
       : m.tasks;
     return {
@@ -171,6 +181,54 @@ export function findTask(plan, id) {
  */
 export function nextTodo(plan) {
   return allTasks(plan).find((e) => e.task.status !== 'done') ?? null;
+}
+
+/**
+ * The next free ID for a prefix, such as t9 when t8 is the highest. ID are never reused or renumbered.
+ * @param {string[]} ids
+ * @param {string} prefix
+ */
+export function nextId(ids, prefix) {
+  const numbers = ids.flatMap((id) => {
+    const m = new RegExp(`${prefix}(\\d+)$`).exec(id);
+    return m ? [Number(m[1])] : [];
+  });
+  return `${prefix}${Math.max(0, ...numbers) + 1}`;
+}
+
+/**
+ * Insert a new task without touching any other task. "after" names a task, and the new one goes
+ * right after it, or a milestone, and it goes at the end. Returns a new plan; the input stays as it is.
+ * @param {Plan} plan
+ * @param {unknown} input one task in the short form a plan import takes
+ * @param {{ after: string, current: string | null, now?: Date }} options
+ * @returns {{ plan: Plan, task: Task, milestone: Milestone }}
+ */
+export function insertTask(plan, input, options) {
+  if (!isObject(input)) throw new MenitorError('The new task must be a json object');
+  const entries = allTasks(plan);
+  const id = nextId(entries.map((e) => e.task.id), 't');
+  const added = (options.now ?? new Date()).toISOString();
+  const task = normalizeTask({...input, status: 'todo', passedAt: null, added}, id);
+  const copy = structuredClone(plan);
+  
+  const anchor = entries.find((e) => e.task.id === options.after);
+  const milestone = copy.milestones.find((m) => m.id === (anchor ? anchor.milestone.id : options.after));
+  if (!milestone) throw new MenitorError(`No task or milestone "${options.after}" in the plan`);
+  const index = anchor ? milestone.tasks.findIndex((t) => t.id === anchor.task.id) + 1 : milestone.tasks.length;
+  const milestonesBefore = copy.milestones.slice(0, copy.milestones.indexOf(milestone));
+  const position = milestonesBefore.reduce((n, m) => n + m.tasks.length, 0) + index;
+
+  // The past and present are fixed: nothing lands before a done task or the current task.
+  const locked = entries.findLastIndex((e) => e.task.status === 'done' || e.task.id === options.current);
+  if (position <= locked) {
+    const blocker = entries[locked].task;
+    const why = blocker.status === 'done' ? 'is done' : 'is the current task';
+    throw refused(`A new task can't go before ${blocker.id}, which is ${why}. Put it after ${blocker.id} or later.`);
+  }
+
+  milestone.tasks.splice(index, 0, task);
+  return { plan: copy, task, milestone };
 }
 
 /**
