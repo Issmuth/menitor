@@ -50,6 +50,7 @@ test('frontmatter: names, descriptions and learner-only commands', () => {
   }
   for (const name of ['start', 'skip', 'off', 'on', 'typealong']) assert.equal(SKILLS[name].learnerOnly, true, `${name} is typed by the learner only`);
   for (const name of ['go', 'check', 'hint', 'stuck']) assert.equal(SKILLS[name].learnerOnly, false, `${name} is reachable from window buttons`);
+  assert.equal(SKILLS.add.learnerOnly, false, 'the agent may propose additions too');
 });
 
 test('placeholders are all known, and none survive in the skills', () => {
