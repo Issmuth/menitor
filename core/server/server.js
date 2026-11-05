@@ -11,6 +11,7 @@ import { cardData } from '../lib/card.js';
 import { findTask } from '../lib/plan.js';
 import { loadAnswers, loadGuard, loadPlan, loadProgress, loadSession, loadSolutions, saveAnswers, saveProgress } from '../lib/state.js';
 import { deliverToListener, liveListener, readInbox } from '../lib/inbox.js';
+import { codeFingerprint } from '../lib/fingerprint.js';
 
 /** The only events a button can send (W-7). */
 export const EVENTS = /** @type {const} */ (['check', 'hint', 'stuck', 'go']);
@@ -245,11 +246,13 @@ export function cleanCommands(raw) {
 /**
  * Create the server. Call listen() to start it.
  * @param {string} root
- * @param {{ token?: string, commands?: Record<string, unknown>, deliver?: (event: { type: import('../lib/inbox.js').InboxType, task: string | null }) => boolean }} [options]
+ * @param {{ token?: string, code?: string, commands?: Record<string, unknown>, deliver?: (event: { type: import('../lib/inbox.js').InboxType, task: string | null }) => boolean }} [options]
+ *   code: the fingerprint of the code this server runs; tests pass an old one
  */
 export function createWindowServer(root, options = {}) {
   const paths = statePaths(root);
   const token = options.token ?? randomToken();
+  const code = options.code ?? codeFingerprint();
   const commands = cleanCommands(options.commands);
   /** @type {Set<http.ServerResponse>} */
   const clients = new Set();
@@ -267,7 +270,12 @@ export function createWindowServer(root, options = {}) {
   for (const { file } of Object.values(STATIC)) files.set(file, fs.readFileSync(new URL(file, PAGE_DIR)));
 
   const cookieName = () => `menitor_${port}`;
-  const stateJson = () => JSON.stringify(windowState(paths, { commands }));
+  const stateJson = () => {
+    const s = windowState(paths, { commands });
+    // State this server can't read may only be newer than its code. Hashing runs only on errors.
+    if (!s.ok) s.stale = codeFingerprint() !== code;
+    return JSON.stringify(s);
+  };
 
   /** @param {string} json */
   function broadcast(json) {
@@ -338,7 +346,7 @@ export function createWindowServer(root, options = {}) {
         return send(res, 200, /** @type {Buffer} */ (files.get(asset.file)), headers);
       }
       if (url.pathname === '/api/state') return send(res, 200, stateJson(), { 'Content-Type': 'application/json; charset=utf-8' });
-      if (url.pathname === '/api/ping') return sendJson(res, 200, { ok: true, root, pid: process.pid });
+      if (url.pathname === '/api/ping') return sendJson(res, 200, { ok: true, root, pid: process.pid, code });
       if (url.pathname === '/api/events') {
         res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'text/event-stream; charset=utf-8', Connection: 'keep-alive' });
         res.write('retry: 2000\n\n');

@@ -9,7 +9,9 @@
 import fs from 'node:fs';
 import { findRoot, statePaths } from '../../core/lib/paths.js';
 import { waitForEvent } from '../../core/lib/inbox.js';
-import { windowEventText } from './messages.js';
+import { openBrowser, openWindow } from '../../core/lib/window.js';
+import { COMMANDS, windowEventText } from './messages.js';
+import { WINDOW_COMMANDS } from './skills.js';
 
 /** Protocol revisions this server speaks; it answers with the newest one the client asked for. */
 const SUPPORTED = ['2025-06-18', '2025-03-26', '2024-11-05'];
@@ -62,6 +64,22 @@ function text(text) {
   return { content: [{ type: 'text', text }] };
 }
 
+/**
+ * A press can only come from an open window, so make sure one runs before waiting on it. The
+ * browser opens only when the server had to start, so a running window never gets a second tab.
+ * @param {import('../../core/lib/paths.js').StatePaths} paths
+ * @returns {string | null} why the window could not start, or null when it runs
+ */
+function ensureWindow(paths) {
+  try {
+    const r = openWindow(paths, { commands: WINDOW_COMMANDS, browser: false });
+    if (r.started) openBrowser(r.url);
+    return null;
+  } catch (err) {
+    return /** @type {Error} */ (err).message;
+  }
+}
+
 /** Pending waits by request ID. A newer wait replaces older ones, so each press is handled once. */
 const waits = /** @type {Map<string | number, { ac: AbortController, cancelled: boolean, superseded: boolean }>} */ (new Map());
 
@@ -79,6 +97,10 @@ function callTool(id, params) {
   // The project Claude Code names, and only that one: a fallback could listen on another project's window.
   const root = findRoot(process.env.CLAUDE_PROJECT_DIR || process.cwd());
   if (!root) return reply(id, text('Menitor is not set up in this project, so there is no task window to wait on.'));
+  const why = ensureWindow(statePaths(root));
+  if (why) {
+    return reply(id, { ...text(`The task window isn't running, and Menitor couldn't start it: ${why.replace(/\.?\s*$/, '.')} Ask the learner to type ${COMMANDS.go}, or go on in chat.`), isError: true });
+  }
 
   for (const w of waits.values()) {
     w.superseded = true;

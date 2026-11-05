@@ -79,7 +79,8 @@ These settle the ambiguities and open questions in [prd.md](prd.md) before the b
 
 - **The CLI enforces the gate.** `task pass` refuses unless the last `check run` was clean at the current commit. A learner task also needs an explain-back logged since then: a good answer, or a second try. A clean re-run at the same commit keeps the first clean time, so an earlier explain-back still counts. `--no-commands` runs never count.
 - **Override with a reason.** `task pass --override "<reason>"` exists for a check that is broken itself, such as a typo in a verify command or a host outage. It logs an `override` event that only the CLI can write, and adds the reason to the card's note.
-- **What blocks.** A failing or timed-out command, a failing or missing deploy URL, no git repo, no commit since the start, and no Conventional Commits message all block. So do a `Menitor-Delegated` trailer on learner work, a missing trailer on delegated work, and uncommitted changes outside build folders.
+- **What blocks.** A failing or timed-out command, a failing or missing deploy URL, no git repo, no commit since the start, and no Conventional Commits message all block. "No commit" only applies when the card has a planned step that starts with "Commit". A card that only deploys or pushes has nothing new to commit.
+- **Work done before the task started** still needs an override. The checker can't tell earlier commits that did this task's work apart from unrelated ones. So do a `Menitor-Delegated` trailer on learner work, a missing trailer on delegated work, and uncommitted changes outside build folders.
 - **What only warns.** Extra commits with other messages, the wrong branch, and project files the agent touched on a learner task. The branch is already a checklist item, and agent touches need a human conversation, not a block.
 - **Skipping project checks.** An `npm`, `pnpm`, `yarn` or `bun` script check is skipped while package.json or that script doesn't exist yet. Task verify steps never skip.
 - **Running commands.** Commands run through the shell from the project root, with `CI=1` and colors off, and a 180-second timeout each. Only the last 30 lines of output are kept, with blank runs removed.
@@ -89,6 +90,7 @@ These settle the ambiguities and open questions in [prd.md](prd.md) before the b
 ## Task window (milestone 5)
 
 - **One server per project.** `menitor window open` starts `core/server/main.js` detached and records the port, pid and token in `.menitor/window.json`. A second `open` reuses a server that answers `/api/ping` for the same project root. A stale `window.json` is replaced.
+- **A window older than the code is restarted.** A server keeps the code, schemas and page it started with. It reports a fingerprint of `core/lib`, `core/schemas` and `core/server` on `/api/ping`, and `window open` restarts a server whose fingerprint differs from the code on disk. If an old server can't read the state, the page says the window is out of date, not that the state is broken.
 - **Security.**
   - The server binds to 127.0.0.1 and picks a random port.
   - Every request needs the token: from a header, an HttpOnly SameSite=Strict cookie named per port, or the link's `?t=` on the first page load, which redirects to `/` with the cookie.
@@ -178,6 +180,7 @@ A second way to help: instead of hints that build up, each step shows the full c
 
 - **One tool, `wait_for_learner`,** from a stdio MCP server the plugin registers in `plugin.json` (`mcpServers.menitor`). Claude Code names it `mcp__plugin_menitor_menitor__wait_for_learner`. The skills that can end on the learner's move may call it without a prompt.
 - **What it returns.** The same fixed sentence the monitor prints for that press, from `windowEventText` in `messages.js` (W-7). A timeout says so and suggests calling it again. A wait in a folder without `.menitor/` returns at once.
+- **A window first.** Before it listens, the tool opens the window with the same button commands as `/menitor:go`, and opens a browser only if it had to start the server. If the window can't start, it returns at once with the reason, as an error, and never listens for a press that can't come.
 - **Timing.** It listens for 120 minutes by default, and 240 at most. It sends progress every minute when the client asks for it, so an idle-timeout never cuts it off.
 - **One wait at a time.** A newer call ends the older one with "A newer wait_for_learner call took over listening." A cancelled call gets no reply and removes its heartbeat.
 - **Claims.** `claimEvent` creates `.menitor/claims/<event id>` with an exclusive create, so only one of the wait tool and the monitor handles a press. A wait also picks up an unclaimed press from the last 10 minutes, made while nobody was waiting.

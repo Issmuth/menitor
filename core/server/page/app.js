@@ -746,8 +746,9 @@ function render(s) {
   const caret = active instanceof (doc.defaultView ?? window).HTMLTextAreaElement ? [active.selectionStart, active.selectionEnd] : null;
 
   let view;
-  if (!s.ok) view = problemView("Menitor's state has a problem", `${s.error} Ask your coding session to validate Menitor's state and fix it.`);
-  else if (s.result) view = resultView(s);
+  if (!s.ok && s.stale) {
+    view = problemView('This window is out of date', 'Menitor was updated after this window started, so it reads your plan with old rules. Ask your coding session to open the window again.');
+  } else if (!s.ok) view = problemView("Menitor's state has a problem", `${s.error} Ask your coding session to validate Menitor's state and fix it.`);
   else if (s.phase === 'task' && s.card) view = taskView(s);
   else view = messageView(s);
 
