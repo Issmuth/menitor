@@ -5,3 +5,5 @@ node_modules/
 .menitor/
 # Design tooling output (design-taste-frontend skill)
 .taste-skill/
+# Loads this clone as a plugin for dogfooding; holds a path on this machine
+.claude/settings.local.json
