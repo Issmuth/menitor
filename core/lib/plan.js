@@ -266,6 +266,15 @@ export function insertTask(plan, input, options) {
 }
 
 /**
+ * A planned step that commits the work, such as "Commit: feat(web): add home page". Added steps
+ * go before it, and the check runner asks for a commit only on a card that has one.
+ * @param {ChecklistItem} item
+ */
+export function isCommitStep(item) {
+  return item.source === 'plan' && /^commit\b/i.test(item.text);
+}
+
+/**
  * Add one planned step to a task that hasn't started, within the six-step limit. It goes before
  * the task's commit step, so the commit stays last. The current card never changes under the
  * learner, so the current task and done tasks are refused. Returns a new plan.
@@ -291,7 +300,7 @@ export function insertStep(plan, text, options) {
 
   /** @type {ChecklistItem} */
   const item = { id: nextId(task.checklist.map((i) => i.id), `${task.id}.c`), text: clean, source: 'plan' };
-  const commit = task.checklist.findLastIndex((i) => i.source === 'plan' && /^commit\b/i.test(i.text));
+  const commit = task.checklist.findLastIndex(isCommitStep);
   task.checklist.splice(commit === -1 ? task.checklist.length : commit, 0, item);
   return { plan: copy, task, item };
 }
