@@ -15,6 +15,7 @@ import { openWindow, readWindowInfo, isAlive, stopWindow, windowUrl } from './wi
 import { allTasks } from './plan.js';
 import { loadLearner, loadProgress, loadSession, requirePlan } from './state.js';
 import {
+  addToPlan,
   approvePlan,
   briefData,
   checkTask,
@@ -55,6 +56,10 @@ Setup
 Plan
   menitor plan lint <file|->            Check a draft plan without saving it
   menitor plan import <file|->          Save the plan (only before approval)
+  menitor plan add <file|-> [--dry-run] Add to the approved plan, never before the current task:
+                                        {"task": {...}, "after": "<task or milestone ID>"},
+                                        {"step": "<text>", "to": "<task not started>"} or
+                                        {"milestone": {...}, "after": "<milestone ID>"}
   menitor plan approve                  Lock the plan after the learner approves it; start task 1
   menitor plan show                     Outline of milestones and tasks
   menitor plan deploy-url <url>         Record the deployed URL
@@ -175,9 +180,29 @@ function renderOutline(plan, current) {
     }
     const mark = task.status === 'done' ? '[x]' : task.id === current ? '[>]' : '[ ]';
     const owner = task.owner === 'delegated' ? (task.skipped ? ' · skipped' : ' · delegated') : '';
-    lines.push(`  ${mark} ${task.id.padEnd(4)} ${task.goal}${owner}`);
+    lines.push(`  ${mark} ${task.id.padEnd(4)} ${task.goal}${owner}${task.added ? ' · added' : ''}`);
   }
   return lines.join('\n');
+}
+
+/**
+ * @param {ReturnType<typeof addToPlan>} r
+ */
+function renderAddition(r) {
+  const verb = r.saved ? 'Added' : 'Would add';
+  let line;
+  if (r.kind === 'step') {
+    line = `${verb} step ${r.id} to ${r.task}: ${r.text}`;
+  } else if (r.kind === 'milestone') {
+    line = `${verb} ${r.id} after ${r.after}, with ${r.tasks.length === 1 ? 'task' : 'tasks'} ${r.tasks.join(', ')}: ${r.text}`;
+  } else {
+    const spot = r.after === r.milestone ? `at the end of ${r.milestone}` : `after ${r.after}, in ${r.milestone}`;
+    line = `${verb} ${r.id} ${spot}: ${r.text}`;
+  }
+  const lines = [line];
+  if (!r.saved) lines.push('Nothing was saved: this was a dry run.');
+  if (r.started) lines.push(`${r.started} is the current task now, since every other task was done.`);
+  return `${lines.join('\n')}${formatWarnings(r.warnings)}`;
 }
 
 /**
@@ -281,6 +306,7 @@ export function run(argv, ioOverrides = {}) {
         feedback: { type: 'string' },
         done: { type: 'boolean', default: false },
         'no-browser': { type: 'boolean', default: false },
+        'dry-run': { type: 'boolean', default: false },
         help: { type: 'boolean', short: 'h', default: false },
       },
     });
@@ -467,7 +493,7 @@ function requirePlanOrNull(p) {
 }
 
 /**
- * @typedef {{ root?: string, json: boolean, ids: boolean, note?: string, revisit?: string[], id?: string, override?: string }} Values
+ * @typedef {{ root?: string, json: boolean, ids: boolean, note?: string, revisit?: string[], id?: string, override?: string, 'dry-run'?: boolean }} Values
  * @typedef {() => import('./paths.js').StatePaths} PathsFn
  * @typedef {(value: unknown) => void} JsonFn
  */
@@ -501,6 +527,13 @@ function runPlan(sub, rest, values, io, paths, json) {
       else io.out(`Saved the plan: ${plan.milestones.length} milestones, ${allTasks(plan).length} tasks. The learner approves it next.${formatWarnings(warnings)}`);
       return EXIT.ok;
     }
+    case 'add': {
+      if (!rest[0]) throw new MenitorError('Usage: menitor plan add <file|-> [--dry-run]');
+      const r = addToPlan(paths(), parseJsonInput(readSource(rest[0], io), 'The addition'), { dryRun: values['dry-run'] });
+      if (values.json) json(r);
+      else io.out(renderAddition(r));
+      return EXIT.ok;
+    }
     case 'approve': {
       const p = paths();
       const { plan, first, warnings } = approvePlan(p);
@@ -527,7 +560,7 @@ function runPlan(sub, rest, values, io, paths, json) {
       return EXIT.ok;
     }
     default:
-      throw new MenitorError('Usage: menitor plan <lint|import|approve|show|deploy-url>');
+      throw new MenitorError('Usage: menitor plan <lint|import|add|approve|show|deploy-url>');
   }
 }
 
