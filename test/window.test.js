@@ -186,6 +186,34 @@ test('a passed explain-back stays on screen until Continue, and a reload remembe
   }
 });
 
+test('a finished plan gets its summary from real figures, and an added task brings the card back', () => {
+  const { root, paths, cleanup } = approvedProject();
+  try {
+    assert.equal(windowState(paths, { commands: {} }).finish, null, 'not while tasks remain');
+    cli(root, ['plan', 'deploy-url', 'https://recipes.example.app']);
+    cli(root, ['task', 'pass', '--override', 't']);
+    cli(root, ['task', 'pass', '--override', 't']);
+    cli(root, ['task', 'hint']);
+    cli(root, ['task', 'pass', '--override', 't']);
+
+    const s = windowState(paths, { commands: {} });
+    assert.equal(s.phase, 'done');
+    const f = s.finish;
+    assert.equal(f.deployUrl, 'https://recipes.example.app');
+    assert.equal(f.hints, 1, 'hints opened, from the log');
+    assert.match(f.explained, /explain-back|questions/i, 'the explain-back line from the stats');
+    assert.ok(f.started && f.finished && f.started <= f.finished, 'from approval to the last pass');
+    assert.deepEqual(s.written, { learner: 2, delegated: 1, skipped: 0, focusTasksDone: 2 });
+
+    cli(root, ['plan', 'add', '-'], { stdin: JSON.stringify({ after: 'm2', task: { goal: 'Show a recipe count', why: 'It tells you how big the box is.', docs: 'docs/prd.md', checklist: ['Render the count'], doneWhen: 'The count shows', owner: 'delegated' } }) });
+    const again = windowState(paths, { commands: {} });
+    assert.equal(again.phase, 'task', 'the card is back');
+    assert.equal(again.finish, null);
+  } finally {
+    cleanup();
+  }
+});
+
 test('the event stream pushes new state when a state file changes', async () => {
   const { root, cleanup } = approvedProject();
   const { win, port, auth } = await serve(root);
