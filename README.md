@@ -85,6 +85,7 @@ flowchart LR
 | `/menitor:skip [--explain]` | Hand the task to Menitor. It pushes back once; confirm with `/menitor:skip --confirm` |
 | `/menitor:off` and `/menitor:on` | Turn mentor mode off, so the agent may write code, or back on |
 | `/menitor:typealong [off]` | Type-along: the window shows each step's instructions and full code, and you type it in by hand. `off` goes back to hints |
+| `/menitor:add <idea>` | Add an idea to your approved plan as a step, a task or a milestone. Menitor asks about it, proposes where it goes, and adds it once you say yes |
 
 Plain questions still work: ask anything. Commands are only for actions that change your progress. `skip`, `off`, `on` and `typealong` only work when you type them. The agent can't run them for you.
 
@@ -110,7 +111,7 @@ In both modes the agent never writes your code, and every check still asks you t
 - **Before you code** comes first: the one thing to read, the doc section and the branch. On a desktop it sits beside the steps.
 - **Buttons:** **Check my work**, **Hint** and **I'm stuck** go straight to your Claude Code session. When your next move is in the editor or the window, Claude waits for your press, so you don't type commands. If no session is listening, the buttons copy the command for you to paste. The card tells you which of the two will happen.
 - **Pop out:** an always-on-top mini window in desktop Chrome, Edge and other Chromium browsers. Other browsers get a small separate window.
-- **The plan:** every task in your plan as one cell, marked by who did it: you, Menitor, skipped, the one you're on, or still to do.
+- **The plan:** every task in your plan as one cell, marked by who did it: you, Menitor, skipped, the one you're on, or still to do. A dot marks tasks added after you approved the plan, and their card says **Added**.
 - **Hints:** the four-rung ladder shows which hints are open, with their text beside it. Code hints are set as code.
 - **Type-along:** each step opens to its instructions and code, with line numbers to keep your place. Locked steps don't reach the window until you tick the step before.
 - **Layout:** one column on a phone or in the pop-out, with the buttons always at the bottom of the screen. On a desktop, the steps sit beside the plan and the buttons sit beside the title. It works from 320 px wide, in light and dark mode, and by keyboard.
@@ -149,7 +150,7 @@ Menitor keeps its state in `.menitor/` in your project. The plan is committed, s
 | `session.json` | the current task, start commits, the last check | no |
 | `progress.json` | your checklist ticks | no |
 | `learner.md` | your level, focus areas, strengths, recurring mistakes, hint use | no |
-| `log.md` | a dated history of checks, hints, skips and disputes | no |
+| `log.md` | a dated history of checks, hints, skips, disputes and additions | no |
 | `guard.json` | mentor mode and skip grants, from commands you typed | no |
 | `activity.jsonl` | every command and file write the agent ran | no |
 | `solutions.json` | type-along: each step's instructions and code | no |
@@ -176,7 +177,7 @@ Everything stays on your machine. Menitor has no servers, accounts or analytics.
 - **The shell guard is best effort.** It reads commands by pattern, so a creative script can slip past. When Claude Code reports the files a command changed, Menitor logs them and the check flags them.
 - **Two Claude Code sessions** open on the same project share window button presses: whichever claims a press first handles it.
 - **v1 is for web apps.** API-only and command-line projects come later.
-- **The plan is locked once you approve it.** `/menitor:pivot`, for changing course mid-project, arrives in v1.1.
+- **An approved plan only grows.** `/menitor:add` adds steps, tasks and milestones, never before the task you're on. Changing or removing planned tasks is `/menitor:pivot`, in v1.1.
 
 ## Prior art
 

@@ -182,3 +182,18 @@ A second way to help: instead of hints that build up, each step shows the full c
 - **Protocol.** It answers `initialize` with the client's revision when it knows it, and 2025-06-18 otherwise. It handles `tools/list`, `tools/call`, `ping` and `notifications/cancelled`.
 - **New gitignored state:** `waiter.json` and `claims/`.
 
+## Adding to an approved plan (ADR 15)
+
+- **One op, three shapes.** `addToPlan` in `ops.js` takes `{"task", "after"}`, `{"step", "to"}` or `{"milestone", "after"}`, and refuses anything else by name. The pure parts are `insertTask`, `insertStep` and `insertMilestone` in `plan.js`; each returns a new plan and leaves its input alone.
+- **The fixed line.** `lastLocked` finds the last done task or the current task in plan order. A new task or milestone must land after it. That also covers out-of-order plans, where a done task sits after a todo one.
+- **Refusals name the way out:** "A new task can't go before t3, which is the current task. Put it after t3 or later." A milestone's message names the milestone to follow instead.
+- **IDs.** `nextId` takes the highest number with the exact prefix and adds one: `t9`, `m3`, `t5.c4`. A custom ID such as `next40` never counts. Fixes keep their own `.fN` numbers.
+- **What the input can't set.** A new task's ID, checklist IDs, status, pass time, hints revealed and skip flag are always fresh. A new milestone is never the walking skeleton.
+- **Steps.** A step goes before the task's last planned step that starts with "Commit", so the commit stays last. Only planned steps count toward the six-step limit; fixes don't. The current task and done tasks are refused, so a card never changes under the learner.
+- **Checks.** The new plan goes through the schema and `planProblems`, exactly like an import. The CLI prints only the warnings the addition brings, by comparing against the plan's warnings before it.
+- **Dry run.** The same op stops before saving, so the preview can't disagree with the real thing.
+- **Log events.** `task-added` (task, after), `step-added` (task, item) and `milestone-added` (milestone, after, tasks).
+- **A finished plan grows.** With no current task, the first new task starts, with a start commit, as `task pass` would start it.
+- **The tag.** Tasks carry `added`, an ISO time. The window shows an "Added" pill in the card's status line and a dot in the task's ledger cell, with "Added later" in the legend. The terminal card and `plan show` say "added".
+
+

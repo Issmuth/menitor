@@ -40,7 +40,7 @@ New tasks get new IDs. Old tasks are never renumbered, and done and active tasks
 
 ### Show what was added
 
-Added tasks carry an "added" tag in the window: on the card and in the plan list.
+Added tasks carry an "Added" tag on the card, and a dot on their cell in the plan list. `plan show` and the terminal card mark them too.
 
 ## Design
 
@@ -55,9 +55,10 @@ Added tasks carry an "added" tag in the window: on the card and in the plan list
 `menitor plan add -` reads one addition as JSON on stdin and refuses a spot before the active task:
 
 - `{"task": {...}, "after": "t3"}` adds a task. `after` may be a milestone ID to append to it.
-- `{"step": "text", "to": "t5"}` adds a checklist item to a task not started yet.
+- `{"step": "text", "to": "t5"}` adds a checklist item to a task not started yet. It goes before the task's commit step, so the commit stays last.
 - `{"milestone": {...}, "after": "m2"}` adds a milestone.
 - `--dry-run` prints where it would land without saving.
+- It prints only the warnings the addition brings, and refusals say where it may go instead.
 
 When every task is done, an added task becomes the current task.
 

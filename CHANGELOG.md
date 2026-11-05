@@ -20,6 +20,13 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
   - anything the agent is waiting on, posted with `menitor waiting`.
 - On phones and tablets, **Before you code** now comes before the steps.
 - **Window buttons drive the session in every Claude Code surface,** including VS Code. The plugin ships an MCP server with one tool, `wait_for_learner`. Claude calls it when the next move is the learner's, and it returns the moment a button is pressed. A press is claimed once, so the wait tool and the monitor never both handle it (ADR 14).
+- **Add ideas to an approved plan** with `/menitor:add <idea>` (ADR 15):
+  - Menitor asks one to three questions, picks the size, and proposes a spot with a reason. It adds nothing until the learner says yes;
+  - a step joins a task not started yet, a task goes after a task or at the end of a milestone, and a milestone goes after a milestone;
+  - nothing lands before a done task or the current task, and no ID is reused or renumbered;
+  - `menitor plan add <file|-> [--dry-run]` does the adding, with one log line per addition;
+  - added tasks carry an "Added" tag on the card and a dot in the plan ledger;
+  - when every task is done, an added task becomes the current task.
 
 ### Changed
 

@@ -92,6 +92,7 @@ Stuck at any point? /menitor:hint gives the next rung and /menitor:stuck works t
 | /menitor:hint | Reveal the next rung of the hint ladder | Learner, typed or window button |
 | /menitor:stuck | Debug with the learner: what they tried, the error, the smallest useful hint | Learner, typed or window button |
 | /menitor:skip \[--explain\] | Hand the current task to the agent; --explain adds a short note on what was done and why | Learner, typed only |
+| /menitor:add \<idea\> | Add an idea to the approved plan as a step, a task or a milestone, never before the current task ([details](add-tasks.md)) | Learner, typed; the agent may propose one, and adds it only after a yes |
 
 Plain questions typed into the session still work; commands are only for actions that change progress. /menitor:pivot arrives in v1.1.
 
