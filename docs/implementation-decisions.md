@@ -179,6 +179,7 @@ A second way to help: instead of hints that build up, each step shows the full c
 
 - **One tool, `wait_for_learner`,** from a stdio MCP server the plugin registers in `plugin.json` (`mcpServers.menitor`). Claude Code names it `mcp__plugin_menitor_menitor__wait_for_learner`. The skills that can end on the learner's move may call it without a prompt.
 - **What it returns.** The same fixed sentence the monitor prints for that press, from `windowEventText` in `messages.js` (W-7). A timeout says so and suggests calling it again. A wait in a folder without `.menitor/` returns at once.
+- **A window first.** Before it listens, the tool opens the window with the same button commands as `/menitor:go`, and opens a browser only if it had to start the server. If the window can't start, it returns at once with the reason, as an error, and never listens for a press that can't come.
 - **Timing.** It listens for 120 minutes by default, and 240 at most. It sends progress every minute when the client asks for it, so an idle-timeout never cuts it off.
 - **One wait at a time.** A newer call ends the older one with "A newer wait_for_learner call took over listening." A cancelled call gets no reply and removes its heartbeat.
 - **Claims.** `claimEvent` creates `.menitor/claims/<event id>` with an exclusive create, so only one of the wait tool and the monitor handles a press. A wait also picks up an unclaimed press from the last 10 minutes, made while nobody was waiting.

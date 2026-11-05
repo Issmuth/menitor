@@ -28,6 +28,11 @@ export const COMMAND_NAMES = {
   add: '/menitor:add',
 };
 
+/** The commands the window shows on its buttons, or copies when no session listens. */
+export const WINDOW_COMMANDS = Object.fromEntries(
+  /** @type {const} */ (['check', 'hint', 'stuck', 'go', 'start', 'skip']).map((k) => [k, COMMAND_NAMES[k]]),
+);
+
 /**
  * @typedef {object} SkillSpec
  * @property {string} description       what it does and when to use it
@@ -110,7 +115,7 @@ export function renderInstructions(text, vars) {
     if (key === 'cli') return vars.cli;
     if (key === 'wait') return '`wait_for_learner` (the menitor MCP tool)';
     if (key === 'window') {
-      const pairs = ['check', 'hint', 'stuck', 'go', 'start', 'skip'].map((k) => `--command ${k}=${/** @type {Record<string, string>} */ (COMMAND_NAMES)[k]}`);
+      const pairs = Object.entries(WINDOW_COMMANDS).map(([k, v]) => `--command ${k}=${v}`);
       return `${vars.cli} window open ${pairs.join(' ')}`;
     }
     if (key === 'templates') return vars.templates;
