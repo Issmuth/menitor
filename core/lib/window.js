@@ -1,6 +1,7 @@
 // Start, find and stop the task window server from the CLI (W-1).
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -110,6 +111,20 @@ export function appBrowser(platform, env, exists = isFile) {
   return candidates.find((c) => exists(c)) ?? null;
 }
 
+/**
+ * How to start the app window: maximized, in a browser profile of its own. A browser that is
+ * already running ignores start-up flags such as --start-maximized, so the window gets its own
+ * profile, and with it a browser that starts fresh. MENITOR_WINDOW_MAXIMIZED=0 opens a normal-size
+ * app window in the usual profile instead.
+ * @param {string} url
+ * @param {NodeJS.ProcessEnv} env
+ * @returns {string[]}
+ */
+export function appArgs(url, env) {
+  if (envOf(env, 'MENITOR_WINDOW_MAXIMIZED') === '0') return [`--app=${url}`];
+  return [`--app=${url}`, '--start-maximized', `--user-data-dir=${path.join(os.tmpdir(), 'menitor-browser')}`, '--no-first-run', '--no-default-browser-check'];
+}
+
 /** @param {string} file */
 function isFile(file) {
   try {
@@ -144,7 +159,7 @@ function launch(command, args) {
 export function openBrowser(url, env = process.env) {
   if (env.MENITOR_NO_BROWSER) return false;
   const app = appBrowser(process.platform, env);
-  if (app && launch(app, [`--app=${url}`])) return true;
+  if (app && launch(app, appArgs(url, env))) return true;
   /** @type {[string, string[]] | null} */
   let cmd = null;
   if (process.platform === 'darwin') cmd = ['open', [url]];
