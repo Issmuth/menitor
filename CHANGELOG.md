@@ -50,6 +50,7 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
 - **No commit asked for on cards without a commit step.** A task that only deploys or pushes, such as the sample's deploy task, used to fail its check with "No commit since the task started". Now a commit is required only when the card has a step that starts with "Commit".
 - **Learner-only commands work on the first try in VS Code.** After the learner switched files, VS Code put a note about the open file before the typed text. The hook missed `/menitor:off`, `/menitor:on`, `/menitor:skip` and `/menitor:typealong`, so a second try was needed. The hook now skips that note and the selection note, and a command inside a selection never counts.
 - **A window started before an update no longer calls a healthy plan broken.** It kept checking the plan with the rules it started with. Now `menitor window open` restarts a window that's older than Menitor's code. An old window that can't read the plan says it's out of date.
+- **A check sees only the task's own work with a branch per task.** When the previous task was on another branch, the check listed that task's files as deleted, or counted work merged in from other tasks as this one's. Now it measures from where the current branch starts.
 
 ## 0.1.0 (2026-11-04)
 
