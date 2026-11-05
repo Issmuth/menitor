@@ -25,7 +25,8 @@ try {
   commands = {};
 }
 
-const win = createWindowServer(root, { commands });
+// MENITOR_CODE_FINGERPRINT lets tests start a server that looks older than the code on disk.
+const win = createWindowServer(root, { commands, code: process.env.MENITOR_CODE_FINGERPRINT || undefined });
 const port = await win.listen(Number(process.env.MENITOR_WINDOW_PORT ?? 0));
 const info = { version: 1, pid: process.pid, port, token: win.token, startedAt: new Date().toISOString(), commands: win.commands };
 assertValid('window', info, 'window.json');

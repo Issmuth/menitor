@@ -8,6 +8,7 @@ import { approvedProject, cli, makeProject } from './helpers.js';
 import { createWindowServer, cleanCommands, windowState } from '../core/server/server.js';
 import { loadProgress } from '../core/lib/state.js';
 import { readWindowInfo } from '../core/lib/window.js';
+import { codeFingerprint } from '../core/lib/fingerprint.js';
 
 /**
  * A raw HTTP request, so tests can set any Host or Origin header.
@@ -248,6 +249,67 @@ test('menitor window open starts one detached server, reuses it, and stops it', 
     assert.match(cli(root, ['window', 'stop']).out, /was not running/);
   } finally {
     cli(root, ['window', 'stop']);
+    cleanup();
+  }
+});
+
+/** @param {number} pid */
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+test('window open restarts a server started from older code, and reuses a current one', async () => {
+  const { root, paths, cleanup } = approvedProject();
+  try {
+    // A server that reports another fingerprint stands in for one started before an update.
+    const old = JSON.parse(cli(root, ['window', 'open', '--no-browser', '--json'], { env: { MENITOR_CODE_FINGERPRINT: 'old-code' } }).out);
+    assert.equal(old.started, true);
+    const oldPid = readWindowInfo(paths)?.pid ?? 0;
+
+    const fresh = JSON.parse(cli(root, ['window', 'open', '--no-browser', '--json']).out);
+    assert.equal(fresh.started, true);
+    assert.equal(fresh.restarted, true);
+    assert.notEqual(fresh.url, old.url);
+    assert.notEqual(readWindowInfo(paths)?.pid, oldPid);
+    for (let i = 0; i < 60 && alive(oldPid); i++) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(alive(oldPid), false, 'the old server has stopped');
+
+    const same = JSON.parse(cli(root, ['window', 'open', '--no-browser', '--json']).out);
+    assert.equal(same.started, false, 'a server running current code is reused');
+    assert.equal(same.restarted, false);
+    assert.match(cli(root, ['window', 'open', '--no-browser'], { env: { MENITOR_CODE_FINGERPRINT: 'x' } }).out, /already running/);
+  } finally {
+    cli(root, ['window', 'stop']);
+    cleanup();
+  }
+});
+
+test('a window older than the code says it is out of date, not that the state is broken', async () => {
+  const { root, paths, cleanup } = approvedProject();
+  const plan = JSON.parse(fs.readFileSync(paths.plan, 'utf8'));
+  plan.milestones[0].tasks[0].fromNewerCode = true; // a field the running code doesn't know
+  fs.writeFileSync(paths.plan, JSON.stringify(plan));
+  try {
+    for (const [code, stale] of /** @type {const} */ ([['old-code', true], [undefined, false]])) {
+      const win = createWindowServer(root, { code });
+      try {
+        const port = await win.listen(0);
+        const auth = { 'X-Menitor-Token': win.token };
+        const s = JSON.parse((await request(port, { path: '/api/state', headers: auth })).body);
+        assert.equal(s.ok, false);
+        assert.equal(s.stale, stale);
+        const ping = JSON.parse((await request(port, { path: '/api/ping', headers: auth })).body);
+        assert.equal(ping.code === codeFingerprint(), !stale);
+      } finally {
+        await win.close();
+      }
+    }
+  } finally {
     cleanup();
   }
 });
