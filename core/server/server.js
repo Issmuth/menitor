@@ -74,6 +74,7 @@ export function windowState(paths, options) {
         done: t.status === 'done',
         by: t.owner,
         skipped: t.skipped ?? false,
+        added: Boolean(t.added),
         current: t.id === session.currentTask,
       }));
     return {

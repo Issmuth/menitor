@@ -20,6 +20,13 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
   - anything the agent is waiting on, posted with `menitor waiting`.
 - On phones and tablets, **Before you code** now comes before the steps.
 - **Window buttons drive the session in every Claude Code surface,** including VS Code. The plugin ships an MCP server with one tool, `wait_for_learner`. Claude calls it when the next move is the learner's, and it returns the moment a button is pressed. A press is claimed once, so the wait tool and the monitor never both handle it (ADR 14).
+- **Add ideas to an approved plan** with `/menitor:add <idea>` (ADR 15):
+  - Menitor asks one to three questions, picks the size, and proposes a spot with a reason. It adds nothing until the learner says yes;
+  - a step joins a task not started yet, a task goes after a task or at the end of a milestone, and a milestone goes after a milestone;
+  - nothing lands before a done task or the current task, and no ID is reused or renumbered;
+  - `menitor plan add <file|-> [--dry-run]` does the adding, with one log line per addition;
+  - added tasks carry an "Added" tag on the card and a dot in the plan ledger;
+  - when every task is done, an added task becomes the current task.
 
 ### Changed
 
@@ -31,6 +38,11 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
   - quieter, read-only steps on delegated tasks;
   - Instrument Sans, bundled under the SIL Open Font License, so the page still loads nothing from outside.
 - Ticking a step with the keyboard keeps focus on it, and screen readers hear when the task, the check result or the hints change.
+- **Mentor mode off hands over your tasks** (ADR 16). While it's off, the agent takes a learner task with `menitor task skip`, with no `/menitor:skip` from the learner. The task still counts as skipped, and its log line says `via=mode-off`. With mentor mode on, a skip still needs the learner's confirm.
+
+### Fixed
+
+- **Learner-only commands work on the first try in VS Code.** After the learner switched files, VS Code put a note about the open file before the typed text. The hook missed `/menitor:off`, `/menitor:on`, `/menitor:skip` and `/menitor:typealong`, so a second try was needed. The hook now skips that note and the selection note, and a command inside a selection never counts.
 
 ## 0.1.0 (2026-11-04)
 

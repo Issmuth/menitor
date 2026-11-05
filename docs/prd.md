@@ -92,6 +92,7 @@ Stuck at any point? /menitor:hint gives the next rung and /menitor:stuck works t
 | /menitor:hint | Reveal the next rung of the hint ladder | Learner, typed or window button |
 | /menitor:stuck | Debug with the learner: what they tried, the error, the smallest useful hint | Learner, typed or window button |
 | /menitor:skip \[--explain\] | Hand the current task to the agent; --explain adds a short note on what was done and why | Learner, typed only |
+| /menitor:add \<idea\> | Add an idea to the approved plan as a step, a task or a milestone, never before the current task ([details](add-tasks.md)) | Learner, typed; the agent may propose one, and adds it only after a yes |
 
 Plain questions typed into the session still work; commands are only for actions that change progress. /menitor:pivot arrives in v1.1.
 
@@ -184,7 +185,7 @@ The no-code rule is enforced by hooks, git is part of every task, and all memory
 | --- | --- |
 | G-1 | A PreToolUse hook denies agent writes outside .menitor/ and docs/ while mentor mode is on. A hook deny holds even in bypass-permissions mode. |
 | G-2 | Shell commands that write project files are denied on a best-effort pattern match: redirects, in-place edits, copies into source folders. |
-| G-3 | Only the learner grants delegation: a typed /menitor:skip, recorded by a hook, never by the agent. The grant allows writes for that one task. |
+| G-3 | Only the learner grants delegation: a typed /menitor:skip, recorded by a hook, never by the agent. The grant allows writes for that one task. While mentor mode is off (G-5), the agent may take the current task without a grant, and it is still recorded as skipped (ADR 16). |
 | G-4 | The agent changes state only through the menitor CLI. Direct edits to .menitor/\*.json are denied. |
 | G-5 | Turning mentor mode off is a learner action; the agent cannot do it. |
 | G-6 | Git per task: a branch per milestone or feature, Conventional Commits, and the start commit recorded. |

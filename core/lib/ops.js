@@ -9,7 +9,7 @@ import { headCommit } from './git.js';
 import { writeFileAtomic } from './fsx.js';
 import { appendEvent, LOG_HEADER, parseLog } from './log.js';
 import { defaultLearner, addNote, LEVELS, LEARNER_LISTS } from './learner.js';
-import { allTasks, appendFixes, findTask, isFocusTask, nextTodo, normalizePlanInput, planProblems, revealNextHint, setHints } from './plan.js';
+import { allTasks, appendFixes, findTask, insertMilestone, insertStep, insertTask, isFocusTask, nextTodo, normalizePlanInput, planProblems, revealNextHint, setHints } from './plan.js';
 import { validate } from './schema.js';
 import { cardData } from './card.js';
 import { readDocLink } from './docs.js';
@@ -149,6 +149,86 @@ export function approvePlan(paths, options = {}) {
   const first = nextTodo(plan);
   if (first) startTask(paths, loadSession(paths), first, now);
   return { plan, first, warnings: [...new Set(warnings)] };
+}
+
+const ADD_SHAPES = 'Send one of {"task": {...}, "after": "<task or milestone ID>"}, {"step": "<text>", "to": "<task ID>"} or {"milestone": {...}, "after": "<milestone ID>"}';
+
+/**
+ * @typedef {object} Addition
+ * @property {'task' | 'step' | 'milestone'} kind
+ * @property {string} id           the new task, checklist item or milestone
+ * @property {string} text         its goal, text or title
+ * @property {string} milestone    the milestone it's in
+ * @property {string | null} after the task or milestone it follows (null for a step)
+ * @property {string | null} task  the task a step joins (null otherwise)
+ * @property {string[]} tasks      the new task IDs (none for a step)
+ * @property {string[]} warnings   plan warnings the addition brings
+ * @property {boolean} saved
+ * @property {string | null} started  a new task that became current, because every other task was done
+ */
+
+/**
+ * Add to the approved plan: one task, one step on a task not started yet, or a milestone of new
+ * tasks. Done tasks, the current task and every existing ID stay as they are, and each addition
+ * writes one log line. A dry run checks everything and saves nothing.
+ * @param {StatePaths} paths
+ * @param {unknown} raw  {"task": {...}, "after": "t3"}, {"step": "text", "to": "t5"} or {"milestone": {...}, "after": "m2"}
+ * @param {{ dryRun?: boolean, now?: Date }} [options]
+ * @returns {Addition}
+ */
+export function addToPlan(paths, raw, options = {}) {
+  const now = options.now ?? new Date();
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new MenitorError(`An addition must be a JSON object. ${ADD_SHAPES}.`);
+  const input = /** @type {Record<string, any>} */ (raw);
+  const kinds = /** @type {const} */ (['task', 'step', 'milestone']).filter((k) => k in input);
+  if (kinds.length !== 1) throw new MenitorError(`Add one thing at a time. ${ADD_SHAPES}.`);
+  const kind = kinds[0];
+  const where = kind === 'step' ? 'to' : 'after';
+  const extra = Object.keys(input).filter((k) => k !== kind && k !== where);
+  if (extra.length) throw new MenitorError(`Unknown field ${extra.map((k) => `"${k}"`).join(', ')}. ${ADD_SHAPES}.`);
+  if (typeof input[where] !== 'string') {
+    throw new MenitorError(kind === 'step' ? 'Say which task the step joins with "to": a task ID' : `Say where the ${kind} goes with "after": ${kind === 'task' ? 'a task ID or a milestone ID' : 'a milestone ID'}`);
+  }
+
+  const plan = requireApprovedPlan(paths);
+  const session = loadSession(paths);
+  const current = session.currentTask;
+  /** @type {Plan} */
+  let next;
+  /** @type {Omit<Addition, 'warnings' | 'saved' | 'started'>} */
+  let added;
+  if (kind === 'task') {
+    const r = insertTask(plan, input.task, { after: input.after, current, now });
+    next = r.plan;
+    added = { kind, id: r.task.id, text: r.task.goal, milestone: r.milestone.id, after: input.after, task: null, tasks: [r.task.id] };
+  } else if (kind === 'step') {
+    const r = insertStep(plan, input.step, { to: input.to, current });
+    next = r.plan;
+    added = { kind, id: r.item.id, text: r.item.text, milestone: findTask(next, r.task.id).milestone.id, after: null, task: r.task.id, tasks: [] };
+  } else {
+    const r = insertMilestone(plan, input.milestone, { after: input.after, current, now });
+    next = r.plan;
+    added = { kind, id: r.milestone.id, text: r.milestone.title, milestone: r.milestone.id, after: input.after, task: null, tasks: r.milestone.tasks.map((t) => t.id) };
+  }
+
+  const profile = loadLearner(paths).profile;
+  const schemaErrors = validate(SCHEMAS.plan, next).map((e) => `${e.path} ${e.message}`);
+  const { errors, warnings } = schemaErrors.length ? { errors: schemaErrors, warnings: [] } : planProblems(next, profile);
+  if (errors.length) throw new MenitorError(`The new ${kind} is invalid:\n${errors.map((e) => `  ${e}`).join('\n')}`, { details: errors });
+  // Only the warnings this addition brings; the plan's old ones were seen at approval.
+  const before = new Set(planProblems(plan, profile).warnings);
+  const fresh = warnings.filter((w) => !before.has(w));
+  if (options.dryRun) return { ...added, warnings: fresh, saved: false, started: null };
+
+  savePlan(paths, next);
+  if (kind === 'task') appendEvent(paths.log, 'task-added', { task: added.id, after: input.after }, now);
+  else if (kind === 'step') appendEvent(paths.log, 'step-added', { task: input.to, item: added.id }, now);
+  else appendEvent(paths.log, 'milestone-added', { milestone: added.id, after: input.after, tasks: added.tasks.length }, now);
+
+  // Every other task was done, so the first new one becomes the current task.
+  const first = current ? null : nextTodo(next);
+  if (first) startTask(paths, session, first, now);
+  return { ...added, warnings: fresh, saved: true, started: first?.task.id ?? null };
 }
 
 /**
@@ -497,11 +577,13 @@ export function revealHint(paths, id, options = {}) {
 }
 
 /**
- * G-3 and H-6: hand the current task to the agent. A learner-owned task needs a grant that an
- * adapter hook recorded when the learner confirmed the skip themselves.
+ * G-3 and H-6: hand the current task to the agent. A learner-owned task needs one of two things,
+ * both recorded by an adapter hook from the learner's own typing: a grant from a confirmed skip,
+ * or mentor mode off (ADR 16).
  * @param {StatePaths} paths
  * @param {string | undefined} id
  * @param {{ now?: Date }} [options]
+ * @returns {{ entry: TaskEntry, alreadyDelegated: boolean, via?: 'grant' | 'mode-off' }}
  */
 export function skipTask(paths, id, options = {}) {
   const plan = requireApprovedPlan(paths);
@@ -511,15 +593,16 @@ export function skipTask(paths, id, options = {}) {
   const { task } = entry;
   if (task.owner === 'delegated') return { entry, alreadyDelegated: true };
 
-  const grant = loadGuard(paths).grants[task.id];
-  if (!grant) {
-    throw refused(`${task.id} belongs to the learner. Only the learner can hand it over, by confirming the skip themselves.`);
+  const guard = loadGuard(paths);
+  const via = guard.grants[task.id] ? 'grant' : guard.mentorMode === 'off' ? 'mode-off' : null;
+  if (!via) {
+    throw refused(`${task.id} belongs to the learner. Only the learner can hand it over, by confirming the skip themselves or turning mentor mode off.`);
   }
   task.owner = 'delegated';
   task.skipped = true;
   savePlan(paths, plan);
-  appendEvent(paths.log, 'delegated', { task: task.id, skipped: true }, options.now);
-  return { entry, alreadyDelegated: false };
+  appendEvent(paths.log, 'delegated', { task: task.id, skipped: true, via }, options.now);
+  return { entry, alreadyDelegated: false, via };
 }
 
 /**
