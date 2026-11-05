@@ -86,8 +86,8 @@
         "hintsRevealed": { "type": "integer", "minimum": 0, "maximum": 4 },
         "status": { "enum": ["todo", "done"] },
         "passedAt": { "type": ["string", "null"] },
-        "note": { "type": ["string", "null"], "maxLength": 2000 }, 
-                "added": {"type": ["string", "null"]}
+        "note": { "type": ["string", "null"], "maxLength": 2000 },
+        "added": { "type": ["string", "null"], "description": "When the task joined the approved plan; absent on tasks from setup." }
       }
     },
     "checklistItem": {
