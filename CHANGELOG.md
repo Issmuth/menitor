@@ -42,6 +42,7 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
 
 ### Fixed
 
+- **No commit asked for on cards without a commit step.** A task that only deploys or pushes, such as the sample's deploy task, used to fail its check with "No commit since the task started". Now a commit is required only when the card has a step that starts with "Commit".
 - **Learner-only commands work on the first try in VS Code.** After the learner switched files, VS Code put a note about the open file before the typed text. The hook missed `/menitor:off`, `/menitor:on`, `/menitor:skip` and `/menitor:typealong`, so a second try was needed. The hook now skips that note and the selection note, and a command inside a selection never counts.
 
 ## 0.1.0 (2026-11-04)

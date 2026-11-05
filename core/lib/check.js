@@ -6,6 +6,7 @@ import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { git, headCommit } from './git.js';
 import { BUILD_DIRS, classifyPath } from './guard.js';
+import { isCommitStep } from './plan.js';
 
 /** Git's empty tree, the base when a task started before the first commit. */
 export const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
@@ -427,8 +428,10 @@ export function runCheck(input, options = {}) {
   if (!repo) {
     problems.push({ severity: 'blocking', area: 'repo', text: 'This folder is not a git repo. The learner creates it with "git init".' });
   } else {
-    if (!commits.length) problems.push({ severity: 'blocking', area: 'commits', text: 'No commit since the task started. The task ends with a commit.' });
-    else if (!commits.some((c) => c.conventional)) problems.push({ severity: 'blocking', area: 'commits', text: 'No commit message follows Conventional Commits, such as "feat(auth): persist new users".' });
+    if (!commits.length) {
+      // A card with no commit step, such as one that only deploys or pushes, has nothing new to commit.
+      if (task.checklist.some(isCommitStep)) problems.push({ severity: 'blocking', area: 'commits', text: 'No commit since the task started. The task ends with a commit.' });
+    } else if (!commits.some((c) => c.conventional)) problems.push({ severity: 'blocking', area: 'commits', text: 'No commit message follows Conventional Commits, such as "feat(auth): persist new users".' });
     for (const c of commits) {
       if (commits.some((x) => x.conventional) && !c.conventional) problems.push({ severity: 'warning', area: 'commits', text: `"${c.subject}" (${c.sha.slice(0, 7)}) doesn't follow Conventional Commits` });
       if (task.owner === 'learner' && c.delegatedTrailer) problems.push({ severity: 'blocking', area: 'commits', text: `${c.sha.slice(0, 7)} carries "Menitor-Delegated: true", but this is the learner's task` });

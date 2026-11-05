@@ -118,6 +118,27 @@ test('a clean learner task: committed, conventional, on its branch', async () =>
   cleanup();
 });
 
+test('a card with no commit step needs no new commit; one with a commit step still does', async () => {
+  const { root, cleanup } = await shapedProject((plan) => {
+    plan.checks = { build: ok(0), lint: null, test: ok(0) };
+    plan.milestones[0].tasks[0].checklist = ['Run the checks', 'Push the branch to origin'];
+  });
+  execFileSync('git', ['checkout', '-q', '-b', 'feat/skeleton'], { cwd: root });
+  let r = check(root);
+  assert.equal(r.ok, true, JSON.stringify(r.problems));
+  assert.ok(!r.problems.some((/** @type {any} */ p) => p.area === 'commits'));
+  cleanup();
+
+  const withStep = await shapedProject((plan) => {
+    plan.checks = { build: ok(0), lint: null, test: ok(0) };
+    plan.milestones[0].tasks[0].checklist = ['Run the checks', 'commit the release notes'];
+  });
+  execFileSync('git', ['checkout', '-q', '-b', 'feat/skeleton'], { cwd: withStep.root });
+  r = check(withStep.root);
+  assert.ok(r.problems.some((/** @type {any} */ p) => p.text.startsWith('No commit since the task started')), 'a commit step in any case still counts');
+  withStep.cleanup();
+});
+
 test('commit hygiene: messages, trailers and branches', async () => {
   const { root, cleanup } = await shapedProject((plan) => {
     plan.checks = {};
