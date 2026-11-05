@@ -83,7 +83,7 @@ flowchart LR
 | `/menitor:hint` | Show the next hint: concept, then approach, then pseudocode, then a partial snippet |
 | `/menitor:stuck` | Debug with you: what you tried, the error, the debugging step, the smallest useful hint |
 | `/menitor:skip [--explain]` | Hand the task to Menitor. It pushes back once; confirm with `/menitor:skip --confirm` |
-| `/menitor:off` and `/menitor:on` | Turn mentor mode off, so the agent may write code, or back on |
+| `/menitor:off` and `/menitor:on` | Turn mentor mode off, so the agent may write code and take your tasks without a skip, or back on |
 | `/menitor:typealong [off]` | Type-along: the window shows each step's instructions and full code, and you type it in by hand. `off` goes back to hints |
 | `/menitor:add <idea>` | Add an idea to your approved plan as a step, a task or a milestone. Menitor asks about it, proposes where it goes, and adds it once you say yes |
 
@@ -128,7 +128,7 @@ While mentor mode is on:
 - **Menitor's own files:** it can't change files in `.menitor/` except through the state CLI.
 - **Logged commands:** every command it runs is logged, so a check can flag anything that slipped past.
 
-Turn mentor mode off with `/menitor:off` when you want help writing code, and back on with `/menitor:on`.
+Turn mentor mode off with `/menitor:off` when you want help writing code, and back on with `/menitor:on`. While it's off, Menitor can also take your tasks without `/menitor:skip`. It still records each one as skipped, so your plan and stats show who did the work.
 
 ## How a check works
 

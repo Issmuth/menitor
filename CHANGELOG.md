@@ -38,6 +38,7 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
   - quieter, read-only steps on delegated tasks;
   - Instrument Sans, bundled under the SIL Open Font License, so the page still loads nothing from outside.
 - Ticking a step with the keyboard keeps focus on it, and screen readers hear when the task, the check result or the hints change.
+- **Mentor mode off hands over your tasks** (ADR 16). While it's off, the agent takes a learner task with `menitor task skip`, with no `/menitor:skip` from the learner. The task still counts as skipped, and its log line says `via=mode-off`. With mentor mode on, a skip still needs the learner's confirm.
 
 ### Fixed
 

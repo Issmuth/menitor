@@ -20,7 +20,7 @@ These settle the ambiguities and open questions in [prd.md](prd.md) before the b
 | 8 | Who writes progress | `progress.json` holds ticks only and is written by the window. A new `session.json` holds the current task and start commits and is written by the CLI. |
 | 9 | Validating Markdown | `learner.md` has a strict YAML-subset frontmatter validated by `learner.schema.json`, then free notes. `log.md` has one structured line per event, so `menitor stats` can compute the success metrics. |
 | 10 | Skip confirmation | The first `/menitor:skip` on a learner task only triggers the pushback. `/menitor:skip --confirm` is the grant, recorded by a hook in `guard.json`. |
-| 11 | Locked owners | The learner approves the plan at the end of `/menitor:start`. After that, the CLI refuses any plan import, and an owner moves from learner to delegated only with a skip grant. |
+| 11 | Locked owners | The learner approves the plan at the end of `/menitor:start`. After that, the CLI refuses any plan import, and an owner moves from learner to delegated only with a skip grant, or while mentor mode is off (ADR 16). |
 | 12 | Agent shell commands | Allowed: read-only commands, build, lint, test, `git status`, `git diff` and `git log`. Only on delegated or granted tasks: commands that write project files (installs, scaffolders, `git checkout`, `git commit`). |
 | 13 | Delegated commits | The agent commits delegated work on the learner's branch with a `Menitor-Delegated: true` trailer. |
 | 14 | When hints are written | Per milestone, when it starts, through `menitor hints import`. Revealed rungs can't be rewritten. |

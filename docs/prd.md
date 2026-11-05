@@ -185,7 +185,7 @@ The no-code rule is enforced by hooks, git is part of every task, and all memory
 | --- | --- |
 | G-1 | A PreToolUse hook denies agent writes outside .menitor/ and docs/ while mentor mode is on. A hook deny holds even in bypass-permissions mode. |
 | G-2 | Shell commands that write project files are denied on a best-effort pattern match: redirects, in-place edits, copies into source folders. |
-| G-3 | Only the learner grants delegation: a typed /menitor:skip, recorded by a hook, never by the agent. The grant allows writes for that one task. |
+| G-3 | Only the learner grants delegation: a typed /menitor:skip, recorded by a hook, never by the agent. The grant allows writes for that one task. While mentor mode is off (G-5), the agent may take the current task without a grant, and it is still recorded as skipped (ADR 16). |
 | G-4 | The agent changes state only through the menitor CLI. Direct edits to .menitor/\*.json are denied. |
 | G-5 | Turning mentor mode off is a learner action; the agent cannot do it. |
 | G-6 | Git per task: a branch per milestone or feature, Conventional Commits, and the start commit recorded. |
