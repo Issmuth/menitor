@@ -45,6 +45,7 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
 
 ### Fixed
 
+- **Plain words on a card no longer count as code.** The plan check flagged steps like "let the learner revise" and "return at once" because they start with a keyword. Now a keyword counts only in a code shape, such as `let x =` or `return {`, so real warnings stand out.
 - **The wait tool no longer waits on a window that isn't open.** It opens the window before it listens, or returns at once with the reason if the window can't start. Before, a session could sit stuck waiting for a press that couldn't come.
 - **No commit asked for on cards without a commit step.** A task that only deploys or pushes, such as the sample's deploy task, used to fail its check with "No commit since the task started". Now a commit is required only when the card has a step that starts with "Commit".
 - **Learner-only commands work on the first try in VS Code.** After the learner switched files, VS Code put a note about the open file before the typed text. The hook missed `/menitor:off`, `/menitor:on`, `/menitor:skip` and `/menitor:typealong`, so a second try was needed. The hook now skips that note and the selection note, and a command inside a selection never counts.
