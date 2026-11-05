@@ -159,6 +159,7 @@ Menitor keeps its state in `.menitor/` in your project. The plan is committed, s
 | `activity.jsonl` | every command and file write the agent ran | no |
 | `solutions.json` | type-along: each step's instructions and code | no |
 | `answers.json` | your answers to explain-back questions, typed in the window | no |
+| `setup.json` | what you said during setup, saved as you go, so a closed session loses nothing | no |
 | `window.json`, `inbox.jsonl`, `listener.json`, `waiter.json`, `claims/` | the running window and its buttons | no |
 
 Your lean docs go in `docs/`, one page each: product requirements, technical requirements, app flow, design brief, data and API contract, and testing approach. Decision records go in `docs/adr/`. You write the first one, for your stack.

@@ -27,12 +27,15 @@ import {
   loadPlan,
   loadProgress,
   loadSession,
+  loadSetup,
   requirePlan,
   savePlan,
   saveLearner,
   saveSession,
+  saveSetup,
   saveSolutions,
 } from './state.js';
+import { SETUP_STEPS, isSetupKey } from './setup.js';
 
 /**
  * @typedef {import('./paths.js').StatePaths} StatePaths
@@ -51,6 +54,7 @@ log.md
 activity.jsonl
 solutions.json
 answers.json
+setup.json
 waiter.json
 claims/
 window.json
@@ -421,13 +425,46 @@ export function importHints(paths, raw) {
 }
 
 /**
- * Projects set up before type-along keep their own .menitor/.gitignore; make sure step code stays out of git.
+ * Projects set up before a state file existed keep their own .menitor/.gitignore; make sure the
+ * file stays out of git all the same.
  * @param {StatePaths} paths
+ * @param {string} name such as "solutions.json"
  */
-function ignoreSolutions(paths) {
+function ignoreStateFile(paths, name) {
   const text = readTextOrNull(paths.gitignore) ?? '';
-  if (/^solutions\.json$/m.test(text)) return;
-  writeFileAtomic(paths.gitignore, `${text.replace(/\n*$/, '\n')}solutions.json\n`);
+  if (new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm').test(text)) return;
+  writeFileAtomic(paths.gitignore, `${text.replace(/\n*$/, '\n')}${name}\n`);
+}
+
+/**
+ * Save one setup answer the moment it's given. Answering again replaces it.
+ * @param {StatePaths} paths
+ * @param {string} key one of SETUP_STEPS
+ * @param {string} value
+ * @param {{ now?: Date }} [options]
+ */
+export function setSetupAnswer(paths, key, value, options = {}) {
+  if (!isSetupKey(key)) throw new MenitorError(`Unknown setup answer "${key}". Use one of: ${SETUP_STEPS.map((s) => s.key).join(', ')}`);
+  const text = value.replace(/\s+$/, '');
+  if (!text.trim()) throw new MenitorError(`The ${key} answer needs some text`);
+  const setup = loadSetup(paths);
+  setup.answers[key] = { value: text, at: (options.now ?? new Date()).toISOString() };
+  saveSetup(paths, setup);
+  ignoreStateFile(paths, 'setup.json');
+  return setup.answers[key];
+}
+
+/**
+ * The setup answers saved so far, in the order setup asks, and those still to ask.
+ * @param {StatePaths} paths
+ * @returns {import('./setup.js').SetupStatus}
+ */
+export function setupStatus(paths) {
+  const saved = loadSetup(paths).answers;
+  return {
+    answers: SETUP_STEPS.filter((s) => saved[s.key]).map((s) => ({ key: s.key, label: s.label, value: saved[s.key].value, at: saved[s.key].at })),
+    missing: SETUP_STEPS.filter((s) => !saved[s.key]).map((s) => ({ key: s.key, label: s.label })),
+  };
 }
 
 /**
@@ -460,7 +497,7 @@ export function importSteps(paths, raw, options = {}) {
     if (step && typeof step.say === 'string') warnings.push(...languageWarnings(`${id} say`, step.say).filter((w) => !w.includes('looks like code')));
   }
   saveSolutions(paths, solutions);
-  ignoreSolutions(paths);
+  ignoreStateFile(paths, 'solutions.json');
   appendEvent(paths.log, 'steps', { count: ids.length }, options.now);
   return { ids, warnings };
 }
@@ -804,6 +841,7 @@ export function validateAll(paths) {
   const session = attempt('session.json', () => loadSession(paths));
   const progress = attempt('progress.json', () => loadProgress(paths));
   const guard = attempt('guard.json', () => loadGuard(paths));
+  attempt('setup.json', () => loadSetup(paths));
   attempt('log.md', () => parseLog(fs.existsSync(paths.log) ? fs.readFileSync(paths.log, 'utf8') : ''));
 
   if (plan) {

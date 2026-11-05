@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Issmuth/menitor/blob/main/core/schemas/setup.schema.json",
+  "title": "Menitor setup answers (.menitor/setup.json)",
+  "description": "What the learner said during setup, saved the moment each answer is given, so a session that closes mid-setup loses nothing. Written by the agent through the menitor CLI.",
+  "type": "object",
+  "required": ["version", "answers"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "answers": {
+      "type": "object",
+      "propertyNames": { "enum": ["idea", "goal", "time", "experience", "stack", "warmup-question", "warmup-answer", "help", "stack-choice", "prd"] },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["value", "at"],
+        "additionalProperties": false,
+        "properties": {
+          "value": { "type": "string", "minLength": 1, "maxLength": 8000 },
+          "at": { "type": "string" }
+        }
+      }
+    }
+  }
+}

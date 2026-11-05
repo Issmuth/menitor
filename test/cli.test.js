@@ -125,6 +125,44 @@ test('tasks pass in order and record the next start commit', () => {
   cleanup();
 });
 
+test('setup answers are saved as they are given, and show what is left to ask', () => {
+  const { root, paths, cleanup } = makeProject();
+  try {
+    cli(root, ['init']);
+    const show = () => JSON.parse(cli(root, ['setup', 'show', '--json']).out);
+    assert.deepEqual(show().answers, []);
+    assert.deepEqual(
+      show().missing.map((/** @type {any} */ m) => m.key),
+      ['idea', 'goal', 'time', 'experience', 'stack', 'warmup-question', 'warmup-answer', 'help', 'stack-choice', 'prd'],
+      'every setup answer, in the order setup asks',
+    );
+
+    assert.equal(cli(root, ['setup', 'set', 'idea', 'A recipe box', 'for my family']).code, 0);
+    const prd = 'Problem: recipes get lost.\nUsers: my family.\nMust-haves: add, list, search.';
+    assert.equal(cli(root, ['setup', 'set', 'prd', '-'], { stdin: `${prd}\n` }).code, 0);
+    const s = show();
+    assert.deepEqual(s.answers.map((/** @type {any} */ a) => [a.key, a.value]), [['idea', 'A recipe box for my family'], ['prd', prd]]);
+    assert.ok(!s.missing.some((/** @type {any} */ m) => m.key === 'idea'));
+    assert.match(cli(root, ['setup', 'show']).out, /Idea\s+A recipe box for my family/);
+    assert.match(cli(root, ['setup', 'show']).out, /Still to ask: Goal, Time per week/);
+
+    // Answering again replaces the answer.
+    cli(root, ['setup', 'set', 'idea', 'A recipe box for friends']);
+    assert.equal(show().answers[0].value, 'A recipe box for friends');
+
+    const bad = cli(root, ['setup', 'set', 'colour', 'blue']);
+    assert.notEqual(bad.code, 0);
+    assert.match(bad.err, /Unknown setup answer "colour"/);
+    assert.notEqual(cli(root, ['setup', 'set', 'goal']).code, 0, 'an answer needs text');
+
+    // Personal, so it stays out of git; and validate checks it.
+    assert.match(fs.readFileSync(paths.gitignore, 'utf8'), /^setup\.json$/m);
+    assert.equal(cli(root, ['validate']).code, 0);
+  } finally {
+    cleanup();
+  }
+});
+
 test('a learner task can be skipped only with a grant the learner gave', () => {
   const { root, paths, cleanup } = approvedProject();
   const denied = cli(root, ['task', 'skip']);
