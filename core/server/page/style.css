@@ -907,6 +907,39 @@ h1 {
   background: var(--accent);
 }
 
+/* A passed task's result: what Menitor said about the explanation, then Continue (C-6) */
+
+.result-body,
+.result-main {
+  display: grid;
+  gap: var(--gap);
+  align-content: start;
+}
+
+.result-list {
+  display: grid;
+  gap: 24px;
+}
+
+.result-item {
+  display: grid;
+  gap: 8px;
+}
+
+/* The learner's own words keep a reading measure, even in a wide panel. */
+.result-item .past-a {
+  justify-self: start;
+  max-width: 68ch;
+}
+
+/* Menitor's reply is what this screen is for, so it reads at the question's size. */
+.result-feedback {
+  font-size: 18px;
+  line-height: 1.45;
+  max-width: 64ch;
+  text-wrap: pretty;
+}
+
 /* Explain your code: the agent's question, answered here */
 
 .qa {
@@ -1356,6 +1389,20 @@ h1 {
   .board > .plan {
     grid-column: 9 / span 4;
     grid-row: 2;
+  }
+
+  /* A passed task's result: the explanation and Up next on the left, the plan on the right. */
+  .result-body {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .result-main {
+    grid-column: 1 / span 8;
+  }
+
+  .result-body > .plan {
+    grid-column: 9 / span 4;
+    align-self: start;
   }
 
   /* Type-along steps grow as code opens: the plan stays in view beside them instead of stretching. */

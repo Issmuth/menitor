@@ -148,6 +148,44 @@ test('ticks are saved to progress.json, only for the current card', async () => 
   }
 });
 
+test('a passed explain-back stays on screen until Continue, and a reload remembers it', async () => {
+  const { root, paths, cleanup } = approvedProject();
+  const { win, post } = await serve(root);
+  try {
+    cli(root, ['question', 'ask', 'Why does the page need its own route?']);
+    let s = windowState(paths, { commands: {} });
+    assert.equal(s.result, null, 'nothing has passed yet');
+    assert.equal((await post('/api/answer', { question: s.questions[0].id, text: 'So the home page has one place to grow.' })).status, 200);
+    cli(root, ['question', 'judge', 'good', '--feedback', 'Right: one route per page keeps them apart.']);
+    cli(root, ['task', 'pass', '--override', 'test']);
+
+    s = windowState(paths, { commands: {} });
+    assert.equal(s.card?.task, 't2', 'the plan has moved on');
+    assert.equal(s.result?.task, 't1');
+    assert.equal(s.result.number, 1);
+    assert.equal(s.result.goal, 'Show a hello page');
+    assert.deepEqual(
+      s.result.questions.map((/** @type {any} */ q) => [q.text, q.answer?.text, q.outcome, q.feedback]),
+      [['Why does the page need its own route?', 'So the home page has one place to grow.', 'good', 'Right: one route per page keeps them apart.']],
+    );
+    assert.deepEqual(s.result.next, { number: s.card?.number, goal: s.card?.goal });
+
+    assert.equal((await post('/api/continue', {})).status, 400);
+    assert.equal((await post('/api/continue', { task: 't2' })).status, 409, 'only the result on screen');
+    const r = await post('/api/continue', { task: 't1' });
+    assert.equal(r.status, 200, r.body);
+    assert.equal(JSON.parse(r.body).result, null);
+    assert.ok(loadProgress(paths).seen?.t1, 'kept in progress.json, which the window writes');
+    assert.equal(windowState(paths, { commands: {} }).result, null, 'a reload does not bring it back');
+
+    cli(root, ['task', 'pass', '--override', 'test']); // t2 is delegated: no explain-back
+    assert.equal(windowState(paths, { commands: {} }).result, null, 'a pass with no explain-back shows no result');
+  } finally {
+    await win.close();
+    cleanup();
+  }
+});
+
 test('the event stream pushes new state when a state file changes', async () => {
   const { root, cleanup } = approvedProject();
   const { win, port, auth } = await serve(root);
