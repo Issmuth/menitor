@@ -977,6 +977,105 @@ h1 {
   text-wrap: pretty;
 }
 
+/* The finish line, when every task is done: one field in Menitor's green with the figures as
+ * type, then what was built beside the plan. */
+
+.finish {
+  display: grid;
+  gap: 24px;
+  margin-bottom: var(--gap);
+  padding: 24px;
+  border-radius: var(--radius-panel);
+  background: var(--callout-bg);
+}
+
+.finish-figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.finish-figures > div {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+
+.finish-figures dt {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+.finish-figures dd {
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.1;
+}
+
+/* The lead figure answers the screen's question: how much of it did you write? */
+.finish-figures .lead dd {
+  font-size: 40px;
+  letter-spacing: -0.02em;
+}
+
+.finish-unit {
+  font-size: var(--fs-body);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
+.finish-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}
+
+.finish-foot p {
+  max-width: 64ch;
+  margin-right: auto;
+  text-wrap: pretty;
+}
+
+.finish-url {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.finish-body {
+  display: grid;
+  gap: var(--gap);
+}
+
+.built-milestone + .built-milestone {
+  margin-top: 20px;
+}
+
+/* Milestones are a level below the panel title, as in the plan ledger. */
+.built-milestone h3 {
+  margin-bottom: 4px;
+  font-size: var(--fs-meta);
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.built-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.built-by {
+  flex: none;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
 /* Explain your code: the agent's question, answered here */
 
 .qa {
@@ -1442,6 +1541,20 @@ h1 {
     align-self: start;
   }
 
+  /* The finish line: what you built on the left, the plan on the right. */
+  .finish-body {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .finish-body > .built {
+    grid-column: 1 / span 8;
+  }
+
+  .finish-body > .plan {
+    grid-column: 9 / span 4;
+    align-self: start;
+  }
+
   /* Type-along steps grow as code opens: the plan stays in view beside them instead of stretching. */
   .board.typealong > .plan {
     align-self: start;
@@ -1507,6 +1620,19 @@ h1 {
 @media (max-width: 640px) {
   .solution {
     padding-left: 14px;
+  }
+
+  /* The finish figures: the lead across the top, the other two side by side under it. */
+  .finish {
+    padding: 20px;
+  }
+
+  .finish-figures {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .finish-figures .lead {
+    grid-column: 1 / -1;
   }
 }
 

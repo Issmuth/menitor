@@ -754,6 +754,81 @@ function resultView(s) {
   return { nodes: [head, h('div', { class: 'result-body' }, h('div', { class: 'result-main' }, said, next), planPanel(s))], bar: false };
 }
 
+/** @param {string} iso A short date, such as "Nov 6". */
+function day(iso) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+/** @param {string} url */
+function hostOf(url) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * The finish line, once every task in the plan has passed: how it was built, in real figures, and
+ * what was built, task by task. Adding a task brings the card back.
+ * @param {any} s
+ */
+function finishView(s) {
+  const f = s.finish;
+  const w = s.written;
+  const span = f.started && f.finished ? (day(f.started) === day(f.finished) ? `on ${day(f.finished)}` : `from ${day(f.started)} to ${day(f.finished)}`) : '';
+  const head = h(
+    'header',
+    { class: 'head' },
+    h(
+      'div',
+      { class: 'head-text' },
+      h('h1', { id: 'title' }, `${s.project ?? 'Your project'} is done`),
+      h('p', { class: 'why' }, `Every task in your plan passed: ${plural(s.total, 'task')} in ${plural(s.milestones.length, 'milestone')}${span ? `, ${span}` : ''}.`),
+    ),
+  );
+  const figure = (/** @type {string} */ label, /** @type {string} */ value, /** @type {string | null} */ unit, lead = false) =>
+    h('div', { class: lead ? 'lead' : '' }, h('dt', null, label), h('dd', { class: 'num' }, value, unit ? h('span', { class: 'finish-unit' }, unit) : null));
+  const field = h(
+    'section',
+    { class: 'finish', 'aria-labelledby': 'finish-title' },
+    h('h2', { id: 'finish-title', class: 'sr-only' }, 'How you built it'),
+    h(
+      'dl',
+      { class: 'finish-figures' },
+      figure('Written by you', String(w.learner), ` of ${s.total}`, true),
+      figure('Done by Menitor', String(w.delegated), w.skipped ? ` · ${w.skipped} skipped` : null),
+      figure('Hints opened', String(f.hints), null),
+    ),
+    h(
+      'div',
+      { class: 'finish-foot' },
+      h('p', null, `${f.explained}.`),
+      f.deployUrl ? h('span', { class: 'finish-url' }, hostOf(f.deployUrl)) : h('span', { class: 'finish-url' }, 'Not deployed yet'),
+      f.deployUrl ? h('a', { class: 'btn primary', href: f.deployUrl, target: '_blank', rel: 'noopener noreferrer' }, 'Open your live app') : null,
+    ),
+  );
+  const built = h(
+    'section',
+    { class: 'panel built', 'aria-labelledby': 'built-title' },
+    h('header', { class: 'panel-head' }, h('h2', { id: 'built-title' }, 'What you built')),
+    ...s.milestones.map((/** @type {any} */ m) =>
+      h(
+        'div',
+        { class: 'built-milestone' },
+        h('h3', null, m.title),
+        h(
+          'ol',
+          { class: 'built-list' },
+          ...m.tasks.map((/** @type {any} */ t) => h('li', null, h('span', null, t.goal), h('span', { class: 'built-by' }, t.by === 'learner' ? 'You' : t.skipped ? 'Menitor, skipped' : 'Menitor'))),
+        ),
+      ),
+    ),
+  );
+  return { nodes: [head, field, h('div', { class: 'finish-body' }, built, planPanel(s))], bar: false };
+}
+
 /** @param {any} s */
 function messageView(s) {
   const cmd = (/** @type {string} */ k, /** @type {string} */ fallback) => s.commands?.[k] ?? fallback;
@@ -785,6 +860,9 @@ function announceChanges(prev, s) {
     announce(`Task ${s.result.number} passed. ${said} Press Continue when you're ready for the next task.`);
     return;
   }
+  if (prev && s.finish && !s.result && !prev.finish) {
+    announce(`Every task is done. ${s.written.learner} of ${s.total} written by you.`);
+    return;
   const p = pressOf(s);
   const was = pressOf(prev);
   if (p && s.card && (p.at !== was?.at || p.state !== was?.state)) {
@@ -845,6 +923,7 @@ function render(s) {
     view = problemView('This window is out of date', 'Menitor was updated after this window started, so it reads your plan with old rules. Ask your coding session to open the window again.');
   } else if (!s.ok) view = problemView("Menitor's state has a problem", `${s.error} Ask your coding session to validate Menitor's state and fix it.`);
   else if (s.phase === 'task' && s.card) view = taskView(s);
+  else if (s.phase === 'done' && s.finish) view = finishView(s);
   else view = messageView(s);
 
   const notice = s.ok && s.mentorMode === 'off' ? h('p', { class: 'notice', role: 'status' }, 'Mentor mode is off, so the agent may write code anywhere.') : null;
@@ -852,7 +931,7 @@ function render(s) {
   sheet.classList.toggle('has-bar', view.bar);
 
   $('project').textContent = s.project ?? 'Your project';
-  doc.title = s.result ? `Passed · ${s.result.goal}` : s.card ? `${s.card.number}/${s.card.total} · ${s.card.goal}` : 'Menitor';
+  doc.title = s.result ? `Passed · ${s.result.goal}` : s.card ? `${s.card.number}/${s.card.total} · ${s.card.goal}` : s.finish ? `${s.project ?? 'Your project'} is done` : 'Menitor';
   if (focusKey) {
     const again = /** @type {HTMLElement | null} */ (content.querySelector(`[data-key="${CSS.escape(focusKey)}"]`));
     again?.focus({ preventScroll: true });

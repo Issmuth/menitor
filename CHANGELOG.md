@@ -19,6 +19,7 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
   - a skip waiting for the learner's confirm;
   - anything the agent is waiting on, posted with `menitor waiting`.
 - On phones and tablets, **Before you code** now comes before the steps.
+- **A finish screen for a finished plan.** When every task passes, the window celebrates it with real figures: how many tasks you wrote, what Menitor did, hints opened and your explain-back record. Below that, every task and who did it, and a button to open your live app. Adding a task brings the card back.
 - **See that Menitor is working after a button press.** The pressed button says what's happening ("Checking…"), the line beside the buttons says it in words, and the other buttons wait, so a second press sends nothing. When Menitor is done, the line says what comes next. A new `Stop` hook records when the agent ends its turn.
 - **Read the feedback before moving on.** When a task passes after an explain-back, the window keeps the questions, your answers and Menitor's replies on screen, beside the plan. **Continue** shows the next card, and the window remembers it after a reload.
 - **Window buttons drive the session in every Claude Code surface,** including VS Code. The plugin ships an MCP server with one tool, `wait_for_learner`. Claude calls it when the next move is the learner's, and it returns the moment a button is pressed. A press is claimed once, so the wait tool and the monitor never both handle it (ADR 14).

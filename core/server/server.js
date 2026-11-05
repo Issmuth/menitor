@@ -12,6 +12,8 @@ import { findTask } from '../lib/plan.js';
 import { loadAnswers, loadGuard, loadPlan, loadProgress, loadSession, loadSolutions, saveAnswers, saveProgress } from '../lib/state.js';
 import { deliverToListener, liveListener, pressState, readInbox } from '../lib/inbox.js';
 import { codeFingerprint } from '../lib/fingerprint.js';
+import { parseLog } from '../lib/log.js';
+import { computeStats } from '../lib/stats.js';
 
 /** The only events a button can send (W-7). */
 export const EVENTS = /** @type {const} */ (['check', 'hint', 'stuck', 'go']);
@@ -89,6 +91,7 @@ export function windowState(paths, options) {
       card,
       lastCheck: record?.lastCheck ?? null,
       result: lastResult(paths, plan, session, card),
+      finish: phase === 'done' && plan ? finishOf(paths, plan) : null,
       milestones: status.milestones.map((m, i) => ({ ...m, current: current?.milestone.id === m.id, tasks: tasksOf(i) })),
       done: status.done,
       total: status.total,
@@ -100,6 +103,25 @@ export function windowState(paths, options) {
   } catch (err) {
     return { ok: false, error: /** @type {Error} */ (err).message, commands: options.commands };
   }
+}
+
+/**
+ * The finish line: how the whole plan was built, from the plan and the log. Only computed once
+ * every task is done.
+ * @param {StatePaths} paths
+ * @param {import('../lib/plan.js').Plan} plan
+ */
+export function finishOf(paths, plan) {
+  const events = parseLog(fs.existsSync(paths.log) ? fs.readFileSync(paths.log, 'utf8') : '');
+  const stats = computeStats(plan, events);
+  const passed = plan.milestones.flatMap((m) => m.tasks.map((t) => t.passedAt ?? '')).filter(Boolean).sort();
+  return {
+    started: plan.approvedAt,
+    finished: passed.at(-1) ?? null,
+    hints: events.filter((e) => e.event === 'hint').length,
+    explained: stats.explainBack.detail,
+    deployUrl: plan.project.deployUrl ?? null,
+  };
 }
 
 /**
