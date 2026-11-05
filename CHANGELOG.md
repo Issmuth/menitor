@@ -39,6 +39,10 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
   - Instrument Sans, bundled under the SIL Open Font License, so the page still loads nothing from outside.
 - Ticking a step with the keyboard keeps focus on it, and screen readers hear when the task, the check result or the hints change.
 
+### Fixed
+
+- **Learner-only commands work on the first try in VS Code.** After the learner switched files, VS Code put a note about the open file before the typed text. The hook missed `/menitor:off`, `/menitor:on`, `/menitor:skip` and `/menitor:typealong`, so a second try was needed. The hook now skips that note and the selection note, and a command inside a selection never counts.
+
 ## 0.1.0 (2026-11-04)
 
 The first build of v1, ready for its first testers. It covers the v1 scope in the [PRD](docs/prd.md).
