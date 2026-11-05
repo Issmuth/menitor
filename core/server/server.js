@@ -10,7 +10,7 @@ import { statusData } from '../lib/ops.js';
 import { cardData } from '../lib/card.js';
 import { findTask } from '../lib/plan.js';
 import { loadAnswers, loadGuard, loadPlan, loadProgress, loadSession, loadSolutions, saveAnswers, saveProgress } from '../lib/state.js';
-import { deliverToListener, liveListener, readInbox } from '../lib/inbox.js';
+import { deliverToListener, liveListener, pressState, readInbox } from '../lib/inbox.js';
 import { codeFingerprint } from '../lib/fingerprint.js';
 
 /** The only events a button can send (W-7). */
@@ -95,6 +95,7 @@ export function windowState(paths, options) {
       written: status.written,
       commands: options.commands,
       listening: Boolean(liveListener(paths)),
+      press: pressState(paths),
     };
   } catch (err) {
     return { ok: false, error: /** @type {Error} */ (err).message, commands: options.commands };
@@ -384,6 +385,9 @@ export function createWindowServer(root, options = {}) {
         } catch {
           task = null;
         }
+        // One press at a time: while the last one is still on its way or being worked on, send nothing.
+        const pending = pressState(paths);
+        if (pending && pending.state !== 'done') return sendJson(res, 200, { delivered: true, busy: true, command: /** @type {Record<string, string>} */ (commands)[type] });
         const event = { type: /** @type {'check' | 'hint' | 'stuck' | 'go'} */ (type), task };
         const delivered = options.deliver ? options.deliver(event) : deliverToListener(paths, event).delivered;
         return sendJson(res, 200, { delivered, command: /** @type {Record<string, string>} */ (commands)[type] });
