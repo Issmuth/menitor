@@ -42,6 +42,7 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
 
 ### Fixed
 
+- **The wait tool no longer waits on a window that isn't open.** It opens the window before it listens, or returns at once with the reason if the window can't start. Before, a session could sit stuck waiting for a press that couldn't come.
 - **Learner-only commands work on the first try in VS Code.** After the learner switched files, VS Code put a note about the open file before the typed text. The hook missed `/menitor:off`, `/menitor:on`, `/menitor:skip` and `/menitor:typealong`, so a second try was needed. The hook now skips that note and the selection note, and a command inside a selection never counts.
 
 ## 0.1.0 (2026-11-04)
