@@ -83,8 +83,11 @@ test('typed /menitor:off and /menitor:on change mentor mode', () => {
   const { root, paths, cleanup } = approvedProject();
   const off = hook('UserPromptSubmit', { cwd: root, prompt: '/menitor:off' });
   assert.match(off.hookSpecificOutput.additionalContext, /turned mentor mode off/);
+  assert.match(off.hookSpecificOutput.additionalContext, /first run .* task skip, so Menitor records it as yours/);
   assert.equal(loadGuard(paths).mentorMode, 'off');
   assert.equal(hook('PreToolUse', { cwd: root, tool_name: 'Write', tool_input: { file_path: path.join(root, 'src', 'a.js') } }), null);
+  const start = hook('SessionStart', { cwd: root, source: 'startup' }).hookSpecificOutput.additionalContext;
+  assert.match(start, /mentor mode off, so help normally\. To do one of the learner's tasks, first run .* task skip/);
   hook('UserPromptSubmit', { cwd: root, prompt: '  /menitor:on  ' });
   assert.equal(loadGuard(paths).mentorMode, 'on');
   const modes = parseLog(fs.readFileSync(paths.log, 'utf8')).filter((e) => e.event === 'mode').map((e) => e.fields.value);

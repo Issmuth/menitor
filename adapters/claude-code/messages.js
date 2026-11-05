@@ -10,6 +10,9 @@ export const COMMANDS = COMMAND_NAMES;
 export const CLI_PATH = fileURLToPath(new URL('../../core/bin/menitor.js', import.meta.url));
 export const CLI = `node "${CLI_PATH}"`;
 
+/** While mentor mode is off, the agent may take the learner's tasks, recorded as skips (ADR 16). */
+export const TAKE_TASKS = `To do one of the learner's tasks, first run ${CLI} task skip, so Menitor records it as yours. No skip from the learner is needed.`;
+
 /**
  * The agent-neutral mentor rules with this adapter's command names filled in.
  */
@@ -131,9 +134,9 @@ export function learnerCommandContext(r) {
         `Then run ${CLI} task pass --note "<what you did, in two lines>".`,
       ].join(' ');
     case 'mode-off':
-      return `Menitor: the learner turned mentor mode off (recorded). You may write project files. Menitor state still changes only through ${CLI}. They can type ${COMMANDS.on} to turn it back on.`;
+      return `Menitor: the learner turned mentor mode off (recorded). You may write project files. ${TAKE_TASKS} Menitor state still changes only through ${CLI}. They can type ${COMMANDS.on} to turn it back on.`;
     case 'already-off':
-      return `Menitor: mentor mode is already off. The learner can type ${COMMANDS.on} to turn it back on.`;
+      return `Menitor: mentor mode is already off. ${TAKE_TASKS} The learner can type ${COMMANDS.on} to turn it back on.`;
     case 'mode-on':
       return `Menitor: the learner turned mentor mode back on (recorded). Project code on learner tasks is theirs to write again.`;
     case 'already-on':

@@ -79,7 +79,8 @@ Tasks (the ID defaults to the current task)
         --revisit <concept>             A concept to revisit (repeatable)
         --override <reason>             Pass without the gate, only when a check itself is broken;
                                         the reason is logged and shown on the card
-  menitor task skip [id]                Hand a task to the agent (learner tasks need the learner's grant)
+  menitor task skip [id]                Hand a task to the agent (learner tasks need the learner's grant,
+                                        or mentor mode off)
 
 Explain-back and waiting
   menitor question ask "<text>"         Ask an explain-back question; the window shows it with an answer box
@@ -613,10 +614,11 @@ function runTask(sub, rest, values, io, paths, json) {
       return EXIT.ok;
     }
     case 'skip': {
-      const { entry, alreadyDelegated } = skipTask(p, rest[0]);
-      if (values.json) json({ task: entry.task.id, owner: 'delegated', alreadyDelegated });
+      const { entry, alreadyDelegated, via } = skipTask(p, rest[0]);
+      const why = via === 'mode-off' ? 'because mentor mode is off' : 'because the learner skipped it';
+      if (values.json) json({ task: entry.task.id, owner: 'delegated', alreadyDelegated, via: via ?? null });
       else if (alreadyDelegated) io.out(`${entry.task.id} is already delegated. Do the work, then commit it with the trailer "Menitor-Delegated: true".`);
-      else io.out(`${entry.task.id} is now delegated because the learner skipped it. Do the work, then commit it with the trailer "Menitor-Delegated: true".`);
+      else io.out(`${entry.task.id} is now delegated ${why}. Do the work, then commit it with the trailer "Menitor-Delegated: true".`);
       return EXIT.ok;
     }
     default:

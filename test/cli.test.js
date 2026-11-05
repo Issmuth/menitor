@@ -150,6 +150,34 @@ test('a learner task can be skipped only with a grant the learner gave', () => {
   cleanup();
 });
 
+test('with mentor mode off, the agent hands the learner task to itself without a grant', () => {
+  const { root, paths, cleanup } = approvedProject();
+  // An adapter hook writes this after the learner types the command to turn mentor mode off.
+  const guard = loadGuard(paths);
+  guard.mentorMode = 'off';
+  saveGuard(paths, guard);
+
+  const ok = cli(root, ['task', 'skip']);
+  assert.equal(ok.code, 0, ok.err);
+  assert.match(ok.out, /t1 is now delegated because mentor mode is off\. .*Menitor-Delegated: true/);
+  const task = loadPlan(paths)?.milestones[0].tasks[0];
+  assert.equal(task?.owner, 'delegated');
+  assert.equal(task?.skipped, true, 'it still counts as skipped in the stats');
+  assert.deepEqual(events(paths.log).at(-1)?.fields, { task: 't1', skipped: 'true', via: 'mode-off' });
+  assert.deepEqual(loadGuard(paths).grants, {}, 'no grant is written; the guard file keeps one writer');
+
+  cli(root, ['task', 'pass', '--override', 'test']);
+  cli(root, ['task', 'pass', '--override', 'test']); // t2 is planned as delegated
+  const back = loadGuard(paths);
+  back.mentorMode = 'on';
+  saveGuard(paths, back);
+  assert.equal(loadPlan(paths)?.milestones[1].tasks[0].owner, 'learner', 't3 is the next learner task');
+  const denied = cli(root, ['task', 'skip']);
+  assert.equal(denied.code, EXIT.refused, 'with mentor mode back on, the next learner task needs a grant again');
+  assert.match(denied.err, /Only the learner can hand it over/);
+  cleanup();
+});
+
 test('hints are stored per milestone and revealed one at a time', () => {
   const { root, paths, cleanup } = approvedProject();
   const none = cli(root, ['task', 'hint']);

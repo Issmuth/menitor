@@ -34,7 +34,7 @@ export const EVENTS = {
   hint: { task: 'id', rung: RUNG_ENUM },
   stuck: { task: 'id' },
   skip: { task: 'id', stage: 'requested|confirmed' },
-  delegated: { task: 'id', skipped: 'true|false' },
+  delegated: { task: 'id', skipped: 'true|false', via: 'grant|mode-off?' },
   dispute: { task: 'id', outcome: 'upheld|withdrawn' },
   deploy: { url: 'text' },
   fix: { task: 'id', item: 'text' },

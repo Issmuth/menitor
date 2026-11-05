@@ -577,11 +577,13 @@ export function revealHint(paths, id, options = {}) {
 }
 
 /**
- * G-3 and H-6: hand the current task to the agent. A learner-owned task needs a grant that an
- * adapter hook recorded when the learner confirmed the skip themselves.
+ * G-3 and H-6: hand the current task to the agent. A learner-owned task needs one of two things,
+ * both recorded by an adapter hook from the learner's own typing: a grant from a confirmed skip,
+ * or mentor mode off (ADR 16).
  * @param {StatePaths} paths
  * @param {string | undefined} id
  * @param {{ now?: Date }} [options]
+ * @returns {{ entry: TaskEntry, alreadyDelegated: boolean, via?: 'grant' | 'mode-off' }}
  */
 export function skipTask(paths, id, options = {}) {
   const plan = requireApprovedPlan(paths);
@@ -591,15 +593,16 @@ export function skipTask(paths, id, options = {}) {
   const { task } = entry;
   if (task.owner === 'delegated') return { entry, alreadyDelegated: true };
 
-  const grant = loadGuard(paths).grants[task.id];
-  if (!grant) {
-    throw refused(`${task.id} belongs to the learner. Only the learner can hand it over, by confirming the skip themselves.`);
+  const guard = loadGuard(paths);
+  const via = guard.grants[task.id] ? 'grant' : guard.mentorMode === 'off' ? 'mode-off' : null;
+  if (!via) {
+    throw refused(`${task.id} belongs to the learner. Only the learner can hand it over, by confirming the skip themselves or turning mentor mode off.`);
   }
   task.owner = 'delegated';
   task.skipped = true;
   savePlan(paths, plan);
-  appendEvent(paths.log, 'delegated', { task: task.id, skipped: true }, options.now);
-  return { entry, alreadyDelegated: false };
+  appendEvent(paths.log, 'delegated', { task: task.id, skipped: true, via }, options.now);
+  return { entry, alreadyDelegated: false, via };
 }
 
 /**
