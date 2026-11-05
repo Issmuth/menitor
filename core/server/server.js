@@ -87,6 +87,7 @@ export function windowState(paths, options) {
       level: status.level,
       card,
       lastCheck: record?.lastCheck ?? null,
+      result: lastResult(paths, plan, session, card),
       milestones: status.milestones.map((m, i) => ({ ...m, current: current?.milestone.id === m.id, tasks: tasksOf(i) })),
       done: status.done,
       total: status.total,
@@ -97,6 +98,40 @@ export function windowState(paths, options) {
   } catch (err) {
     return { ok: false, error: /** @type {Error} */ (err).message, commands: options.commands };
   }
+}
+
+/**
+ * C-6: the explain-back of the task that passed last, with the answers and Menitor's feedback, so
+ * the learner can read it before the next card. It stays until they press Continue. A pass with
+ * no questions, such as a delegated task, has nothing to read.
+ * @param {StatePaths} paths
+ * @param {import('../lib/plan.js').Plan | null} plan
+ * @param {import('../lib/state.js').Session} session
+ * @param {{ number: number, goal: string } | null} card the next card, if there is one
+ */
+export function lastResult(paths, plan, session, card) {
+  if (!plan) return null;
+  /** @type {{ task: import('../lib/plan.js').Task, number: number } | null} */
+  let last = null;
+  let number = 0;
+  for (const m of plan.milestones) {
+    for (const t of m.tasks) {
+      number += 1;
+      if (t.status === 'done' && t.passedAt && (!last || t.passedAt > (last.task.passedAt ?? ''))) last = { task: t, number };
+    }
+  }
+  if (!last || loadProgress(paths).seen?.[last.task.id]) return null;
+  const questions = session.tasks[last.task.id]?.questions ?? [];
+  if (!questions.length) return null;
+  const answers = loadAnswers(paths).answers;
+  return {
+    task: last.task.id,
+    number: last.number,
+    goal: last.task.goal,
+    passedAt: last.task.passedAt,
+    questions: questions.map((q) => ({ ...q, answer: answers[q.id] ?? null })),
+    next: card ? { number: card.number, goal: card.goal } : null,
+  };
 }
 
 /**
@@ -331,6 +366,7 @@ export function createWindowServer(root, options = {}) {
 
       if (url.pathname === '/api/tick') return tick(res, body);
       if (url.pathname === '/api/answer') return answer(res, body);
+      if (url.pathname === '/api/continue') return dismiss(res, body);
       if (url.pathname === '/api/event') {
         const type = body.type;
         if (typeof type !== 'string' || !(/** @type {readonly string[]} */ (EVENTS)).includes(type)) return send(res, 400, 'Unknown event.');
@@ -371,6 +407,30 @@ export function createWindowServer(root, options = {}) {
       const progress = loadProgress(paths);
       if (ticked) progress.ticks[item] = new Date().toISOString();
       else delete progress.ticks[item];
+      saveProgress(paths, progress);
+      refresh();
+      return send(res, 200, lastJson, { 'Content-Type': 'application/json; charset=utf-8' });
+    } catch (err) {
+      return send(res, 500, /** @type {Error} */ (err).message);
+    }
+  }
+
+  /**
+   * C-6: Continue on a passed task's result. It's remembered in progress.json, so a reload or the
+   * pop-out shows the next card too. Only the result on screen can be dismissed.
+   * @param {http.ServerResponse} res
+   * @param {Record<string, unknown>} body
+   */
+  function dismiss(res, body) {
+    const { task } = body;
+    if (typeof task !== 'string') return send(res, 400, 'Send { task }.');
+    try {
+      const plan = loadPlan(paths);
+      const session = loadSession(paths);
+      const result = lastResult(paths, plan, session, null);
+      if (result?.task !== task) return send(res, 409, 'That result is not on screen.');
+      const progress = loadProgress(paths);
+      progress.seen = { ...progress.seen, [task]: new Date().toISOString() };
       saveProgress(paths, progress);
       refresh();
       return send(res, 200, lastJson, { 'Content-Type': 'application/json; charset=utf-8' });

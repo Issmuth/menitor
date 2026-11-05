@@ -106,7 +106,7 @@ In both modes the agent never writes your code, and every check still asks you t
 
 - **Live:** it updates as soon as anything changes. You never need to reload.
 - **Ticks:** tick checklist items as you go. Fixes from a failed check appear as new items.
-- **Explain your code:** when a check asks about your code, the question appears in the window with an answer box. Send your answer there, or in your session. Menitor's reply, and any follow-up question, show up under it.
+- **Explain your code:** when a check asks about your code, the question appears in the window with an answer box. Send your answer there, or in your session. Menitor's reply, and any follow-up question, show up under it. When the task passes, the replies stay on screen until you press **Continue**.
 - **Whose turn it is:** anything holding up your next task shows at the top. That covers a task that's Menitor's (with a **Start it** button), a skip waiting for your confirm, and anything Menitor is waiting on, such as a sign-in or your deployed URL.
 - **Before you code** comes first: the one thing to read, the doc section and the branch. On a desktop it sits beside the steps.
 - **Buttons:** **Check my work**, **Hint** and **I'm stuck** go straight to your Claude Code session. When your next move is in the editor or the window, Claude waits for your press, so you don't type commands. If no session is listening, the buttons copy the command for you to paste. The card tells you which of the two will happen.
@@ -148,7 +148,7 @@ Menitor keeps its state in `.menitor/` in your project. The plan is committed, s
 | --- | --- | --- |
 | `plan.json` | milestones, tasks, checklists, done-when criteria, owners, hints | yes |
 | `session.json` | the current task, start commits, the last check | no |
-| `progress.json` | your checklist ticks | no |
+| `progress.json` | your checklist ticks, and the explain-back results you've read | no |
 | `learner.md` | your level, focus areas, strengths, recurring mistakes, hint use | no |
 | `log.md` | a dated history of checks, hints, skips, disputes and additions | no |
 | `guard.json` | mentor mode and skip grants, from commands you typed | no |

@@ -606,6 +606,71 @@ function taskView(s) {
   return { nodes: [head, ...turnView(s), board], bar: learner };
 }
 
+/**
+ * C-6: Continue from a passed task's result to the next card. The server remembers it, so a
+ * reload or the pop-out moves on too.
+ * @param {any} r the result on screen
+ * @param {Event} e
+ */
+async function continueOn(r, e) {
+  const btn = /** @type {HTMLButtonElement} */ (e.currentTarget);
+  btn.disabled = true;
+  try {
+    render(await post('/api/continue', { task: r.task }));
+  } catch (err) {
+    btn.disabled = false;
+    showToast(`Couldn't move on: ${/** @type {Error} */ (err).message}`, undefined, docOf(e));
+  }
+}
+
+/**
+ * C-6: what Menitor said about the learner's explain-back on the task that just passed. It stays
+ * until they press Continue, so the next card never replaces feedback they haven't read.
+ * @param {any} s
+ */
+function resultView(s) {
+  const r = s.result;
+  const head = h(
+    'header',
+    { class: 'head' },
+    h(
+      'div',
+      { class: 'head-text' },
+      h('h1', { id: 'title' }, r.goal),
+      h('p', { class: 'status' }, h('span', { class: 'num' }, `Task ${r.number} of ${s.total}`), h('span', { class: 'finding good' }, 'Passed')),
+    ),
+  );
+  const said = h(
+    'section',
+    { class: 'panel result', 'aria-labelledby': 'result-title' },
+    h('header', { class: 'panel-head' }, h('h2', { id: 'result-title' }, 'Your explanation')),
+    h(
+      'ol',
+      { class: 'result-list' },
+      ...r.questions.map((/** @type {any} */ q) =>
+        h(
+          'li',
+          { class: 'result-item' },
+          h('p', { class: 'past-q' }, q.text),
+          q.answer ? h('p', { class: 'past-a' }, q.answer.text) : h('p', { class: 'empty' }, 'Answered in your session.'),
+          h('p', { class: `finding ${q.outcome === 'good' ? 'good' : ''}` }, q.outcome === 'good' ? 'Good answer' : 'Not quite yet'),
+          q.feedback ? h('p', { class: 'result-feedback' }, q.feedback) : null,
+        ),
+      ),
+    ),
+  );
+  const nextText = r.next ? `Task ${r.next.number} of ${s.total}: ${r.next.goal}` : 'That was the last task in your plan.';
+  const next = callout(
+    'you',
+    'Up next',
+    nextText,
+    h('button', { type: 'button', class: 'btn primary', 'data-key': `continue:${r.task}`, onclick: (/** @type {Event} */ e) => continueOn(r, e) }, r.next ? `Continue to task ${r.next.number}` : 'Continue'),
+  );
+  // The plan ledger shows the pass as progress: the task just done is filled in. On a desktop it
+  // sits in the right-hand column, as on the task card.
+  return { nodes: [head, h('div', { class: 'result-body' }, h('div', { class: 'result-main' }, said, next), planPanel(s))], bar: false };
+}
+
 /** @param {any} s */
 function messageView(s) {
   const cmd = (/** @type {string} */ k, /** @type {string} */ fallback) => s.commands?.[k] ?? fallback;
@@ -632,6 +697,15 @@ function problemView(title, text) {
  * @param {any} s
  */
 function announceChanges(prev, s) {
+  if (s.result && s.result.task !== prev?.result?.task) {
+    const said = s.result.questions.at(-1)?.feedback ?? '';
+    announce(`Task ${s.result.number} passed. ${said} Press Continue when you're ready for the next task.`);
+    return;
+  }
+  if (prev?.result && !s.result && s.card) {
+    announce(`Now on task ${s.card.number} of ${s.card.total}: ${s.card.goal}`);
+    return;
+  }
   if (!prev?.card || !s.card) return;
   if (prev.card.task !== s.card.task) {
     announce(`Now on task ${s.card.number} of ${s.card.total}: ${s.card.goal}`);
@@ -673,6 +747,7 @@ function render(s) {
 
   let view;
   if (!s.ok) view = problemView("Menitor's state has a problem", `${s.error} Ask your coding session to validate Menitor's state and fix it.`);
+  else if (s.result) view = resultView(s);
   else if (s.phase === 'task' && s.card) view = taskView(s);
   else view = messageView(s);
 
@@ -681,7 +756,7 @@ function render(s) {
   sheet.classList.toggle('has-bar', view.bar);
 
   $('project').textContent = s.project ?? 'Your project';
-  doc.title = s.card ? `${s.card.number}/${s.card.total} · ${s.card.goal}` : 'Menitor';
+  doc.title = s.result ? `Passed · ${s.result.goal}` : s.card ? `${s.card.number}/${s.card.total} · ${s.card.goal}` : 'Menitor';
   if (focusKey) {
     const again = /** @type {HTMLElement | null} */ (content.querySelector(`[data-key="${CSS.escape(focusKey)}"]`));
     again?.focus({ preventScroll: true });
