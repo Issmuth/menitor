@@ -10,3 +10,4 @@ If type-along is on, the step's full code is already in the window. Point them t
 2. Pass the rung on in your own plain words. Fit it to what they've done so far, and look at their changes if that helps.
 3. Don't go past the rung. A focus-area task never gets the full solution as a hint.
 4. End with a question that gets them moving, such as "What would you try first?"
+5. Then call {{wait}}, so their next press in the window reaches you at once.

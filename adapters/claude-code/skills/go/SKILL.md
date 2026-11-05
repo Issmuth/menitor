@@ -6,6 +6,7 @@ allowed-tools:
   - Bash(git status *)
   - Bash(git diff *)
   - Bash(git log *)
+  - mcp__plugin_menitor_menitor__wait_for_learner
 ---
 
 <!-- Generated from core/instructions/go.md by adapters/claude-code/build-skills.js. Edit the source, then run "npm run build:skills". -->
@@ -62,4 +63,6 @@ Steps that need the learner's own accounts, such as signing in to the host, are 
 
 Show the learner the card as `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" task show` prints it, without the IDs. Then say in a sentence or two where they left off. For example: "You have uncommitted changes in src/signup.ts." Or: "You're on main, and the card starts with a branch."
 
-End with the two commands they'll need: /menitor:check when they're done, and /menitor:hint if they're stuck. Don't start explaining the solution.
+End by pointing to the window: they press Check my work when they're done, and Hint if they're stuck. Typing /menitor:check or /menitor:hint works too. Don't start explaining the solution.
+
+Then call `wait_for_learner` (the menitor MCP tool), so their press reaches you at once.

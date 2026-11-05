@@ -22,6 +22,8 @@ export const STATE_DIR = '.menitor';
  * @property {string} listener listener.json, a heartbeat from the session that listens for them
  * @property {string} solutions solutions.json, each step's code for type-along, written by the CLI
  * @property {string} answers  answers.json, explain-back answers typed in the window, written by the window
+ * @property {string} waiter   waiter.json, a heartbeat while the agent waits for a window button
+ * @property {string} claims   claims/, one empty file per window event already taken by a listener
  * @property {string} gitignore .menitor/.gitignore
  */
 
@@ -46,6 +48,8 @@ export function statePaths(root) {
     listener: path.join(dir, 'listener.json'),
     solutions: path.join(dir, 'solutions.json'),
     answers: path.join(dir, 'answers.json'),
+    waiter: path.join(dir, 'waiter.json'),
+    claims: path.join(dir, 'claims'),
     gitignore: path.join(dir, '.gitignore'),
   };
 }

@@ -13,3 +13,4 @@ The learner is stuck. Teach them how to get unstuck, then give the smallest hint
 6. Then give the lowest useful help: a question, a pointer to a line, or the next hint rung with `{{cli}} task hint`. Never write the code that fixes it.
 7. If the fix is a concrete action, add it to the checklist so it shows in the window: `{{cli}} task fix "<action>"`.
 8. If it's a mistake they keep making, record it with `{{cli}} learner add mistakes "<text>"`.
+9. When the next move is theirs in the editor, call {{wait}}. If you asked them something in chat, wait for their reply instead.

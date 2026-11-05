@@ -172,3 +172,13 @@ A second way to help: instead of hints that build up, each step shows the full c
 - **Before you code first.** The board's DOM order is before you code, the steps, the hints, then the plan, which is the reading order on phones and tablets. On a desktop, a 12-column grid puts before you code and the plan in the right column. The steps span both of its rows, and the plan's row is flexible, so the columns end level. A short, read-only Steps panel on a delegated task can leave a blank band of about 60px under it; the inspector warns about that one case.
 - **Drafts survive live updates.** An answer being typed keeps its text, focus and caret when new state arrives. Ctrl or Cmd with Enter sends it.
 
+## The wait tool (ADR 14)
+
+- **One tool, `wait_for_learner`,** from a stdio MCP server the plugin registers in `plugin.json` (`mcpServers.menitor`). Claude Code names it `mcp__plugin_menitor_menitor__wait_for_learner`. The skills that can end on the learner's move may call it without a prompt.
+- **What it returns.** The same fixed sentence the monitor prints for that press, from `windowEventText` in `messages.js` (W-7). A timeout says so and suggests calling it again. A wait in a folder without `.menitor/` returns at once.
+- **Timing.** It listens for 120 minutes by default, and 240 at most. It sends progress every minute when the client asks for it, so an idle-timeout never cuts it off.
+- **One wait at a time.** A newer call ends the older one with "A newer wait_for_learner call took over listening." A cancelled call gets no reply and removes its heartbeat.
+- **Claims.** `claimEvent` creates `.menitor/claims/<event id>` with an exclusive create, so only one of the wait tool and the monitor handles a press. A wait also picks up an unclaimed press from the last 10 minutes, made while nobody was waiting.
+- **Protocol.** It answers `initialize` with the client's revision when it knows it, and 2025-06-18 otherwise. It handles `tools/list`, `tools/call`, `ping` and `notifications/cancelled`.
+- **New gitignored state:** `waiter.json` and `claims/`.
+

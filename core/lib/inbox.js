@@ -1,12 +1,18 @@
 // The path from a window button to the agent session (W-6), with no free text anywhere (W-7).
 //
-//   window server  --appends fixed events-->  .menitor/inbox.jsonl  --read by-->  the adapter's listener
-//   the listener   --writes a heartbeat---->  .menitor/listener.json --read by-->  the window server
+//   window server  --appends fixed events-->  .menitor/inbox.jsonl  --read by-->  the adapter's listeners
+//   a monitor      --writes a heartbeat---->  .menitor/listener.json --read by-->  the window server
+//   a waiting tool --writes a heartbeat---->  .menitor/waiter.json   --read by-->  the window server
+//
+// Two kinds of listener exist. A monitor runs for the whole session and wakes it when idle; a
+// waiter is an agent tool call that blocks until the next button press. Each event is handled
+// once: a listener claims it first, by creating a file that can only be created once.
 //
 // The window writes an event only while a listener's heartbeat is fresh. Otherwise its buttons
 // fall back to copying the command for the learner to type.
 
 import fs from 'node:fs';
+import path from 'node:path';
 import crypto from 'node:crypto';
 import { readJsonOrNull, writeFileAtomic, writeJsonAtomic } from './fsx.js';
 import { validate } from './schema.js';
@@ -48,9 +54,18 @@ export function pidAlive(pid) {
  * @returns {Listener | null}
  */
 export function liveListener(paths, now = Date.now()) {
+  return freshBeat(paths.waiter, now) ?? freshBeat(paths.listener, now);
+}
+
+/**
+ * @param {string} file
+ * @param {number} now
+ * @returns {Listener | null}
+ */
+function freshBeat(file, now) {
   let info;
   try {
-    info = readJsonOrNull(paths.listener);
+    info = readJsonOrNull(file);
   } catch {
     return null;
   }
@@ -62,27 +77,114 @@ export function liveListener(paths, now = Date.now()) {
 }
 
 /**
- * Write the listener's heartbeat. For the agent adapter's listener only.
+ * Write a heartbeat. For the agent adapter's listeners only: the monitor (the default file) or a
+ * waiting tool call (`file: paths.waiter`).
  * @param {StatePaths} paths
- * @param {{ agent: string, startedAt: string, now?: Date }} options
+ * @param {{ agent: string, startedAt: string, now?: Date, file?: string }} options
  */
 export function beat(paths, options) {
   /** @type {Listener} */
   const info = { version: 1, pid: process.pid, beatAt: (options.now ?? new Date()).toISOString(), startedAt: options.startedAt, agent: options.agent };
-  writeJsonAtomic(paths.listener, info);
+  writeJsonAtomic(options.file ?? paths.listener, info);
   return info;
 }
 
 /**
- * Remove the heartbeat, if it's still this process's.
+ * Remove a heartbeat, if it's still this process's.
  * @param {StatePaths} paths
+ * @param {string} [file]
  */
-export function stopListening(paths) {
+export function stopListening(paths, file = paths.listener) {
   try {
-    const info = /** @type {Listener | null} */ (readJsonOrNull(paths.listener));
-    if (info?.pid === process.pid) fs.rmSync(paths.listener, { force: true });
+    const info = /** @type {Listener | null} */ (readJsonOrNull(file));
+    if (info?.pid === process.pid) fs.rmSync(file, { force: true });
   } catch {
     // Nothing to clean up.
+  }
+}
+
+/**
+ * Take an event so no other listener handles it too. Creating the claim file is atomic: exactly
+ * one caller gets true.
+ * @param {StatePaths} paths
+ * @param {string} id
+ */
+export function claimEvent(paths, id) {
+  try {
+    fs.mkdirSync(paths.claims, { recursive: true });
+    fs.closeSync(fs.openSync(path.join(paths.claims, id), 'wx'));
+  } catch {
+    return false;
+  }
+  pruneClaims(paths);
+  return true;
+}
+
+/**
+ * @param {StatePaths} paths
+ * @param {string} id
+ */
+export function isClaimed(paths, id) {
+  return fs.existsSync(path.join(paths.claims, id));
+}
+
+/**
+ * Keep the claims folder small: drop claims for events the inbox no longer holds.
+ * @param {StatePaths} paths
+ */
+function pruneClaims(paths) {
+  let names;
+  try {
+    names = fs.readdirSync(paths.claims);
+  } catch {
+    return;
+  }
+  if (names.length <= KEEP_LINES) return;
+  const live = new Set(readInbox(paths).map((e) => e.id));
+  for (const name of names) if (!live.has(name)) fs.rmSync(path.join(paths.claims, name), { force: true });
+}
+
+/**
+ * The oldest event no listener has taken yet, from the last `withinMs` milliseconds.
+ * @param {StatePaths} paths
+ * @param {{ now?: number, withinMs?: number }} [options]
+ */
+export function nextUnclaimed(paths, options = {}) {
+  const now = options.now ?? Date.now();
+  const within = options.withinMs ?? 10 * 60 * 1000;
+  return readInbox(paths).find((e) => now - Date.parse(e.at) <= within && !isClaimed(paths, e.id)) ?? null;
+}
+
+/**
+ * Wait for the learner's next button press in the window, as an agent tool call does. Returns the
+ * claimed event, or null when the time runs out or the signal aborts. While it waits, a heartbeat
+ * tells the window that buttons reach the session.
+ * @param {StatePaths} paths
+ * @param {{ timeoutMs: number, signal?: AbortSignal, pollMs?: number, agent?: string, onTick?: () => void }} options
+ * @returns {Promise<InboxEvent | null>}
+ */
+export async function waitForEvent(paths, options) {
+  const startedAt = new Date().toISOString();
+  const deadline = Date.now() + options.timeoutMs;
+  const poll = options.pollMs ?? 300;
+  let lastBeat = 0;
+  try {
+    while (!options.signal?.aborted && Date.now() < deadline) {
+      if (Date.now() - lastBeat >= 2000) {
+        beat(paths, { agent: options.agent ?? 'waiter', startedAt, file: paths.waiter });
+        lastBeat = Date.now();
+        options.onTick?.();
+      }
+      const event = nextUnclaimed(paths);
+      if (event && claimEvent(paths, event.id)) return event;
+      await new Promise((resolve) => {
+        const t = setTimeout(resolve, poll);
+        options.signal?.addEventListener('abort', () => (clearTimeout(t), resolve(undefined)), { once: true });
+      });
+    }
+    return null;
+  } finally {
+    stopListening(paths, paths.waiter);
   }
 }
 

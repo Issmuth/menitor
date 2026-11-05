@@ -12,4 +12,4 @@ Arguments: {{args}}
 4. Run `{{cli}} check run`, and fix anything it marks "MUST FIX".
 5. Pass it with a two-line note on what you did and where: `{{cli}} task pass --note "<note>"`.
 6. If the arguments include `--explain`, also explain the work in one screen or less: what you did, why, and the one concept to know.
-7. Show the next card.
+7. Show the next card. If it's theirs, call {{wait}}.

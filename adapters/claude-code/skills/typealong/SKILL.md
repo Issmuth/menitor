@@ -8,6 +8,7 @@ allowed-tools:
   - Bash(git status *)
   - Bash(git diff *)
   - Bash(git log *)
+  - mcp__plugin_menitor_menitor__wait_for_learner
 ---
 
 <!-- Generated from core/instructions/typealong.md by adapters/claude-code/build-skills.js. Edit the source, then run "npm run build:skills". -->

@@ -8,6 +8,7 @@ allowed-tools:
   - Bash(git status *)
   - Bash(git diff *)
   - Bash(git log *)
+  - mcp__plugin_menitor_menitor__wait_for_learner
 ---
 
 <!-- Generated from core/instructions/skip.md by adapters/claude-code/build-skills.js. Edit the source, then run "npm run build:skills". -->
@@ -26,4 +27,4 @@ Arguments: $ARGUMENTS
 4. Run `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" check run`, and fix anything it marks "MUST FIX".
 5. Pass it with a two-line note on what you did and where: `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" task pass --note "<note>"`.
 6. If the arguments include `--explain`, also explain the work in one screen or less: what you did, why, and the one concept to know.
-7. Show the next card.
+7. Show the next card. If it's theirs, call `wait_for_learner` (the menitor MCP tool).

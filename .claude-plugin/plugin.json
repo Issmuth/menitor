@@ -24,5 +24,13 @@
   ],
   "experimental": {
     "monitors": "./adapters/claude-code/monitors.json"
+  },
+  "mcpServers": {
+    "menitor": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/adapters/claude-code/mcp.js"
+      ]
+    }
   }
 }

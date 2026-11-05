@@ -19,6 +19,7 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
   - a skip waiting for the learner's confirm;
   - anything the agent is waiting on, posted with `menitor waiting`.
 - On phones and tablets, **Before you code** now comes before the steps.
+- **Window buttons drive the session in every Claude Code surface,** including VS Code. The plugin ships an MCP server with one tool, `wait_for_learner`. Claude calls it when the next move is the learner's, and it returns the moment a button is pressed. A press is claimed once, so the wait tool and the monitor never both handle it (ADR 14).
 
 ### Changed
 

@@ -51,6 +51,8 @@ log.md
 activity.jsonl
 solutions.json
 answers.json
+waiter.json
+claims/
 window.json
 inbox.jsonl
 listener.json

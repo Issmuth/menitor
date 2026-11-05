@@ -4,6 +4,7 @@ description: "Turn Menitor mentor mode back on. Only the learner can run it, by 
 disable-model-invocation: true
 allowed-tools:
   - Bash(node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" *)
+  - mcp__plugin_menitor_menitor__wait_for_learner
 ---
 
 <!-- Generated from core/instructions/on.md by adapters/claude-code/build-skills.js. Edit the source, then run "npm run build:skills". -->

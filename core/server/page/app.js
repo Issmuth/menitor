@@ -167,7 +167,7 @@ function actions(s) {
   return h(
     'div',
     { class: 'actions' },
-    h('p', { class: 'how' }, s.listening ? 'Buttons go straight to your coding session.' : 'No session is listening, so buttons copy the command.'),
+    h('p', { class: 'how' }, s.listening ? 'Menitor is listening: buttons go straight to your session.' : "Menitor isn't listening right now, so buttons copy the command."),
     s.typeAlong ? null : h('button', { type: 'button', class: 'btn secondary', 'data-key': 'act:hint', onclick: (/** @type {Event} */ e) => onAction('hint', e) }, 'Hint'),
     h('button', { type: 'button', class: 'btn secondary', 'data-key': 'act:stuck', onclick: (/** @type {Event} */ e) => onAction('stuck', e) }, "I'm stuck"),
     h('button', { type: 'button', class: `btn ${openQuestion(s) ? 'secondary' : 'primary'}`, 'data-key': 'act:check', onclick: (/** @type {Event} */ e) => onAction('check', e) }, 'Check my work'),

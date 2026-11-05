@@ -1,6 +1,6 @@
 # Architecture decision records
 
-Short records of decisions that shape Menitor. ADRs 1 to 7 were settled in the [PRD](../prd.md#decisions-and-open-questions). ADRs 8 to 13 were made during the v1 build. Smaller choices are in [implementation-decisions.md](../implementation-decisions.md).
+Short records of decisions that shape Menitor. ADRs 1 to 7 were settled in the [PRD](../prd.md#decisions-and-open-questions). ADRs 8 to 14 were made during the v1 build. Smaller choices are in [implementation-decisions.md](../implementation-decisions.md).
 
 | ADR | Decision |
 | --- | --- |
@@ -17,5 +17,6 @@ Short records of decisions that shape Menitor. ADRs 1 to 7 were settled in the [
 | [11](011-learner-only-commands.md) | Learner-only commands come from the learner's own typing |
 | [12](012-window-security.md) | Window security: token, cookie, Host and Origin |
 | [13](013-generated-skills.md) | Skills are generated from neutral instructions |
+| [14](014-wait-tool-for-window-buttons.md) | Window buttons through an MCP wait tool |
 
 New ADRs copy the format of these files. Number them in order, and never rewrite an accepted one: supersede it with a new ADR instead.

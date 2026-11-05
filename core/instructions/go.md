@@ -50,4 +50,6 @@ Steps that need the learner's own accounts, such as signing in to the host, are 
 
 Show the learner the card as `{{cli}} task show` prints it, without the IDs. Then say in a sentence or two where they left off. For example: "You have uncommitted changes in src/signup.ts." Or: "You're on main, and the card starts with a branch."
 
-End with the two commands they'll need: {{cmd:check}} when they're done, and {{cmd:hint}} if they're stuck. Don't start explaining the solution.
+End by pointing to the window: they press Check my work when they're done, and Hint if they're stuck. Typing {{cmd:check}} or {{cmd:hint}} works too. Don't start explaining the solution.
+
+Then call {{wait}}, so their press reaches you at once.

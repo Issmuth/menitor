@@ -108,7 +108,7 @@ In both modes the agent never writes your code, and every check still asks you t
 - **Explain your code:** when a check asks about your code, the question appears in the window with an answer box. Send your answer there, or in your session. Menitor's reply, and any follow-up question, show up under it.
 - **Whose turn it is:** anything holding up your next task shows at the top. That covers a task that's Menitor's (with a **Start it** button), a skip waiting for your confirm, and anything Menitor is waiting on, such as a sign-in or your deployed URL.
 - **Before you code** comes first: the one thing to read, the doc section and the branch. On a desktop it sits beside the steps.
-- **Buttons:** **Check my work**, **Hint** and **I'm stuck** go straight to your Claude Code session. If no session is open, they copy the command for you to paste. The card tells you which of the two will happen.
+- **Buttons:** **Check my work**, **Hint** and **I'm stuck** go straight to your Claude Code session. When your next move is in the editor or the window, Claude waits for your press, so you don't type commands. If no session is listening, the buttons copy the command for you to paste. The card tells you which of the two will happen.
 - **Pop out:** an always-on-top mini window in desktop Chrome, Edge and other Chromium browsers. Other browsers get a small separate window.
 - **The plan:** every task in your plan as one cell, marked by who did it: you, Menitor, skipped, the one you're on, or still to do.
 - **Hints:** the four-rung ladder shows which hints are open, with their text beside it. Code hints are set as code.
@@ -154,7 +154,7 @@ Menitor keeps its state in `.menitor/` in your project. The plan is committed, s
 | `activity.jsonl` | every command and file write the agent ran | no |
 | `solutions.json` | type-along: each step's instructions and code | no |
 | `answers.json` | your answers to explain-back questions, typed in the window | no |
-| `window.json`, `inbox.jsonl`, `listener.json` | the running window and its buttons | no |
+| `window.json`, `inbox.jsonl`, `listener.json`, `waiter.json`, `claims/` | the running window and its buttons | no |
 
 Your lean docs go in `docs/`, one page each: product requirements, technical requirements, app flow, design brief, data and API contract, and testing approach. Decision records go in `docs/adr/`. You write the first one, for your stack.
 
@@ -172,9 +172,9 @@ Everything stays on your machine. Menitor has no servers, accounts or analytics.
 ## Known limits
 
 - **Claude Code on the web doesn't load plugins.** Use Claude Code in the terminal, the desktop app or an IDE.
-- **Window buttons need a plugin monitor,** an experimental Claude Code feature. Monitors don't start in `claude -p`. When no session is listening, buttons copy the command instead.
+- **Window buttons reach Claude while it waits.** Claude ends its turn by calling Menitor's `wait_for_learner` tool, which returns the moment you press a button. After two minutes, Claude Code moves the wait to the background, so you can type to Claude as usual. Before then, a message you type arrives when the wait ends; press Esc to send it at once. A plugin monitor, where it runs, catches presses made while Claude isn't waiting. When nothing is listening, buttons copy the command instead.
 - **The shell guard is best effort.** It reads commands by pattern, so a creative script can slip past. When Claude Code reports the files a command changed, Menitor logs them and the check flags them.
-- **Two Claude Code sessions** open on the same project both receive window button presses.
+- **Two Claude Code sessions** open on the same project share window button presses: whichever claims a press first handles it.
 - **v1 is for web apps.** API-only and command-line projects come later.
 - **The plan is locked once you approve it.** `/menitor:pivot`, for changing course mid-project, arrives in v1.1.
 
@@ -200,7 +200,7 @@ core/                     agent-neutral: works with any coding agent
   server/                 the task window: a small HTTP server and a dependency-free page
   instructions/           what each command does, in neutral words
   templates/docs/         lean doc templates
-adapters/claude-code/     the thin Claude Code layer: hooks, monitor, command names, generated skills
+adapters/claude-code/     the thin Claude Code layer: hooks, monitor, MCP wait tool, command names, generated skills
 .claude-plugin/           plugin and marketplace manifests
 examples/sample/          a sample project generator, with a test script
 test/                     node:test suites

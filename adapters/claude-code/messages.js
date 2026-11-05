@@ -79,6 +79,24 @@ function capitalize(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/**
+ * The fixed sentence Claude receives for each window event, from the monitor or the wait tool.
+ * Nothing the page sends is ever passed through as text (W-7).
+ * @param {string} type
+ * @param {string} task
+ */
+export function windowEventText(type, task) {
+  /** @type {Record<string, string>} */
+  const say = {
+    check: `Menitor window: the learner pressed "Check my work" on task ${task}. Run the menitor:check skill now, exactly as if they had typed /menitor:check.`,
+    hint: `Menitor window: the learner pressed "Hint" on task ${task}. Run the menitor:hint skill now, exactly as if they had typed /menitor:hint.`,
+    stuck: `Menitor window: the learner pressed "I'm stuck" on task ${task}. Run the menitor:stuck skill now, exactly as if they had typed /menitor:stuck.`,
+    go: `Menitor window: the learner pressed "Start it" on task ${task}, which is yours. Run the menitor:go skill now, exactly as if they had typed /menitor:go.`,
+    answer: `Menitor window: the learner answered your explain-back question on task ${task} in the window. Run the menitor:check skill now to read the answer with "question show" and judge it.`,
+  };
+  return say[type] ?? `Menitor window: an event of an unknown kind arrived on task ${task}. Run ${COMMANDS.go} to see where things stand.`;
+}
+
 export const LEARNER_ONLY = `Menitor: only the learner can run ${COMMANDS.skip}, ${COMMANDS.off}, ${COMMANDS.on} and ${COMMANDS.typealong}, by typing them. If they want to, ask them to type it.`;
 
 /**
