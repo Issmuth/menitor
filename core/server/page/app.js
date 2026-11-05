@@ -527,14 +527,16 @@ const KIND_WORDS = /** @type {Record<string, string>} */ ({
 
 /** @param {any} s W-8, the signature element: every task in the plan as one cell, marked by who did it. */
 function planPanel(s) {
-  const counts = /** @type {Record<string, number>} */ ({ you: 0, menitor: 0, skipped: 0, now: 0, todo: 0 });
+  const counts = /** @type {Record<string, number>} */ ({ you: 0, menitor: 0, skipped: 0, now: 0, todo: 0, added: 0 });
   const rows = h('ol', { class: 'ledger' });
   for (const m of s.milestones) {
     const cells = h('ol', { class: 'cells' });
     for (const t of m.tasks ?? []) {
       const kind = t.current ? 'now' : !t.done ? 'todo' : t.skipped ? 'skipped' : t.by === 'learner' ? 'you' : 'menitor';
       counts[kind] += 1;
-      cells.append(h('li', { class: `cell ${kind}`, title: `Task ${t.number}: ${t.goal}` }, h('span', { class: 'sr-only' }, `Task ${t.number}, ${t.goal}: ${KIND_WORDS[kind]}`)));
+      if (t.added) counts.added += 1;
+      const added = t.added ? ' (added later)' : '';
+      cells.append(h('li', { class: `cell ${kind}${t.added ? ' added' : ''}`, title: `Task ${t.number}${added}: ${t.goal}` }, h('span', { class: 'sr-only' }, `Task ${t.number}${added}, ${t.goal}: ${KIND_WORDS[kind]}`)));
     }
     rows.append(
       h(
@@ -556,6 +558,7 @@ function planPanel(s) {
   key('skipped', 'Skipped');
   key('now', 'Now', false);
   key('todo', 'To do');
+  key('added', 'Added later');
   return h(
     'section',
     { class: 'panel plan', 'aria-labelledby': 'plan-title' },
@@ -577,7 +580,13 @@ function taskView(s) {
       'div',
       { class: 'head-text' },
       h('h1', { id: 'title' }, c.goal),
-      h('p', { class: 'status' }, h('span', { class: 'num' }, `Task ${c.number} of ${c.total} · ${c.milestone.title}`), h('span', { class: `finding ${f.tone}` }, f.text)),
+      h(
+        'p',
+        { class: 'status' },
+        h('span', { class: 'num' }, `Task ${c.number} of ${c.total} · ${c.milestone.title}`),
+        c.added ? h('span', { class: 'tag', title: `Added to the plan on ${new Date(c.added).toLocaleDateString()}` }, 'Added') : null,
+        h('span', { class: `finding ${f.tone}` }, f.text),
+      ),
       h('p', { class: 'why' }, c.why),
     ),
     learner ? actions(s) : null,
