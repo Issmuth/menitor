@@ -420,6 +420,18 @@ h1 {
   background: var(--positive);
 }
 
+/* A task added after the plan was approved. */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--pill-neutral-bg);
+  color: var(--pill-neutral-ink);
+  font-size: var(--fs-small);
+  font-weight: 500;
+}
+
 .why {
   max-width: 64ch;
   margin-top: 4px;
@@ -1097,6 +1109,34 @@ h1 {
 .cell.now,
 .swatch.now {
   border: 2px solid var(--text);
+}
+
+/* Added later: a dot in the middle of the cell, light on filled cells, dark on empty ones. */
+.cell.added,
+.swatch.added {
+  position: relative;
+}
+
+.cell.added::after,
+.swatch.added::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.cell.added.you::after,
+.cell.added.menitor::after {
+  background: var(--on-accent);
+}
+
+.legend .swatch.added::after {
+  width: 4px;
+  height: 4px;
 }
 
 .legend {

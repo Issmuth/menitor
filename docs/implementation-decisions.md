@@ -20,7 +20,7 @@ These settle the ambiguities and open questions in [prd.md](prd.md) before the b
 | 8 | Who writes progress | `progress.json` holds ticks only and is written by the window. A new `session.json` holds the current task and start commits and is written by the CLI. |
 | 9 | Validating Markdown | `learner.md` has a strict YAML-subset frontmatter validated by `learner.schema.json`, then free notes. `log.md` has one structured line per event, so `menitor stats` can compute the success metrics. |
 | 10 | Skip confirmation | The first `/menitor:skip` on a learner task only triggers the pushback. `/menitor:skip --confirm` is the grant, recorded by a hook in `guard.json`. |
-| 11 | Locked owners | The learner approves the plan at the end of `/menitor:start`. After that, the CLI refuses any plan import, and an owner moves from learner to delegated only with a skip grant. |
+| 11 | Locked owners | The learner approves the plan at the end of `/menitor:start`. After that, the CLI refuses any plan import, and an owner moves from learner to delegated only with a skip grant, or while mentor mode is off (ADR 16). |
 | 12 | Agent shell commands | Allowed: read-only commands, build, lint, test, `git status`, `git diff` and `git log`. Only on delegated or granted tasks: commands that write project files (installs, scaffolders, `git checkout`, `git commit`). |
 | 13 | Delegated commits | The agent commits delegated work on the learner's branch with a `Menitor-Delegated: true` trailer. |
 | 14 | When hints are written | Per milestone, when it starts, through `menitor hints import`. Revealed rungs can't be rewritten. |
@@ -55,7 +55,8 @@ These settle the ambiguities and open questions in [prd.md](prd.md) before the b
 
 ## Guard details (milestone 2)
 
-- **Learner commands come from `UserPromptSubmit`.** That hook receives the line exactly as typed, such as `/menitor:skip --confirm`. Only `/menitor:skip`, `/menitor:off` and `/menitor:on` change the guard, and a `Skill` call naming them is denied.
+- **Learner commands come from `UserPromptSubmit`.** That hook receives the line as typed, such as `/menitor:skip --confirm`. Only `/menitor:skip`, `/menitor:off` and `/menitor:on` change the guard, and a `Skill` call naming them is denied.
+- **IDE notes come first.** In VS Code, after the learner switches files, the prompt starts with an `<ide_opened_file>` or `<ide_selection>` note, then a newline, then the typed text. The hook skips those notes before reading the command. A command inside a note never counts.
 - **A confirm counts only after a request.** `/menitor:skip --confirm` with no earlier `/menitor:skip` for that task counts as the request, so the pushback (H-6) always happens once.
 - **Protected state files.** These are any `.json` or `.jsonl` file directly in `.menitor/`, plus `learner.md`, `log.md` and `.gitignore`. Subfolders such as `.menitor/warmup/` stay writable.
 - **Write areas.** Paths outside the project, `/dev/null`, `docs/` and `.menitor/` subfolders are always fine. Deleting build output (`node_modules`, `dist`, `.next` and similar) is fine. A path with a variable at its start, or with an unknown working folder, counts as project code.
@@ -181,4 +182,19 @@ A second way to help: instead of hints that build up, each step shows the full c
 - **Claims.** `claimEvent` creates `.menitor/claims/<event id>` with an exclusive create, so only one of the wait tool and the monitor handles a press. A wait also picks up an unclaimed press from the last 10 minutes, made while nobody was waiting.
 - **Protocol.** It answers `initialize` with the client's revision when it knows it, and 2025-06-18 otherwise. It handles `tools/list`, `tools/call`, `ping` and `notifications/cancelled`.
 - **New gitignored state:** `waiter.json` and `claims/`.
+
+## Adding to an approved plan (ADR 15)
+
+- **One op, three shapes.** `addToPlan` in `ops.js` takes `{"task", "after"}`, `{"step", "to"}` or `{"milestone", "after"}`, and refuses anything else by name. The pure parts are `insertTask`, `insertStep` and `insertMilestone` in `plan.js`; each returns a new plan and leaves its input alone.
+- **The fixed line.** `lastLocked` finds the last done task or the current task in plan order. A new task or milestone must land after it. That also covers out-of-order plans, where a done task sits after a todo one.
+- **Refusals name the way out:** "A new task can't go before t3, which is the current task. Put it after t3 or later." A milestone's message names the milestone to follow instead.
+- **IDs.** `nextId` takes the highest number with the exact prefix and adds one: `t9`, `m3`, `t5.c4`. A custom ID such as `next40` never counts. Fixes keep their own `.fN` numbers.
+- **What the input can't set.** A new task's ID, checklist IDs, status, pass time, hints revealed and skip flag are always fresh. A new milestone is never the walking skeleton.
+- **Steps.** A step goes before the task's last planned step that starts with "Commit", so the commit stays last. Only planned steps count toward the six-step limit; fixes don't. The current task and done tasks are refused, so a card never changes under the learner.
+- **Checks.** The new plan goes through the schema and `planProblems`, exactly like an import. The CLI prints only the warnings the addition brings, by comparing against the plan's warnings before it.
+- **Dry run.** The same op stops before saving, so the preview can't disagree with the real thing.
+- **Log events.** `task-added` (task, after), `step-added` (task, item) and `milestone-added` (milestone, after, tasks).
+- **A finished plan grows.** With no current task, the first new task starts, with a start commit, as `task pass` would start it.
+- **The tag.** Tasks carry `added`, an ISO time. The window shows an "Added" pill in the card's status line and a dot in the task's ledger cell, with "Added later" in the legend. The terminal card and `plan show` say "added".
+
 

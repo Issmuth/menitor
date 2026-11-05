@@ -23,6 +23,7 @@ import { RUNGS } from './learner.js';
  * @property {string[]} doneWhen
  * @property {{ stored: boolean, revealed: number, rungs: { rung: string, open: boolean, text: string | null }[] }} hints
  * @property {string | null} note
+ * @property {string | null} added  when the task joined the approved plan
  */
 
 /**
@@ -59,6 +60,7 @@ export function cardData(plan, taskId, progress) {
       })),
     },
     note: task.note ?? null,
+    added: task.added ?? null,
   };
 }
 
@@ -78,7 +80,8 @@ function row(label, text) {
  * @param {{ ids?: boolean }} [options]  ids: show checklist IDs (for the agent)
  */
 export function renderCard(card, options = {}) {
-  const lines = [`Task ${card.number}/${card.total} · Milestone ${card.milestone.number}: ${card.milestone.title}${card.status === 'done' ? ' · done' : ''}`];
+  const added = card.added ? ` · added ${card.added.slice(0, 10)}` : '';
+  const lines = [`Task ${card.number}/${card.total} · Milestone ${card.milestone.number}: ${card.milestone.title}${added}${card.status === 'done' ? ' · done' : ''}`];
   lines.push(row('Goal', card.goal));
   lines.push(row('Why', card.why));
   if (card.learn) lines.push(row('Learn', card.learn.url ? `${card.learn.label} (${card.learn.url})` : card.learn.label));

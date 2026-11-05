@@ -30,6 +30,7 @@ export const MAX_PLAN_ITEMS = 6;
  * @property {'todo' | 'done'} status
  * @property {string | null} [passedAt]
  * @property {string | null} [note]
+ * @property {string | null} [added]
  * @typedef {object} Milestone
  * @property {string} id
  * @property {string} title
@@ -75,6 +76,40 @@ export function normalizeHints(input) {
 }
 
 /**
+ * Fill in defaults and checklist IDs on one short-form task.
+ * @param {Record<string, any>} t
+ * @param {string} id
+ * @returns {Task}
+ */
+export function normalizeTask(t, id) {
+  let itemNumber = 0;
+  const checklist = Array.isArray(t.checklist)
+    ? t.checklist.map((item) => {
+        itemNumber += 1;
+        const it = typeof item === 'string' ? { text: item } : item;
+        if (!isObject(it)) return it;
+        return { id: `${id}.c${itemNumber}`, text: it.text, source: 'plan', ...it };
+      })
+    : t.checklist;
+  return /** @type {Task} */ ({
+    ...t,
+    id,
+    learn: typeof t.learn === 'string' ? { label: t.learn } : t.learn,
+    focus: t.focus ?? [],
+    owner: t.owner ?? 'learner',
+    skipped: t.skipped ?? false,
+    checklist,
+    doneWhen: typeof t.doneWhen === 'string' ? [t.doneWhen] : t.doneWhen,
+    verify: t.verify ?? [],
+    hints: normalizeHints(t.hints),
+    hintsRevealed: t.hintsRevealed ?? 0,
+    status: t.status ?? 'todo',
+    passedAt: t.passedAt ?? null,
+    note: t.note ?? null,
+  });
+}
+
+/**
  * Fill in defaults and IDs on a draft plan so the agent can write the short form.
  * Unknown fields pass through untouched so validation can name them.
  * @param {unknown} raw
@@ -91,32 +126,7 @@ export function normalizePlanInput(raw) {
       ? m.tasks.map((t) => {
           if (!isObject(t)) return t;
           taskNumber += 1;
-          const id = typeof t.id === 'string' ? t.id : `t${taskNumber}`;
-          let itemNumber = 0;
-          const checklist = Array.isArray(t.checklist)
-            ? t.checklist.map((item) => {
-                itemNumber += 1;
-                const it = typeof item === 'string' ? { text: item } : item;
-                if (!isObject(it)) return it;
-                return { id: `${id}.c${itemNumber}`, text: it.text, source: 'plan', ...it };
-              })
-            : t.checklist;
-          return {
-            ...t,
-            id,
-            learn: typeof t.learn === 'string' ? { label: t.learn } : t.learn,
-            focus: t.focus ?? [],
-            owner: t.owner ?? 'learner',
-            skipped: t.skipped ?? false,
-            checklist,
-            doneWhen: typeof t.doneWhen === 'string' ? [t.doneWhen] : t.doneWhen,
-            verify: t.verify ?? [],
-            hints: normalizeHints(t.hints),
-            hintsRevealed: t.hintsRevealed ?? 0,
-            status: t.status ?? 'todo',
-            passedAt: t.passedAt ?? null,
-            note: t.note ?? null,
-          };
+          return normalizeTask(t, typeof t.id === 'string' ? t.id : `t${taskNumber}`);
         })
       : m.tasks;
     return {
@@ -171,6 +181,152 @@ export function findTask(plan, id) {
  */
 export function nextTodo(plan) {
   return allTasks(plan).find((e) => e.task.status !== 'done') ?? null;
+}
+
+/**
+ * The next free ID for a prefix, such as t9 when t8 is the highest. IDs are never reused or renumbered.
+ * @param {string[]} ids
+ * @param {string} prefix  such as "t", "m" or "t5.c"
+ */
+export function nextId(ids, prefix) {
+  const pattern = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\d+)$`);
+  const numbers = ids.flatMap((id) => {
+    const m = pattern.exec(id);
+    return m ? [Number(m[1])] : [];
+  });
+  return `${prefix}${Math.max(0, ...numbers) + 1}`;
+}
+
+/**
+ * Where the fixed part of the plan ends: the plan-order index of the last done task or the current
+ * task, whichever comes later. -1 when nothing is fixed yet. Nothing new may land at or before it.
+ * @param {TaskEntry[]} entries
+ * @param {string | null} current
+ */
+function lastLocked(entries, current) {
+  return entries.findLastIndex((e) => e.task.status === 'done' || e.task.id === current);
+}
+
+/**
+ * @param {TaskEntry} blocker  the entry lastLocked found
+ * @param {string} what        "A new task" or "A new milestone"
+ * @param {string} instead     the earliest ID it may follow
+ */
+function beforeLocked(blocker, what, instead) {
+  const why = blocker.task.status === 'done' ? 'is done' : 'is the current task';
+  return refused(`${what} can't go before ${blocker.task.id}, which ${why}. Put it after ${instead} or later.`);
+}
+
+/**
+ * A task as it joins an approved plan: a fresh ID and checklist IDs, not started, no hints open,
+ * and the time it was added. IDs and progress in the input are ignored.
+ * @param {Record<string, any>} input
+ * @param {string} id
+ * @param {string} added
+ */
+function freshTask(input, id, added) {
+  const checklist = Array.isArray(input.checklist)
+    ? input.checklist.map((/** @type {unknown} */ item) => {
+        if (!isObject(item)) return item;
+        const { id: _id, source: _source, ...rest } = item;
+        return rest;
+      })
+    : input.checklist;
+  return normalizeTask({ ...input, checklist, status: 'todo', passedAt: null, hintsRevealed: 0, skipped: false, added }, id);
+}
+
+/**
+ * Insert a new task without touching any other task. "after" names a task, and the new one goes
+ * right after it, or a milestone, and it goes at the end. Returns a new plan; the input stays as it is.
+ * @param {Plan} plan
+ * @param {unknown} input  one task in the short form a plan import takes
+ * @param {{ after: string, current: string | null, now?: Date }} options
+ * @returns {{ plan: Plan, task: Task, milestone: Milestone }}
+ */
+export function insertTask(plan, input, options) {
+  if (!isObject(input)) throw new MenitorError('The new task must be a JSON object');
+  const entries = allTasks(plan);
+  const id = nextId(entries.map((e) => e.task.id), 't');
+  const task = freshTask(input, id, (options.now ?? new Date()).toISOString());
+  const copy = structuredClone(plan);
+
+  const anchor = entries.find((e) => e.task.id === options.after);
+  const milestone = copy.milestones.find((m) => m.id === (anchor ? anchor.milestone.id : options.after));
+  if (!milestone) throw new MenitorError(`No task or milestone "${options.after}" in the plan`);
+  const index = anchor ? milestone.tasks.findIndex((t) => t.id === anchor.task.id) + 1 : milestone.tasks.length;
+  const milestonesBefore = copy.milestones.slice(0, copy.milestones.indexOf(milestone));
+  const position = milestonesBefore.reduce((n, m) => n + m.tasks.length, 0) + index;
+
+  // The past and present are fixed: nothing lands before a done task or the current task.
+  const locked = lastLocked(entries, options.current);
+  if (position <= locked) throw beforeLocked(entries[locked], 'A new task', entries[locked].task.id);
+
+  milestone.tasks.splice(index, 0, task);
+  return { plan: copy, task, milestone };
+}
+
+/**
+ * Add one planned step to a task that hasn't started, within the six-step limit. It goes before
+ * the task's commit step, so the commit stays last. The current card never changes under the
+ * learner, so the current task and done tasks are refused. Returns a new plan.
+ * @param {Plan} plan
+ * @param {unknown} text
+ * @param {{ to: string, current: string | null }} options
+ * @returns {{ plan: Plan, task: Task, item: ChecklistItem }}
+ */
+export function insertStep(plan, text, options) {
+  const clean = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : '';
+  if (!clean) throw new MenitorError('A step needs some text');
+  const copy = structuredClone(plan);
+  const task = allTasks(copy).find((e) => e.task.id === options.to)?.task;
+  if (!task) throw new MenitorError(`No task "${options.to}" in the plan`);
+  if (task.status === 'done') throw refused(`${task.id} is done, so its steps stay as they are. Add a follow-up task instead.`);
+  if (task.id === options.current) {
+    throw refused(`${task.id} is the current task, and its card never changes under the learner. Add a follow-up task after it instead.`);
+  }
+  const planned = task.checklist.filter((i) => i.source === 'plan').length;
+  if (planned >= MAX_PLAN_ITEMS) {
+    throw refused(`${task.id} already has ${planned} steps, and the limit is ${MAX_PLAN_ITEMS}. Add a follow-up task instead.`);
+  }
+
+  /** @type {ChecklistItem} */
+  const item = { id: nextId(task.checklist.map((i) => i.id), `${task.id}.c`), text: clean, source: 'plan' };
+  const commit = task.checklist.findLastIndex((i) => i.source === 'plan' && /^commit\b/i.test(i.text));
+  task.checklist.splice(commit === -1 ? task.checklist.length : commit, 0, item);
+  return { plan: copy, task, item };
+}
+
+/**
+ * Insert a milestone of new tasks right after another milestone. Like a single task, it may not
+ * land before a done task or the current task. Returns a new plan; the input stays as it is.
+ * @param {Plan} plan
+ * @param {unknown} input  { title, goal?, branch?, tasks: [...] } in the short form a plan import takes
+ * @param {{ after: string, current: string | null, now?: Date }} options
+ * @returns {{ plan: Plan, milestone: Milestone }}
+ */
+export function insertMilestone(plan, input, options) {
+  if (!isObject(input)) throw new MenitorError('The new milestone must be a JSON object');
+  if (!Array.isArray(input.tasks) || !input.tasks.length) throw new MenitorError('A new milestone needs at least one task in "tasks"');
+  const entries = allTasks(plan);
+  const after = plan.milestones.findIndex((m) => m.id === options.after);
+  if (after === -1) throw new MenitorError(`No milestone "${options.after}" in the plan`);
+
+  const position = plan.milestones.slice(0, after + 1).reduce((n, m) => n + m.tasks.length, 0);
+  const locked = lastLocked(entries, options.current);
+  if (position <= locked) throw beforeLocked(entries[locked], 'A new milestone', entries[locked].milestone.id);
+
+  const added = (options.now ?? new Date()).toISOString();
+  const ids = entries.map((e) => e.task.id);
+  const tasks = input.tasks.map((/** @type {unknown} */ t) => {
+    if (!isObject(t)) return t; // Validation names it.
+    const id = nextId(ids, 't');
+    ids.push(id);
+    return freshTask(t, id, added);
+  });
+  const milestone = /** @type {Milestone} */ ({ ...input, id: nextId(plan.milestones.map((m) => m.id), 'm'), skeleton: false, tasks });
+  const copy = structuredClone(plan);
+  copy.milestones.splice(after + 1, 0, milestone);
+  return { plan: copy, milestone };
 }
 
 /**

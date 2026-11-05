@@ -18,7 +18,7 @@ import { statusData } from '../../core/lib/ops.js';
 import { cardData, renderCard } from '../../core/lib/card.js';
 import { loadGuard, loadPlan, loadProgress } from '../../core/lib/state.js';
 import { renderStatus } from '../../core/lib/cli.js';
-import { CLI, COMMANDS, LEARNER_ONLY, denyMessage, learnerCommandContext, mentorRules } from './messages.js';
+import { CLI, COMMANDS, LEARNER_ONLY, TAKE_TASKS, denyMessage, learnerCommandContext, mentorRules } from './messages.js';
 
 /**
  * @typedef {Record<string, any>} HookInput
@@ -157,13 +157,30 @@ export function postToolUse(input, env) {
 }
 
 /**
+ * A note the IDE puts before the typed text, such as the file the learner has open. Greedy to the
+ * last closing tag, so a selection that contains a command is skipped whole and never counts.
+ */
+const IDE_NOTE = /^\s*<(ide_opened_file|ide_selection)>[\s\S]*<\/\1>/;
+
+/**
+ * The part of a prompt the learner typed. In VS Code, Claude Code joins the IDE's notes and the
+ * typed text with newlines, so a command right after a note still starts the typed text.
+ * @param {string} prompt
+ */
+function typedText(prompt) {
+  let text = prompt;
+  for (let m = IDE_NOTE.exec(text); m; m = IDE_NOTE.exec(text)) text = text.slice(m[0].length);
+  return text;
+}
+
+/**
  * Read a Menitor command the learner typed, such as "/menitor:skip --confirm".
  * @param {unknown} prompt
  * @returns {import('../../core/lib/guard.js').LearnerCommand | null}
  */
 export function parseLearnerPrompt(prompt) {
   if (typeof prompt !== 'string') return null;
-  const m = /^\s*\/menitor:(skip|off|on|typealong)(?=\s|$)([\s\S]*)$/.exec(prompt);
+  const m = /^\s*\/menitor:(skip|off|on|typealong)(?=\s|$)([\s\S]*)$/.exec(typedText(prompt));
   if (!m) return null;
   if (m[1] === 'skip') return { command: 'skip', confirm: /(^|\s)--confirm(?=\s|$)/.test(m[2]) };
   if (m[1] === 'typealong') return { command: 'typealong', on: !/^\s*off(\s|$)/.test(m[2]) };
@@ -193,7 +210,7 @@ export function sessionContext(ctx) {
   const lines = [`Menitor is active in this project. Mentor mode is ${ctx.mode}.`];
   lines.push(`State CLI: ${CLI} <command>. It is the only way to change .menitor/. Its "help" command lists the rest.`);
   if (ctx.mode === 'off') {
-    lines.push(`The learner turned mentor mode off, so help normally. They can type ${COMMANDS.on} to turn it back on.`);
+    lines.push(`The learner turned mentor mode off, so help normally. ${TAKE_TASKS} They can type ${COMMANDS.on} to turn it back on.`);
   } else {
     lines.push('', mentorRules());
   }

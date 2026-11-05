@@ -235,7 +235,7 @@ test('deploy URLs: missing, up, wrong content, down', async () => {
       if (req.url === '/broken') { res.writeHead(500); res.end('oops'); return; }
       res.writeHead(200, { 'content-type': 'text/html' }); res.end('<h1>Recipe box</h1>');
     });
-    s.listen(0, '127.0.0.1', () => console.log(s.address().port));
+    s.listen(0, '127.0.0.1', () => console.log(String(s.address().port)));
   `]);
   const port = await new Promise((resolve) => server.stdout.once('data', (d) => resolve(String(d).trim())));
   try {
