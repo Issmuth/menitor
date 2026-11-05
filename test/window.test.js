@@ -9,6 +9,8 @@ import { approvedProject, cli, makeProject } from './helpers.js';
 import { createWindowServer, cleanCommands, windowState } from '../core/server/server.js';
 import { loadProgress } from '../core/lib/state.js';
 import { appBrowser, readWindowInfo } from '../core/lib/window.js';
+import { loadProgress, loadSession } from '../core/lib/state.js';
+import { readWindowInfo } from '../core/lib/window.js';
 import { codeFingerprint } from '../core/lib/fingerprint.js';
 import { claimEvent, readInbox } from '../core/lib/inbox.js';
 
@@ -452,6 +454,23 @@ test('the window opens as an app in the first Chromium browser found, on each pl
 
   assert.equal(appBrowser('win32', { ...winEnv, MENITOR_WINDOW_APP: '0' }, only(edge)), null, 'the setting keeps tabs');
   assert.equal(appBrowser('win32', winEnv, () => false), null, 'none installed: a tab as before');
+test('menitor open works from a terminal, with the button commands the last window had', () => {
+  const { root, paths, cleanup } = approvedProject();
+  try {
+    cli(root, ['window', 'open', '--no-browser', '--command', 'check=/menitor:check', '--command', 'go=/menitor:go']);
+    assert.deepEqual(loadSession(paths).windowCommands, { check: '/menitor:check', go: '/menitor:go' }, 'the commands are remembered');
+    cli(root, ['window', 'stop']);
+
+    // A learner in a terminal, with no session and no commands to pass.
+    const r = cli(root, ['open', '--no-browser']);
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /Started the task window: http:\/\/127\.0\.0\.1:\d+/);
+    assert.equal(readWindowInfo(paths)?.commands.check, '/menitor:check', 'the buttons keep their commands');
+    assert.match(cli(root, ['open', '--no-browser']).out, /already running/);
+  } finally {
+    cli(root, ['window', 'stop']);
+    cleanup();
+  }
 });
 
 test('a stale window.json is replaced by a fresh server', () => {

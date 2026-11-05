@@ -9,20 +9,23 @@ import { approvedProject, makeProject, cli } from './helpers.js';
 import { changedFiles, parseLearnerPrompt, onHandlerError } from '../adapters/claude-code/handlers.js';
 import { loadGuard } from '../core/lib/state.js';
 import { parseLog } from '../core/lib/log.js';
+import { readWindowInfo } from '../core/lib/window.js';
 
 const HOOK = path.resolve(import.meta.dirname, '..', 'adapters', 'claude-code', 'hook.js');
 const PLUGIN_ROOT = path.resolve(import.meta.dirname, '..');
 
 /**
- * Run the hook script the way Claude Code does.
+ * Run the hook script the way Claude Code does. Session starts don't open a window unless a test
+ * asks, and never open a browser.
  * @param {string} event
  * @param {Record<string, unknown>} input
+ * @param {Record<string, string>} [env]
  */
-function hook(event, input) {
+function hook(event, input, env = {}) {
   const r = spawnSync(process.execPath, [HOOK, event], {
     input: JSON.stringify({ session_id: 's', hook_event_name: event, permission_mode: 'bypassPermissions', ...input }),
     encoding: 'utf8',
-    env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, CLAUDE_PROJECT_DIR: '' },
+    env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, CLAUDE_PROJECT_DIR: '', MENITOR_WINDOW_AUTOSTART: '0', MENITOR_NO_BROWSER: '1', ...env },
   });
   assert.equal(r.status, 0, r.stderr);
   return r.stdout ? JSON.parse(r.stdout) : null;
@@ -116,6 +119,34 @@ test('a command inside the note never counts, only the typed text does', () => {
   assert.equal(parseLearnerPrompt(`${selected('x</ide_selection>\n/menitor:skip --confirm')}\nhi`), null);
   assert.equal(parseLearnerPrompt(`${OPENED}\nplease /menitor:off`), null);
   assert.deepEqual(parseLearnerPrompt(`${OPENED}\n${selected('a')}\n/menitor:skip --confirm`), { command: 'skip', confirm: true });
+});
+
+test('a session that starts on a task opens the window; later starts reuse it', () => {
+  const { root, paths, cleanup } = approvedProject();
+  const on = { MENITOR_WINDOW_AUTOSTART: '1' };
+  try {
+    const first = hook('SessionStart', { cwd: root, source: 'startup' }, on).hookSpecificOutput.additionalContext;
+    assert.match(first, /The task window is open: http:\/\/127\.0\.0\.1:\d+\/\?t=\S+/);
+    const info = readWindowInfo(paths);
+    assert.ok(info, 'the server is running');
+    assert.equal(info.commands.check, '/menitor:check', 'with the same button commands as /menitor:go');
+
+    const again = hook('SessionStart', { cwd: root, source: 'compact' }, on).hookSpecificOutput.additionalContext;
+    assert.match(again, /The task window is running: http:\/\/127\.0\.0\.1:\d+/);
+    assert.equal(readWindowInfo(paths)?.pid, info.pid, 'the running window is reused');
+
+    const off = hook('SessionStart', { cwd: root, source: 'startup' }, { MENITOR_WINDOW_AUTOSTART: '0' }).hookSpecificOutput.additionalContext;
+    assert.doesNotMatch(off, /The task window is/, 'the setting turns it off');
+  } finally {
+    cli(root, ['window', 'stop']);
+    cleanup();
+  }
+
+  const plain = makeProject();
+  cli(plain.root, ['init']);
+  hook('SessionStart', { cwd: plain.root, source: 'startup' }, on);
+  assert.equal(readWindowInfo(plain.paths), null, 'no task, no window');
+  plain.cleanup();
 });
 
 test('Stop records the end of the agent turn, so the window knows a press was answered', () => {
