@@ -13,7 +13,10 @@ import { computeStats, renderStats } from './stats.js';
 import { renderCheck } from './check.js';
 import { openWindow, readWindowInfo, isAlive, stopWindow, windowUrl } from './window.js';
 import { allTasks } from './plan.js';
-import { loadLearner, loadProgress, loadSession, requirePlan } from './state.js';
+import { loadLearner, loadProgress, loadSession, requirePlan, saveSession } from './state.js';
+
+/** The buttons whose commands the window shows or copies. */
+const WINDOW_COMMAND_KEYS = ['start', 'go', 'check', 'hint', 'stuck', 'skip'];
 import {
   addToPlan,
   approvePlan,
@@ -100,6 +103,7 @@ Checks
         --timeout <seconds>             Per command (default 180)
 
 Window
+  menitor open                          Open the task window: the short form of "window open"
   menitor window open                   Start the task window if it isn't running, and open it
         --command <name>=<text>         What the learner types for check, hint, stuck, go or start
                                         (repeatable); buttons copy it when they can't reach the session
@@ -322,6 +326,42 @@ export function run(argv, ioOverrides = {}) {
     const json = (value) => io.out(JSON.stringify(value, null, 2));
     const paths = () => statePaths(requireRoot({ root: values.root, cwd: io.cwd, env: io.env }));
 
+    /**
+     * Open the task window. Button commands given with --command are remembered in session.json,
+     * so a window opened later from a terminal, with none given, keeps them.
+     * @param {import('./paths.js').StatePaths} p
+     * @param {Record<string, any>} v
+     */
+    const windowOpen = (p, v) => {
+      /** @type {Record<string, string>} */
+      const given = {};
+      for (const pair of v.command ?? []) {
+        const eq = pair.indexOf('=');
+        if (eq <= 0) throw new MenitorError(`--command takes name=text, got "${pair}"`);
+        const key = pair.slice(0, eq);
+        const text = pair.slice(eq + 1);
+        if (WINDOW_COMMAND_KEYS.includes(key) && text && text.length <= 100) given[key] = text;
+      }
+      const session = loadSession(p);
+      const named = Object.keys(given).length > 0;
+      if (named && JSON.stringify(given) !== JSON.stringify(session.windowCommands ?? {})) {
+        session.windowCommands = given;
+        saveSession(p, session);
+      }
+      let r;
+      try {
+        r = openWindow(p, { commands: named ? given : (session.windowCommands ?? {}), browser: !v['no-browser'], env: io.env });
+      } catch (err) {
+        throw new MenitorError(/** @type {Error} */ (err).message);
+      }
+      if (v.json) json({ url: r.url, started: r.started, restarted: r.restarted, opened: r.opened });
+      else {
+        const what = r.restarted ? "Restarted the task window, which was older than Menitor's code" : r.started ? 'Started the task window' : 'The task window is already running';
+        io.out(`${what}: ${r.url}\n${r.opened ? 'Opened it in the browser.' : 'Open that link in a browser on this machine.'}`);
+      }
+      return EXIT.ok;
+    };
+
     switch (command) {
       case 'init': {
         const root = path.resolve(values.root ?? repoRoot(io.cwd) ?? io.cwd);
@@ -401,29 +441,11 @@ export function run(argv, ioOverrides = {}) {
         return EXIT.ok;
       }
 
+      case 'open':
+        return windowOpen(paths(), values);
       case 'window': {
         const p = paths();
-        if (sub === 'open') {
-          /** @type {Record<string, string>} */
-          const commands = {};
-          for (const pair of values.command ?? []) {
-            const eq = pair.indexOf('=');
-            if (eq <= 0) throw new MenitorError(`--command takes name=text, got "${pair}"`);
-            commands[pair.slice(0, eq)] = pair.slice(eq + 1);
-          }
-          let r;
-          try {
-            r = openWindow(p, { commands, browser: !values['no-browser'], env: io.env });
-          } catch (err) {
-            throw new MenitorError(/** @type {Error} */ (err).message);
-          }
-          if (values.json) json({ url: r.url, started: r.started, restarted: r.restarted, opened: r.opened });
-          else {
-            const what = r.restarted ? "Restarted the task window, which was older than Menitor's code" : r.started ? 'Started the task window' : 'The task window is already running';
-            io.out(`${what}: ${r.url}\n${r.opened ? 'Opened it in the browser.' : 'Open that link in a browser on this machine.'}`);
-          }
-          return EXIT.ok;
-        }
+        if (sub === 'open') return windowOpen(p, values);
         if (sub === 'status') {
           const info = readWindowInfo(p);
           const alive = info ? isAlive(p, info) : false;

@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import { approvedProject, cli, makeProject } from './helpers.js';
 import { createWindowServer, cleanCommands, windowState } from '../core/server/server.js';
-import { loadProgress } from '../core/lib/state.js';
+import { loadProgress, loadSession } from '../core/lib/state.js';
 import { readWindowInfo } from '../core/lib/window.js';
 import { codeFingerprint } from '../core/lib/fingerprint.js';
 import { claimEvent, readInbox } from '../core/lib/inbox.js';
@@ -429,6 +429,25 @@ test('a window older than the code says it is out of date, not that the state is
       }
     }
   } finally {
+    cleanup();
+  }
+});
+
+test('menitor open works from a terminal, with the button commands the last window had', () => {
+  const { root, paths, cleanup } = approvedProject();
+  try {
+    cli(root, ['window', 'open', '--no-browser', '--command', 'check=/menitor:check', '--command', 'go=/menitor:go']);
+    assert.deepEqual(loadSession(paths).windowCommands, { check: '/menitor:check', go: '/menitor:go' }, 'the commands are remembered');
+    cli(root, ['window', 'stop']);
+
+    // A learner in a terminal, with no session and no commands to pass.
+    const r = cli(root, ['open', '--no-browser']);
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /Started the task window: http:\/\/127\.0\.0\.1:\d+/);
+    assert.equal(readWindowInfo(paths)?.commands.check, '/menitor:check', 'the buttons keep their commands');
+    assert.match(cli(root, ['open', '--no-browser']).out, /already running/);
+  } finally {
+    cli(root, ['window', 'stop']);
     cleanup();
   }
 });

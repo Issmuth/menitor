@@ -14,6 +14,7 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
   - the window receives a step's code only once that step is open.
 - A `typealong` scenario in the sample project.
 - **Explain-back in the window.** The agent asks with `menitor question ask` and judges with `menitor question judge`. The learner answers in the window or in chat, and the reply and any follow-up show under the answer. Answers are saved as data in `.menitor/answers.json`.
+- **`menitor open` opens the window from a terminal,** with no agent involved. The buttons keep the commands from the last `/menitor:go`, which `session.json` now remembers. `npm link` in the Menitor folder puts `menitor` on your PATH.
 - **Whose turn it is, in the window.** A banner shows anything holding up the next task:
   - a delegated task, with a **Start it** button that runs `/menitor:go`;
   - a skip waiting for the learner's confirm;

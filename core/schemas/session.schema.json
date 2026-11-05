@@ -9,6 +9,12 @@
   "properties": {
     "version": { "const": 1 },
     "currentTask": { "type": ["string", "null"] },
+    "windowCommands": {
+      "description": "The commands the window's buttons show or copy, from the last window open that named them, so a window opened from a terminal keeps them.",
+      "type": "object",
+      "propertyNames": { "enum": ["start", "go", "check", "hint", "stuck", "skip"] },
+      "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 100 }
+    },
     "waiting": {
       "description": "Something outside the steps that the agent needs from the learner before the work can go on, shown in the window until it is done.",
       "anyOf": [
