@@ -1,6 +1,6 @@
 # Menitor — Product Requirements (v1)
 
-Nov 4, 2026 · @Chapa
+Nov 4, 2026 · @Chapa · updated Nov 5, 2026 to match v1 as built
 
 ## Summary
 
@@ -34,7 +34,7 @@ v1 succeeds when a beginner ships a deployed app they wrote themselves and can e
 **Non-goals for v1**
 
 - Other agents and models (v2; the core stays agent-neutral so this needs no rewrite).
-- Changing the plan mid-project with /menitor:pivot (v1.1).
+- Changing or removing planned tasks with /menitor:pivot (v1.1). Adding to an approved plan is in v1, with /menitor:add.
 - Phone access over the local network (v1.1).
 - Teams, cohorts or instructor dashboards.
 - Standalone courses or exercises unrelated to the learner’s own project.
@@ -87,12 +87,14 @@ Stuck at any point? /menitor:hint gives the next rung and /menitor:stuck works t
 | Command | What it does | Who can trigger it |
 | --- | --- | --- |
 | /menitor:start | Interview or import existing docs, calibrate the level, set focus areas, write lean docs and the plan | Learner, typed |
-| /menitor:go | Open the window if needed and show the current task; resumes from a fresh session | Learner, typed |
+| /menitor:go | Open the window if needed and show the current task; resumes from a fresh session | Learner, typed or the window's Start it button |
 | /menitor:check | Check the current task; a pass moves on, a fail adds fixes to the checklist | Learner, typed or window button |
 | /menitor:hint | Reveal the next rung of the hint ladder | Learner, typed or window button |
 | /menitor:stuck | Debug with the learner: what they tried, the error, the smallest useful hint | Learner, typed or window button |
-| /menitor:skip \[--explain\] | Hand the current task to the agent; --explain adds a short note on what was done and why | Learner, typed only |
+| /menitor:skip \[--explain\] | Hand the current task to the agent; --explain adds a short note on what was done and why | Learner, typed only; while mentor mode is off, the agent may take the task itself (G-3) |
 | /menitor:add \<idea\> | Add an idea to the approved plan as a step, a task or a milestone, never before the current task ([details](add-tasks.md)) | Learner, typed; the agent may propose one, and adds it only after a yes |
+| /menitor:off and /menitor:on | Turn mentor mode off, so the agent may write code and take tasks, or back on (G-5) | Learner, typed only |
+| /menitor:typealong \[off\] | Switch help from hints to type-along, or back with off (H-9) | Learner, typed only |
 
 Plain questions typed into the session still work; commands are only for actions that change progress. /menitor:pivot arrives in v1.1.
 
@@ -110,7 +112,7 @@ Plain questions typed into the session still work; commands are only for actions
 | S-6 | The learner drafts the core of the PRD (problem, users, must-have features). The mentor critiques and the learner revises. |
 | S-7 | Write lean docs of about one page each into docs/, chosen by project type: PRD, technical requirements, app flow, design brief, data and API contract, testing approach, implementation plan. |
 | S-8 | Order the plan for learning. Milestone 1 is a walking skeleton: one thin end-to-end slice, deployed. Each later milestone adds one feature slice. |
-| S-9 | Every task has a goal, a why, a docs link, a checklist of 6 items or fewer, objective done-when criteria, 4 locked hint rungs and an owner (learner or delegated). |
+| S-9 | Every task has a goal, a why, a docs link, a checklist of 6 items or fewer, objective done-when criteria, 4 locked hint rungs on learner tasks, and an owner (learner or delegated). |
 
 ## The task window
 
@@ -123,11 +125,14 @@ The window is a localhost page in the learner’s browser that shows one task ca
 | W-3 | The learner ticks checklist items in the page; ticks are saved to progress.json. |
 | W-4 | A Pop out button opens the card as an always-on-top mini window through Document Picture-in-Picture. That works in desktop Chromium browsers and recent Firefox; Safari and mobile get a normal tab. |
 | W-5 | The layout works from 320 px wide, so the card fits beside or over the IDE. |
-| W-6 | Check, hint and stuck buttons wake the session through a plugin monitor. If the monitor isn’t running, the button copies the command to type instead. |
-| W-7 | Buttons send fixed events only. The page can never send free text into the session. |
-| W-8 | The page shows milestone progress and how many tasks were learner-written versus delegated. |
+| W-6 | Check, hint and stuck buttons wake the session through the plugin's MCP wait tool, or a plugin monitor where one runs ([ADR 14](adr/014-wait-tool-for-window-buttons.md)). If nothing is listening, the button copies the command to type instead. |
+| W-7 | Buttons send fixed events only. The page never sends free text into the session: an explain-back answer is saved as data in .menitor/answers.json (W-10). |
+| W-8 | The page shows the whole plan as a ledger marked by who did each task, with milestone progress and how many tasks were learner-written versus delegated. |
+| W-9 | A banner shows whose turn it is: a delegated task with a Start it button, a skip waiting for the learner's confirm, or anything the agent is waiting on. |
+| W-10 | Explain-back questions appear in the window with an answer box. The learner answers there or in the session, and the mentor's reply shows under the answer. |
+| W-11 | Tasks added after approval carry an Added tag on the card and a dot in the plan ledger ([ADR 15](adr/015-adding-to-a-locked-plan.md)). |
 
-Every task renders in this card shape. “Why” is two sentences at most, and a card never contains code.
+Every task renders in this card shape. “Why” is two sentences at most, and a card never contains code. In type-along mode, a step's code shows under that step only once it is open (H-9).
 
 ```text
 Task 7/23 · Milestone 2: Sign-up
@@ -161,6 +166,7 @@ Only one picture-in-picture window can be open per browser, so opening another o
 | C-8 | On a pass, check commit hygiene, mark the task done, record the next task’s start commit and show the next card. |
 | C-9 | The learner can dispute a must-fix. The mentor must show a concrete failing case or withdraw it. |
 | C-10 | Load only the doc sections the current task needs, to save tokens. |
+| C-11 | The CLI refuses a pass unless the last check run was clean at the current commit and, on a learner task, an explain-back was logged since ([ADR 10](adr/010-cli-enforces-the-pass-gate.md)). An override needs a reason, which is logged and shown on the card. |
 
 ## Hints, stuck and skipping
 
@@ -173,9 +179,10 @@ Help comes in the smallest useful step, and full code only arrives through an ex
 | H-3 | /menitor:stuck asks what the learner tried, what they expected and what happened. The agent may run the failing command to see the error itself. |
 | H-4 | A stuck response teaches the debugging step first (read the error, reproduce, isolate), then gives the lowest useful rung. Fixes appear in the window as checklist items. |
 | H-5 | Tasks outside the focus areas are delegated by default. The agent does them and leaves a two-line note. |
-| H-6 | Skipping a focus-area task gets one pushback naming what the learner would miss. If they confirm, the agent does it. |
+| H-6 | Skipping a focus-area task gets one pushback naming what the learner would miss. If they confirm, the agent does it. While mentor mode is off, there is no pushback: the agent may take the task itself (G-3). |
 | H-7 | --explain adds a note of one screen or less: what was done, why, and the one concept to know. |
 | H-8 | Delegated commits carry a Menitor-Delegated: true trailer, so the history shows honestly who wrote what. |
+| H-9 | Type-along (/menitor:typealong, typed by the learner) replaces hints. Each step opens to its instructions and full code, which the learner types by hand. The window won't copy it, and the agent still never writes their files. |
 
 ## Guardrails, git and state
 
@@ -187,20 +194,25 @@ The no-code rule is enforced by hooks, git is part of every task, and all memory
 | G-2 | Shell commands that write project files are denied on a best-effort pattern match: redirects, in-place edits, copies into source folders. |
 | G-3 | Only the learner grants delegation: a typed /menitor:skip, recorded by a hook, never by the agent. The grant allows writes for that one task. While mentor mode is off (G-5), the agent may take the current task without a grant, and it is still recorded as skipped (ADR 16). |
 | G-4 | The agent changes state only through the menitor CLI. Direct edits to .menitor/\*.json are denied. |
-| G-5 | Turning mentor mode off is a learner action; the agent cannot do it. |
+| G-5 | Turning mentor mode off (/menitor:off) and back on (/menitor:on) is a learner action, typed and recorded by a hook; the agent cannot do it. The setting persists across sessions, and the window shows a banner while it's off. |
 | G-6 | Git per task: a branch per milestone or feature, Conventional Commits, and the start commit recorded. |
-| G-7 | /menitor:check verifies at least one commit per task with a valid Conventional Commits message. |
+| G-7 | /menitor:check verifies, on every task whose card has a commit step, at least one commit with a valid Conventional Commits message. |
 
-State lives in .menitor/, split by writer so the window and the agent never overwrite each other.
+State lives in .menitor/, and each file has one writer, so the window, the hooks and the agent never overwrite each other ([ADR 9](adr/009-one-writer-per-file.md)).
 
 | File | Written by | Holds |
 | --- | --- | --- |
-| plan.json | Agent, through the CLI | Milestones, tasks, checklists, done-when criteria, owners |
-| progress.json | Window | Ticks, current task, start commits |
+| plan.json | Agent, through the CLI | Milestones, tasks, checklists, done-when criteria, owners, hints |
+| session.json | Agent, through the CLI | The current task, start commits, the last check |
 | learner.md | Agent, through the CLI | Level, focus areas, strengths, recurring mistakes, hint use |
-| log.md | Agent, through the CLI | Dated history of checks, hints, skips and disputes |
+| solutions.json | Agent, through the CLI | Type-along: each step's instructions and code |
+| progress.json | Window | Checklist ticks |
+| answers.json | Window | Explain-back answers typed in the window |
+| guard.json | Hooks | Mentor mode, type-along, skip requests and grants, from the learner's typing |
+| activity.jsonl | Hooks | Every command and file write the agent ran |
+| log.md | The CLI and the hooks, append-only | Dated history of checks, hints, skips, disputes, additions and mode changes |
 
-Files are schema-validated and written atomically (temp file, then rename). Checklist items keep stable IDs. /menitor:go rebuilds everything from these files and git, so a fresh session resumes exactly where the last one stopped.
+The window's own files (window.json, inbox.jsonl, listener.json, waiter.json and claims/) are listed in the README. JSON files are schema-validated and written atomically (temp file, then rename); log.md and the .jsonl files are append-only. Checklist items keep stable IDs. /menitor:go rebuilds everything from these files and git, so a fresh session resumes exactly where the last one stopped.
 
 ## Non-functional requirements
 
@@ -211,7 +223,7 @@ Menitor stays local, is safe by default, spends few tokens, and keeps working wh
 | Privacy | Fully local. No accounts, servers or telemetry. |
 | Security | The window binds to 127.0.0.1 in v1. The window sends the session fixed events only, never free text. |
 | Tokens | Deterministic checks run before AI review. Docs stay around one page each, and a task loads only the sections it needs. |
-| Reliability | Typed commands always work. Window buttons fall back to copying the command if monitors fail. State writes are atomic. |
+| Reliability | Typed commands always work. Window buttons fall back to copying the command if nothing is listening. State writes are atomic. |
 | Portability | An agent-neutral core: state CLI, check runner, window server, doc templates, and instructions in neutral words. A thin Claude Code adapter holds hooks, monitors and command names. |
 | Platforms | macOS, Linux and Windows. Node.js on PATH is required for the window and CLI, and the README says so up front. |
 | Install | A Claude Code plugin from a marketplace. No npm postinstall scripts. |
@@ -227,8 +239,8 @@ Each release ships only after its gate is met.
 
 ```mermaid
 flowchart TB
-  v1["<b>v1 · MVP: the core loop</b> (the scope of this PRD)<br/>start, go, check, stuck, hint and skip<br/>Write-blocking hook; learner-only skip grant<br/>Task window with pop-out and fixed buttons<br/>State CLI and an agent-neutral core<br/>Lean docs and walking-skeleton plans<br/>Explain-back gate and check disputes<br/>Git standards checked on every task"]
-  g1{{"Gate: a dogfood project ships and 3 testers deploy a walking skeleton"}}
+  v1["<b>v1 · MVP: the core loop</b> (the scope of this PRD)<br/>start, go, check, stuck, hint, skip and add<br/>Mentor mode off and on; type-along<br/>Write-blocking hook; learner-only skip grant<br/>Task window with pop-out and fixed buttons<br/>State CLI and an agent-neutral core<br/>Lean docs and walking-skeleton plans<br/>Explain-back gate and check disputes<br/>Git standards checked on every task"]
+  g1{{"Gate: the dogfood project ships (Menitor, built with Menitor) and 3 testers deploy a walking skeleton"}}
   v11["<b>v1.1: depth and reach</b><br/>/menitor:pivot with ADRs and impact estimate<br/>Phone pairing: QR code, one-time token<br/>Live checks on every save<br/>Mistake memory and 5-minute drills<br/>Fading support as skill grows"]
   g2{{"Gate: 3 testers ship a deployed app; under 10% of must-fix findings withdrawn"}}
   v2["<b>v2: any agent</b><br/>Other agents and models through adapters<br/>PR review at the end of each milestone"]
@@ -258,8 +270,8 @@ The biggest risk is an unreliable check; most mitigations below exist to keep th
 | --- | --- |
 | AI review fails correct work or passes broken work | Deterministic checks first, objective done-when criteria, only must-fix blocks, disputes (C-9) |
 | The learner pastes code from another chatbot or IDE autocomplete | Explain-back gate; the README recommends turning autocomplete off for focus areas |
-| Skipping becomes the default | Focus areas, one pushback, delegated count shown in the window |
-| Plugin monitors change or fail; they are experimental | Commands first; buttons fall back to copying the command |
+| Skipping becomes the default | Focus areas, one pushback, delegated count shown in the window; tasks taken while mentor mode is off still count as skips |
+| Plugin monitors change or fail; they are experimental | Commands first; buttons also reach the session through the MCP wait tool, and fall back to copying the command |
 | The shell-write guard misses a pattern | A PostToolUse hook logs every agent command; /menitor:check flags project files the agent touched |
 | Docs drift from the code | One-page docs; /menitor:check flags drift it notices |
 | Learners hit their plan’s usage limits | Deterministic checks first, small docs, targeted reads |
@@ -267,7 +279,7 @@ The biggest risk is an unreliable check; most mitigations below exist to keep th
 
 ## Decisions and open questions
 
-Seven decisions are settled; each becomes a short ADR in the repo’s docs/adr/ folder.
+ADRs 1 to 7 were settled before the build, and ADRs 8 to 16 were made during it. Each is a short record in [docs/adr/](adr/README.md).
 
 | ADR | Decision | Why |
 | --- | --- | --- |
@@ -278,14 +290,23 @@ Seven decisions are settled; each becomes a short ADR in the repo’s docs/adr/ 
 | 005 | Agent-neutral core plus a Claude Code adapter | v2 can add other agents without a rewrite |
 | 006 | /menitor:pivot moves to v1.1 | A first demo project rarely needs it; it is better designed after watching real pivots |
 | 007 | Beginners and bootcamp grads are the primary users | Defaults need one target; experienced devs use levels and focus areas |
+| 008 | Zero runtime dependencies, in plain JavaScript with JSDoc types | Nothing to install or audit, and no build step |
+| 009 | One writer per state file | The window, hooks and CLI never overwrite each other, with no locks |
+| 010 | The CLI enforces the pass gate | No pass without a clean check and an explain-back, whatever the agent does |
+| 011 | Learner-only commands come from the learner's own typing | The CLI can't tell who asked; only a hook sees what the learner typed |
+| 012 | Window security: token, cookie, Host and Origin | Binding to 127.0.0.1 alone doesn't stop other sites in the browser |
+| 013 | Skills are generated from neutral instructions | The core stays agent-neutral, and command names live in the adapter |
+| 014 | Window buttons through an MCP wait tool | Monitors didn't start in the VS Code extension, so buttons fell back to copying commands |
+| 015 | Adding to a locked plan | Ideas mid-project need a home that keeps every existing ID |
+| 016 | Mentor mode off hands over the learner's tasks | Turning it off is already the choice to get help; a skip per task added friction |
 
-**Open questions**
+**Open questions, now answered** in [implementation-decisions.md](implementation-decisions.md#the-prds-open-questions)
 
-- [ ] v1 project types: web apps only, or also API-only and CLI projects?
-- [ ] Which of progress.json, learner.md and log.md are committed to git by default?
-- [ ] Which free hosting targets does the walking skeleton recommend?
-- [ ] Does the fast level start the hint ladder at the approach rung?
-- [ ] How does the learner turn mentor mode off and back on: command name and confirmation?
+- [x] v1 project types: web apps only, or also API-only and CLI projects? Web apps only in v1 (decision 16).
+- [x] Which of progress.json, learner.md and log.md are committed to git by default? Only docs/ and plan.json; the rest stays out of the portfolio repo (decision 17).
+- [x] Which free hosting targets does the walking skeleton recommend? Vercel or Netlify, Render for a separate backend, and Neon or Supabase for Postgres (decision 18).
+- [x] Does the fast level start the hint ladder at the approach rung? No: every level starts at the concept rung (decision 19).
+- [x] How does the learner turn mentor mode off and back on: command name and confirmation? /menitor:off and /menitor:on, typed only and recorded by a hook (decision 20).
 
 ## Sources
 
