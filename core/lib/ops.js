@@ -455,12 +455,46 @@ export function setSetupAnswer(paths, key, value, options = {}) {
 }
 
 /**
+ * Offer choices in the window: the focus areas as a comma-separated list, or one to three stacks
+ * as JSON, the recommended one first, each with its reasons. Posting again replaces them.
+ * @param {StatePaths} paths
+ * @param {string} kind "focus" or "stack"
+ * @param {string} raw
+ */
+export function setSetupOptions(paths, kind, raw) {
+  const setup = loadSetup(paths);
+  const options = { ...setup.options };
+  if (kind === 'focus') {
+    options.focus = [...new Set(raw.split(',').map((s) => s.trim()).filter(Boolean))];
+  } else if (kind === 'stack') {
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      throw new MenitorError(`The stack options are not valid JSON: ${/** @type {Error} */ (err).message}`);
+    }
+    options.stack = parsed;
+  } else {
+    throw new MenitorError(`Unknown setup options "${kind}". Use focus or stack.`);
+  }
+  setup.options = options;
+  const errors = validate(SCHEMAS.setup, setup);
+  if (errors.length) {
+    throw new MenitorError(`Invalid ${kind} options`, { details: errors.map((e) => `${e.path.replace(/^\$\.options\./, '')} ${e.message}`) });
+  }
+  saveSetup(paths, setup);
+  ignoreStateFile(paths, 'setup.json');
+  return options;
+}
+
+/**
  * The setup answers saved so far, in the order setup asks, and those still to ask.
  * @param {StatePaths} paths
  * @returns {import('./setup.js').SetupStatus}
  */
 export function setupStatus(paths) {
-  const saved = loadSetup(paths).answers;
+  const setup = loadSetup(paths);
+  const saved = setup.answers;
   // Answers typed in the window live in the window's own file; the newer of the two wins.
   const typed = /** @type {Record<string, { text: string, at: string } | undefined>} */ (loadAnswers(paths).answers);
   /** @param {string} key */
@@ -479,7 +513,7 @@ export function setupStatus(paths) {
     if (a) answers.push({ key: s.key, label: s.label, ...a });
     else missing.push({ key: s.key, label: s.label });
   }
-  return { answers, missing };
+  return { answers, missing, options: setup.options ?? {} };
 }
 
 /**
