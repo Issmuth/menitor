@@ -84,9 +84,14 @@ Save their choice as `help`: "hints" or "type-along". Only they can turn type-al
 
 ## 6. The core of the PRD
 
-The learner drafts the core of the PRD in their own words: the problem, the users, and three to five must-have features. They can type it in chat or write it in docs/prd.md. Save each draft and each revision as `prd`.
+The learner drafts the core of the PRD in their own words: the problem, the users, and three to five must-have features.
+
+- Open a box for each section in the window with `{{cli}} setup options prd`. Drafts save as they type. Call {{wait}}: "Send for feedback" wakes you.
+- Read the draft with `{{cli}} setup show`; it arrives as `prd`. If they write it in chat or docs/prd.md instead, save it as `prd` yourself.
 
 Critique it like a senior developer. Is the problem real? Are the users specific? Is each feature small and testable? Name the one or two biggest gaps, with the reason, and let them revise. One or two rounds is enough.
+
+Post your feedback on each section with `{{cli}} setup critique <problem|users|features> "<text>"`. The window shows it under that section. Then call {{wait}} for their revision.
 
 ## 7. Lean docs
 

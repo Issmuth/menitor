@@ -7,7 +7,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { statePaths } from '../lib/paths.js';
 import { setupStatus, statusData } from '../lib/ops.js';
-import { SETUP_STEPS } from '../lib/setup.js';
+import { PRD_SECTIONS, SETUP_STEPS } from '../lib/setup.js';
 import { cardData } from '../lib/card.js';
 import { findTask } from '../lib/plan.js';
 import { loadAnswers, loadGuard, loadPlan, loadProgress, loadSession, loadSolutions, saveAnswers, saveProgress } from '../lib/state.js';
@@ -37,6 +37,7 @@ const SETUP_WINDOW_KEYS = {
     const offered = s.options.focus;
     return listOf(text).every((area) => offered.includes(area)) ? null : [400, 'Choose from the focus areas offered.'];
   },
+  ...Object.fromEntries(PRD_SECTIONS.map((p) => [`prd-${p.key}`, (/** @type {string} */ _text, /** @type {import('../lib/setup.js').SetupStatus} */ s) => (s.options.prd ? null : [409, 'The PRD draft is not open yet.'])])),
 };
 const MAX_WARMUP = 12000;
 const COMMAND_KEYS = ['start', 'go', 'check', 'hint', 'stuck', 'skip'];
@@ -189,7 +190,19 @@ export function setupWindow(paths) {
   const question = answer('warmup-question');
   const reply = answer('warmup-answer');
   const { stack, focus } = status.options;
+  // The PRD drafts are the window's own answers, read straight from its file.
+  const typed = /** @type {Record<string, { text: string, at: string } | undefined>} */ (loadAnswers(paths).answers);
+  const prd = status.options.prd
+    ? {
+        sections: PRD_SECTIONS.map((p) => {
+          const draft = typed[`prd-${p.key}`];
+          const critique = status.critique[p.key] ?? null;
+          return { key: p.key, label: p.label, help: p.help, text: draft?.text ?? null, at: draft?.at ?? null, critique, revised: Boolean(draft && critique && draft.at > critique.at) };
+        }),
+      }
+    : null;
   return {
+    prd,
     steps: SETUP_STEPS.map((s) => ({ key: s.key, label: s.label, done: Boolean(answer(s.key)) })),
     warmup: exercise || question ? { exercise, question: question?.value ?? null, answer: reply ? { text: reply.value, at: reply.at } : null } : null,
     choices:

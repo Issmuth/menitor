@@ -28,7 +28,22 @@
             }
           }
         },
-        "focus": { "type": "array", "minItems": 1, "maxItems": 12, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 60 } }
+        "focus": { "type": "array", "minItems": 1, "maxItems": 12, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 60 } },
+        "prd": { "description": "The window shows a box for each PRD core section.", "const": true }
+      }
+    },
+    "critique": {
+      "description": "The mentor's feedback on each PRD core section, shown under it in the window.",
+      "type": "object",
+      "propertyNames": { "enum": ["problem", "users", "features"] },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["text", "at"],
+        "additionalProperties": false,
+        "properties": {
+          "text": { "type": "string", "minLength": 1, "maxLength": 2000 },
+          "at": { "type": "string" }
+        }
       }
     },
     "answers": {

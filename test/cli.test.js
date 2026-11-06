@@ -186,6 +186,24 @@ test('setup options for the stack and focus areas are posted through the CLI', (
   }
 });
 
+test('the PRD draft opens in the window, and feedback is posted per section', () => {
+  const { root, cleanup } = makeProject();
+  try {
+    cli(root, ['init']);
+    assert.equal(cli(root, ['setup', 'options', 'prd']).code, 0);
+    assert.equal(cli(root, ['setup', 'critique', 'users', 'Who exactly?', 'Name one family member.']).code, 0);
+    assert.equal(cli(root, ['setup', 'critique', 'problem', '-'], { stdin: 'Is it a real problem?\n' }).code, 0);
+    const shown = JSON.parse(cli(root, ['setup', 'show', '--json']).out);
+    assert.equal(shown.options.prd, true);
+    assert.equal(shown.critique.users.text, 'Who exactly? Name one family member.');
+    assert.equal(shown.critique.problem.text, 'Is it a real problem?');
+    assert.notEqual(cli(root, ['setup', 'critique', 'pricing', 'x']).code, 0, 'only the three PRD core sections');
+    assert.notEqual(cli(root, ['setup', 'critique', 'users']).code, 0, 'feedback needs text');
+  } finally {
+    cleanup();
+  }
+});
+
 test('a learner task can be skipped only with a grant the learner gave', () => {
   const { root, paths, cleanup } = approvedProject();
   const denied = cli(root, ['task', 'skip']);

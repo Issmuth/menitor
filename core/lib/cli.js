@@ -32,6 +32,7 @@ import {
   questionState,
   setWaiting,
   setSetupAnswer,
+  setSetupCritique,
   setSetupOptions,
   setupStatus,
   initProject,
@@ -67,6 +68,8 @@ Plan
   menitor setup options focus <a,b>     Offer focus areas to pick from in the window
   menitor setup options stack <file|->  Offer 1 to 3 stacks in the window, recommended first:
                                         [{"name": "...", "reasons": ["..."], "hosting": "..."}]
+  menitor setup options prd             Show a box for each PRD core section in the window
+  menitor setup critique <section> <text|->  Feedback on the problem, users or features draft
   menitor setup show                    The setup answers saved so far, and what's still to ask
   menitor plan lint <file|->            Check a draft plan without saving it
   menitor plan import <file|->          Save the plan (only before approval)
@@ -452,8 +455,21 @@ export function run(argv, ioOverrides = {}) {
           if (!kind) throw new MenitorError('Usage: menitor setup options focus "<area>,<area>" | menitor setup options stack -');
           const text = words.length === 1 && words[0] === '-' ? io.readStdin() : words.join(' ');
           const options = setSetupOptions(p, kind, text);
+          if (kind === 'prd' && !values.json) {
+            io.out('The window now shows a box for each PRD core section.');
+            return EXIT.ok;
+          }
           if (values.json) json(options);
           else io.out(`The window now offers the ${kind} options.`);
+          return EXIT.ok;
+        }
+        if (sub === 'critique') {
+          const [section, ...words] = rest;
+          if (!section) throw new MenitorError('Usage: menitor setup critique <problem|users|features> <text...|->');
+          const text = words.length === 1 && words[0] === '-' ? io.readStdin() : words.join(' ');
+          const critique = setSetupCritique(p, section, text);
+          if (values.json) json(critique);
+          else io.out(`The window shows your feedback under ${section}.`);
           return EXIT.ok;
         }
         if (sub === 'show') {
