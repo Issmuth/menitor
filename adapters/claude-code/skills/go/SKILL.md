@@ -24,7 +24,7 @@ Run `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" status`.
 
 ## 2. Open the window
 
-Run `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" window open --command check=/menitor:check --command hint=/menitor:hint --command stuck=/menitor:stuck --command go=/menitor:go --command start=/menitor:start --command skip=/menitor:skip`. It starts the task window if it isn't running, and opens it in the browser. If it couldn't open a browser, give the learner the link it printed. The link only works on this machine.
+Run `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" window open --command check=/menitor:check --command hint=/menitor:hint --command stuck=/menitor:stuck --command go=/menitor:go --command start=/menitor:start --command skip=/menitor:skip --command add=/menitor:add`. It starts the task window if it isn't running, and opens it in the browser. If it couldn't open a browser, give the learner the link it printed. The link only works on this machine.
 
 ## 3. Rebuild the context
 

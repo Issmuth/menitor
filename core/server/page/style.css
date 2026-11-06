@@ -1297,9 +1297,9 @@ h1 {
 
 .todo-list li {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: baseline;
-  gap: 4px 10px;
+  gap: 2px 10px;
   padding: 8px 0;
   border-top: 1px solid var(--rule);
 }
@@ -1322,8 +1322,13 @@ h1 {
   text-decoration: line-through;
 }
 
+/* Under the text, so the text keeps the width: Add to plan or where it went on the left, Edit and Delete on the right. */
 .todo-actions {
+  grid-column: 2;
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
   gap: 2px;
 }
 
@@ -1331,6 +1336,23 @@ h1 {
   min-height: 30px;
   padding: 0 8px;
   font-size: 13px;
+}
+
+.todo-actions .plan-todo {
+  margin-right: auto;
+  margin-left: -8px;
+  color: var(--accent);
+}
+
+.todo-actions .plan-todo:disabled {
+  color: var(--muted);
+}
+
+/* Where a to-do went once the plan took it. */
+.todo-planned {
+  margin-right: auto;
+  font-size: var(--fs-meta);
+  color: var(--muted);
 }
 
 /* Explain your code: the agent's question, answered here */
@@ -1919,8 +1941,9 @@ h1 {
     grid-column: 9 / span 4;
   }
 
-  /* The hints share the last row with the to-dos, at their own height. In 8 columns the ladder
-   * takes half, so its four labels have room. */
+  /* The hints share the last row with the to-dos, at their own height: the to-do list grows with
+   * the learner's notes, so it runs on down the right-hand column. In 8 columns the ladder takes
+   * half, so its four labels have room. */
   .board > .hints {
     grid-column: 1 / span 8;
     display: grid;

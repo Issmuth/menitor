@@ -174,6 +174,7 @@ const PRESS_WORDS = /** @type {Record<string, { busy: string, doing: string }>} 
   hint: { busy: 'Writing…', doing: 'Menitor is writing your next hint.' },
   stuck: { busy: 'Looking…', doing: 'Menitor is looking at what went wrong.' },
   go: { busy: 'Starting…', doing: 'Menitor is working on this task.' },
+  add: { busy: 'Adding…', doing: 'Menitor is adding your to-do to the plan.' },
 });
 /** A press shows as done for this long, saying what comes next. */
 const DONE_SHOWN_MS = 2 * 60 * 1000;
@@ -238,6 +239,7 @@ function pressLine(s) {
       hint: 'Your hint is open below.',
       stuck: 'The next step is in your session.',
       go: '',
+      add: 'If it asked you something, answer in your session.',
     }[/** @type {string} */ (p.type)];
     return { busy: false, text: `Menitor is done. ${next}`.trim() };
   }
@@ -1122,7 +1124,74 @@ async function todoAction(body, e) {
 }
 
 /**
- * One to-do: a box to tick, its text, and Edit and Delete. Editing swaps the text for a field.
+ * Where a planned to-do went, in the words the plan uses: a task or milestone number, or a step on a task.
+ * @param {any} s
+ * @param {string} to a task, step or milestone ID
+ */
+function plannedAs(s, to) {
+  const milestones = /** @type {any[]} */ (s?.milestones ?? []);
+  const m = milestones.find((x) => x.id === to);
+  if (m) return `In the plan as milestone ${m.number}`;
+  const [taskId, step] = to.split('.');
+  const task = milestones.flatMap((x) => x.tasks ?? []).find((x) => x.id === taskId);
+  if (!task) return 'In the plan';
+  return step ? `In the plan as a step on task ${task.number}` : `In the plan as task ${task.number}`;
+}
+
+/**
+ * Send a to-do into the plan. Only its ID goes to the session, which reads the text through the CLI
+ * and runs the add flow. If nothing is listening, copy the add command with the to-do's text instead.
+ * @param {any} t
+ * @param {Event} e
+ */
+async function onPlanTodo(t, e) {
+  const doc = docOf(e);
+  if (busyPress(state)) return;
+  try {
+    const r = await post('/api/event', { type: 'add', todo: t.id });
+    if (r.busy) {
+      showToast('Menitor is still working on your last press.', undefined, doc);
+      return;
+    }
+    if (r.delivered) {
+      localPress = { type: 'add', todo: t.id, at: new Date().toISOString(), claimedAt: null, state: 'sent', doneAt: null };
+      render(state);
+      return;
+    }
+    await copyCommand(`${r.command} ${t.text}`, e);
+  } catch (err) {
+    showToast(`That didn't work: ${/** @type {Error} */ (err).message}`, undefined, doc);
+  }
+}
+
+/**
+ * The Add to plan button on an open to-do: it shows the press while it is on its way, and waits
+ * while another press is.
+ * @param {any} s
+ * @param {any} t
+ */
+function planTodoButton(s, t) {
+  const busy = busyPress(s);
+  const mine = busy?.type === 'add' && busy.todo === t.id;
+  return h(
+    'button',
+    {
+      type: 'button',
+      class: `btn ghost small plan-todo${mine ? ' busy' : ''}`,
+      'data-key': `todo-plan:${t.id}`,
+      disabled: Boolean(busy && !mine),
+      'aria-disabled': mine ? 'true' : undefined,
+      'aria-busy': mine ? 'true' : undefined,
+      'aria-label': `Add to plan: ${t.text}`,
+      onclick: (/** @type {Event} */ e) => onPlanTodo(t, e),
+    },
+    mine ? (busy.state === 'sent' ? 'Sent' : PRESS_WORDS.add.busy) : 'Add to plan',
+  );
+}
+
+/**
+ * One to-do: a box to tick, its text, and Add to plan, Edit and Delete. Editing swaps the text for
+ * a field. A to-do the plan took says where it went.
  * @param {any} t
  */
 function todoRow(t) {
@@ -1162,8 +1231,9 @@ function todoRow(t) {
     h('input', { type: 'checkbox', id: `todo-${t.id}`, checked: t.done, 'data-key': `todo-tick:${t.id}`, onchange: (/** @type {Event} */ e) => todoAction({ action: 'tick', id: t.id, done: /** @type {HTMLInputElement} */ (e.target).checked }, e) }),
     h('label', { class: 'todo-text', for: `todo-${t.id}` }, t.text),
     h(
-      'span',
+      'div',
       { class: 'todo-actions' },
+      t.planned ? h('span', { class: 'todo-planned' }, plannedAs(state, t.planned.to)) : t.done ? null : planTodoButton(state, t),
       h('button', { type: 'button', class: 'btn ghost small', 'data-key': `todo-edit-btn:${t.id}`, 'aria-label': `Edit: ${t.text}`, onclick: () => ((editingTodo = t.id), render(state)) }, 'Edit'),
       h('button', { type: 'button', class: 'btn ghost small', 'aria-label': `Delete: ${t.text}`, onclick: (/** @type {Event} */ e) => todoAction({ action: 'delete', id: t.id }, e) }, 'Delete'),
     ),
