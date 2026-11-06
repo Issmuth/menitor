@@ -9,6 +9,7 @@ import { repoRoot } from './git.js';
 import { parseJsonInput } from './fsx.js';
 import { appendAgentEvent, parseFieldArgs, parseLog } from './log.js';
 import { cardData, renderCard } from './card.js';
+import { renderSetup } from './setup.js';
 import { computeStats, renderStats } from './stats.js';
 import { renderCheck } from './check.js';
 import { openWindow, readWindowInfo, isAlive, stopWindow, windowUrl } from './window.js';
@@ -30,6 +31,8 @@ import {
   judgeQuestion,
   questionState,
   setWaiting,
+  setSetupAnswer,
+  setupStatus,
   initProject,
   learnerAdd,
   learnerNote,
@@ -57,6 +60,10 @@ Setup
   menitor learner note <text>           Add a dated note
 
 Plan
+  menitor setup set <key> <text|->      Save one setup answer the moment it's given (- reads stdin):
+                                        idea, goal, time, experience, stack, warmup-question,
+                                        warmup-answer, help, stack-choice, prd
+  menitor setup show                    The setup answers saved so far, and what's still to ask
   menitor plan lint <file|->            Check a draft plan without saving it
   menitor plan import <file|->          Save the plan (only before approval)
   menitor plan add <file|-> [--dry-run] Add to the approved plan, never before the current task:
@@ -423,6 +430,26 @@ export function run(argv, ioOverrides = {}) {
           return EXIT.ok;
         }
         throw new MenitorError('Usage: menitor question <ask|show|judge>');
+      }
+
+      case 'setup': {
+        const p = paths();
+        if (sub === 'set') {
+          const [key, ...words] = rest;
+          if (!key) throw new MenitorError('Usage: menitor setup set <key> <text...> | menitor setup set <key> -');
+          const text = words.length === 1 && words[0] === '-' ? io.readStdin() : words.join(' ');
+          const saved = setSetupAnswer(p, key, text);
+          if (values.json) json({ key, ...saved });
+          else io.out(`Saved the ${key} answer.`);
+          return EXIT.ok;
+        }
+        if (sub === 'show') {
+          const s = setupStatus(p);
+          if (values.json) json(s);
+          else io.out(renderSetup(s));
+          return EXIT.ok;
+        }
+        throw new MenitorError('Usage: menitor setup set <key> <text...> | menitor setup show');
       }
 
       case 'waiting': {

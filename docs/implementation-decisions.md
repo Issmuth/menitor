@@ -208,4 +208,12 @@ A second way to help: instead of hints that build up, each step shows the full c
 - **A finished plan grows.** With no current task, the first new task starts, with a start commit, as `task pass` would start it.
 - **The tag.** Tasks carry `added`, an ISO time. The window shows an "Added" pill in the card's status line and a dot in the task's ledger cell, with "Added later" in the legend. The terminal card and `plan show` say "added".
 
+## Setup answers (milestone 6)
+
+- **Saved as they are given.** `.menitor/setup.json` holds what the learner says during setup, one entry per answer with the time: the idea, goal, time per week, experience, the stack wanted, the warm-up question and answer, hints or type-along, the stack agreed, and the PRD core draft. The level, focus areas, strengths and mistakes already live in `learner.md`, and the docs and plan in their own files, so they aren't repeated here.
+- **The CLI is its only writer.** `menitor setup set <key> <text>` saves one answer, with `-` for long text on stdin; answering again replaces it. `menitor setup show` lists the answers in the order setup asks, then what's still to ask. An unknown key is refused, and the schema names the ten keys.
+- **Resuming.** `/menitor:start` saves each answer the moment it's given, and on a new run reads `setup show` first and never asks again for a saved answer.
+- **Window answers will have their own file.** Answers typed in the window during setup (milestone 6, later tasks) are written by the window, as explain-back answers are, so each state file keeps one writer.
+- **Out of git.** `setup.json` is personal, so it is in `.menitor/.gitignore`; projects set up earlier get the line added the first time an answer is saved.
+
 

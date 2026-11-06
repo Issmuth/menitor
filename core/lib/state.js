@@ -28,6 +28,7 @@ import { planProblems } from './plan.js';
  * @typedef {{ text: string, at: string, task?: string | null }} Waiting
  * @typedef {{ version: 1, currentTask: string | null, windowCommands?: Record<string, string>, waiting?: Waiting | null, tasks: Record<string, { startCommit: string | null, startedAt: string, lastCheck?: LastCheck, questions?: Question[] }> }} Session
  * @typedef {{ version: 1, answers: Record<string, { text: string, at: string }> }} Answers
+ * @typedef {{ version: 1, answers: Record<string, { value: string, at: string }> }} Setup
  * @typedef {{ version: 1, ticks: Record<string, string>, seen?: Record<string, string> }} Progress
  * @typedef {{ version: 1, mentorMode: 'on' | 'off', modeChangedAt?: string | null, typeAlong?: boolean, skipRequests: Record<string, string>, grants: Record<string, string> }} Guard
  * @typedef {{ where?: string, text: string }} CodeBlock
@@ -55,6 +56,7 @@ export const SCHEMAS = {
   inboxEvent: loadSchema('inbox-event'),
   solutions: loadSchema('solutions'),
   answers: loadSchema('answers'),
+  setup: loadSchema('setup'),
 };
 
 /**
@@ -241,6 +243,29 @@ export function loadAnswers(paths) {
 export function saveAnswers(paths, answers) {
   assertValid('answers', answers, 'The answers');
   writeJsonAtomic(paths.answers, answers);
+}
+
+// setup.json
+
+/**
+ * @param {StatePaths} paths
+ * @returns {Setup}
+ */
+export function loadSetup(paths) {
+  const setup = readJsonOrNull(paths.setup);
+  if (setup === null) return { version: 1, answers: {} };
+  assertValid('setup', setup, 'setup.json');
+  return /** @type {Setup} */ (setup);
+}
+
+/**
+ * For the CLI only.
+ * @param {StatePaths} paths
+ * @param {Setup} setup
+ */
+export function saveSetup(paths, setup) {
+  assertValid('setup', setup, 'The setup answers');
+  writeJsonAtomic(paths.setup, setup);
 }
 
 // learner.md
