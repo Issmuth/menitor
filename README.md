@@ -115,6 +115,7 @@ To open it yourself, without asking the agent, run `menitor open` in your projec
 - **Its own window:** with Chrome, Edge, Chromium or Brave installed, the window opens as an app, maximized, with no tabs or address bar. If an older Menitor window is still open, the new one opens at its normal size instead. Set `MENITOR_WINDOW_MAXIMIZED=0` for a normal-size window, or `MENITOR_WINDOW_APP=0` to always use a tab. Without one of those browsers, it opens in a tab.
 - **Pop out:** an always-on-top mini window in desktop Chrome, Edge and other Chromium browsers. Other browsers get a small separate window.
 - **The plan:** every task in your plan as one cell, marked by who did it: you, Menitor, skipped, the one you're on, or still to do. A dot marks tasks added after you approved the plan, and their card says **Added**.
+- **To-dos:** jot down ideas, features and changes to come back to. Add, edit, tick and delete them in the window; they stay between sessions, and they're yours alone.
 - **Setup:** while `/menitor:start` runs, the window shows the answers saved so far, the warm-up exercise with an **I'm done** button and Menitor's question about your code, the stacks and focus areas to choose from, and a box for each part of your PRD core, saved as you type, with Menitor's feedback under each.
 - **The finish:** when every task in your plan has passed, the window shows what you built and how: the tasks you wrote, what Menitor did, your hints and explain-backs, and a link to your live app.
 - **Hints:** the four-rung ladder shows which hints are open, with their text beside it. Code hints are set as code.
@@ -161,6 +162,7 @@ Menitor keeps its state in `.menitor/` in your project. The plan is committed, s
 | `solutions.json` | type-along: each step's instructions and code | no |
 | `answers.json` | your answers to explain-back questions, typed in the window | no |
 | `setup.json` | what you said during setup, saved as you go, so a closed session loses nothing | no |
+| `todos.json` | your to-dos, written in the window | no |
 | `window.json`, `inbox.jsonl`, `listener.json`, `waiter.json`, `claims/` | the running window and its buttons | no |
 
 Your lean docs go in `docs/`, one page each: product requirements, technical requirements, app flow, design brief, data and API contract, and testing approach. Decision records go in `docs/adr/`. You write the first one, for your stack.

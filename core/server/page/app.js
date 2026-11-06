@@ -685,6 +685,7 @@ function taskView(s) {
     typeAlong ? typeAlongPanel(c, s) : stepsPanel(c),
     learner && !typeAlong ? hintsPanel(c) : null,
     planPanel(s),
+    todosPanel(s),
   );
   return { nodes: [head, ...turnView(s), board], bar: learner };
 }
@@ -1104,6 +1105,99 @@ function setupView(s) {
   return { nodes: [head, h('div', { class: 'setup-body' }, main, steps)], bar: false };
 }
 
+/** The to-do being edited, if any. */
+let editingTodo = /** @type {string | null} */ (null);
+
+/**
+ * Add, edit, tick or delete a to-do. The learner's own notes, saved as data; nothing reaches the session.
+ * @param {Record<string, unknown>} body
+ * @param {Event} e
+ */
+async function todoAction(body, e) {
+  try {
+    render(await post('/api/todo', body));
+  } catch (err) {
+    showToast(`That didn't save: ${/** @type {Error} */ (err).message}`, undefined, docOf(e));
+  }
+}
+
+/**
+ * One to-do: a box to tick, its text, and Edit and Delete. Editing swaps the text for a field.
+ * @param {any} t
+ */
+function todoRow(t) {
+  if (editingTodo === t.id) {
+    const field = /** @type {HTMLInputElement} */ (h('input', { type: 'text', id: `todo-edit-${t.id}`, maxlength: 500, 'data-key': `todo-edit:${t.id}` }));
+    field.value = drafts.get(`todo-edit:${t.id}`) ?? t.text;
+    field.addEventListener('input', () => drafts.set(`todo-edit:${t.id}`, field.value));
+    const save = (/** @type {Event} */ e) => {
+      e.preventDefault();
+      const text = field.value.trim();
+      if (!text) return;
+      editingTodo = null;
+      drafts.delete(`todo-edit:${t.id}`);
+      todoAction({ action: 'edit', id: t.id, text }, e);
+    };
+    const cancel = () => {
+      editingTodo = null;
+      drafts.delete(`todo-edit:${t.id}`);
+      render(state);
+    };
+    return h(
+      'li',
+      { class: 'todo editing' },
+      h(
+        'form',
+        { class: 'todo-form', onsubmit: save },
+        h('label', { class: 'sr-only', for: field.id }, 'Edit the to-do'),
+        field,
+        h('button', { type: 'submit', class: 'btn primary small' }, 'Save'),
+        h('button', { type: 'button', class: 'btn ghost small', onclick: cancel }, 'Cancel'),
+      ),
+    );
+  }
+  return h(
+    'li',
+    { class: `todo${t.done ? ' done' : ''}` },
+    h('input', { type: 'checkbox', id: `todo-${t.id}`, checked: t.done, 'data-key': `todo-tick:${t.id}`, onchange: (/** @type {Event} */ e) => todoAction({ action: 'tick', id: t.id, done: /** @type {HTMLInputElement} */ (e.target).checked }, e) }),
+    h('label', { class: 'todo-text', for: `todo-${t.id}` }, t.text),
+    h(
+      'span',
+      { class: 'todo-actions' },
+      h('button', { type: 'button', class: 'btn ghost small', 'data-key': `todo-edit-btn:${t.id}`, 'aria-label': `Edit: ${t.text}`, onclick: () => ((editingTodo = t.id), render(state)) }, 'Edit'),
+      h('button', { type: 'button', class: 'btn ghost small', 'aria-label': `Delete: ${t.text}`, onclick: (/** @type {Event} */ e) => todoAction({ action: 'delete', id: t.id }, e) }, 'Delete'),
+    ),
+  );
+}
+
+/**
+ * The learner's to-dos: ideas, features and changes to come back to, saved in the window.
+ * @param {any} s
+ */
+function todosPanel(s) {
+  const todos = /** @type {any[]} */ (s.todos ?? []);
+  const open = todos.filter((t) => !t.done);
+  const field = /** @type {HTMLInputElement} */ (h('input', { type: 'text', id: 'todo-new', maxlength: 500, 'data-key': 'todo:new' }));
+  field.value = drafts.get('todo:new') ?? '';
+  field.addEventListener('input', () => drafts.set('todo:new', field.value));
+  const add = (/** @type {Event} */ e) => {
+    e.preventDefault();
+    const text = field.value.trim();
+    if (!text) return;
+    drafts.delete('todo:new');
+    todoAction({ action: 'add', text }, e);
+  };
+  return h(
+    'section',
+    { class: 'panel todos', 'aria-labelledby': 'todos-title' },
+    h('header', { class: 'panel-head' }, h('h2', { id: 'todos-title' }, 'To-dos'), h('span', { class: 'count num' }, todos.length ? `${open.length} open` : '')),
+    h('form', { class: 'todo-form', onsubmit: add }, h('label', { class: 'sr-only', for: 'todo-new' }, 'New to-do'), field, h('button', { type: 'submit', class: 'btn secondary small' }, 'Add')),
+    todos.length
+      ? h('ul', { class: 'todo-list' }, ...[...open, ...todos.filter((t) => t.done)].map(todoRow))
+      : h('p', { class: 'empty' }, 'Jot down ideas, features and changes to come back to. They stay here between sessions.'),
+  );
+}
+
 /** @param {string} iso A short date, such as "Nov 6". */
 function day(iso) {
   const d = new Date(iso);
@@ -1176,7 +1270,7 @@ function finishView(s) {
       ),
     ),
   );
-  return { nodes: [head, field, h('div', { class: 'finish-body' }, built, planPanel(s))], bar: false };
+  return { nodes: [head, field, h('div', { class: 'finish-body' }, built, planPanel(s), todosPanel(s))], bar: false };
 }
 
 /** @param {any} s */
