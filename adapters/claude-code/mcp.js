@@ -26,7 +26,7 @@ export const TOOL = {
   name: 'wait_for_learner',
   title: 'Wait for the learner',
   description:
-    "Wait for the learner's next move in the Menitor task window: Check my work, Hint, I'm stuck, Start it, or a sent answer. Call it last in a turn whose next move is the learner's, in their editor or the window. It returns the press as soon as it happens. After two minutes Claude Code moves it to the background, so the learner can still type to you, and the press wakes you when it comes.",
+    "Wait for the learner's next move in the Menitor task window: Check my work, Hint, I'm stuck, Start it, Add to plan on a to-do, or a sent answer. Call it last in a turn whose next move is the learner's, in their editor or the window. It returns the press as soon as it happens. After two minutes Claude Code moves it to the background, so the learner can still type to you, and the press wakes you when it comes.",
   inputSchema: {
     type: 'object',
     properties: {
@@ -38,7 +38,7 @@ export const TOOL = {
 };
 
 const INSTRUCTIONS = [
-  "Menitor's task window has buttons: Check my work, Hint, I'm stuck, Start it, and an answer box.",
+  "Menitor's task window has buttons: Check my work, Hint, I'm stuck, Start it, Add to plan on a to-do, and an answer box.",
   "When the learner's next move is in their editor or the window, end your turn by calling wait_for_learner.",
   'It returns their press, or moves to the background after two minutes and wakes you when they press.',
   'Then do what the press asks, as its text says. If they type to you instead, answer them as usual.',
@@ -120,7 +120,7 @@ function callTool(id, params) {
       waits.delete(id);
       if (wait.cancelled) return; // The client cancelled: it expects no answer.
       if (wait.superseded) return reply(id, text('A newer wait_for_learner call took over listening.'));
-      if (event) return reply(id, text(windowEventText(event.type, event.task ?? 'the current task')));
+      if (event) return reply(id, text(windowEventText(event.type, event.task ?? 'the current task', event.todo)));
       return reply(id, text(`No button press in ${minutes} minute${minutes === 1 ? '' : 's'}. If the learner's next move is still in the window, call wait_for_learner again; otherwise end your turn.`));
     })
     .catch((err) => {

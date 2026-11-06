@@ -449,6 +449,38 @@ test('to-dos are kept in the window: add, edit, tick and delete, in their own fi
   }
 });
 
+test('Add to plan sends only the to-do ID, and the to-do shows as planned once it lands', async () => {
+  const { root, paths, cleanup } = approvedProject();
+  /** @type {any[]} */
+  const delivered = [];
+  const win = createWindowServer(root, { commands: { add: '/menitor:add' }, deliver: (e) => (delivered.push(e), true) });
+  const port = await win.listen(0);
+  const auth = { 'X-Menitor-Token': win.token };
+  /** @param {string} p @param {unknown} body */
+  const post = (p, body) => request(port, { method: 'POST', path: p, headers: { ...auth, 'Content-Type': 'application/json', Origin: `http://127.0.0.1:${port}` }, body: JSON.stringify(body) });
+  try {
+    const todo = JSON.parse((await post('/api/todo', { action: 'add', text: 'Show how many recipes there are' })).body).todos[0];
+
+    const r = await post('/api/event', { type: 'add', todo: todo.id });
+    assert.equal(r.status, 200, r.body);
+    assert.deepEqual(JSON.parse(r.body), { delivered: true, command: '/menitor:add' });
+    assert.deepEqual(delivered, [{ type: 'add', task: 't1', todo: todo.id }], 'only the ID, never the text');
+
+    assert.equal((await post('/api/event', { type: 'add' })).status, 400, 'an add names its to-do');
+    assert.equal((await post('/api/event', { type: 'add', todo: 'nosuchtodo' })).status, 404);
+
+    // The agent adds it with the to-do's ID; the window marks it.
+    const added = cli(root, ['plan', 'add', '-'], { stdin: JSON.stringify({ after: 'm2', todo: todo.id, task: { goal: 'Show the recipe count', why: 'It says how big the box is.', docs: 'docs/prd.md', checklist: ['Render the count'], doneWhen: 'The count shows', owner: 'delegated' } }) });
+    assert.equal(added.code, 0, added.err);
+    const shown = windowState(paths, { commands: {} }).todos[0];
+    assert.equal(shown.planned?.to, 't4');
+    assert.equal((await post('/api/event', { type: 'add', todo: todo.id })).status, 409, 'already in the plan');
+  } finally {
+    await win.close();
+    cleanup();
+  }
+});
+
 test('the event stream pushes new state when a state file changes', async () => {
   const { root, cleanup } = approvedProject();
   const { win, port, auth } = await serve(root);

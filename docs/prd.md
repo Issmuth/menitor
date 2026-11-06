@@ -203,7 +203,7 @@ State lives in .menitor/, and each file has one writer, so the window, the hooks
 | File | Written by | Holds |
 | --- | --- | --- |
 | plan.json | Agent, through the CLI | Milestones, tasks, checklists, done-when criteria, owners, hints |
-| session.json | Agent, through the CLI | The current task, start commits, the last check |
+| session.json | Agent, through the CLI | The current task, start commits, the last check, and which to-dos went into the plan |
 | learner.md | Agent, through the CLI | Level, focus areas, strengths, recurring mistakes, hint use |
 | solutions.json | Agent, through the CLI | Type-along: each step's instructions and code |
 | setup.json | Agent, through the CLI | What the learner said during setup, saved as each answer is given |

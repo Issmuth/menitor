@@ -204,6 +204,24 @@ test('the PRD draft opens in the window, and feedback is posted per section', ()
   }
 });
 
+test('todos show reads the learner to-dos as data', () => {
+  const { root, paths, cleanup } = approvedProject();
+  try {
+    assert.match(cli(root, ['todos', 'show']).out, /No to-dos yet/);
+    fs.writeFileSync(paths.todos, JSON.stringify({ version: 1, todos: [{ id: 'abc123', text: 'Let recipes have a photo', done: false, at: '2026-11-06T10:00:00.000Z' }] }));
+    assert.match(cli(root, ['todos', 'show']).out, /abc123\s+Let recipes have a photo/);
+    assert.deepEqual(JSON.parse(cli(root, ['todos', 'show', 'abc123', '--json']).out).text, 'Let recipes have a photo');
+    assert.equal(cli(root, ['todos', 'show', 'abc123']).out.trim(), 'Let recipes have a photo');
+    assert.notEqual(cli(root, ['todos', 'show', 'nope']).code, 0);
+    // An addition that names a to-do it doesn't know is refused, before anything is saved.
+    const bad = cli(root, ['plan', 'add', '-', '--dry-run'], { stdin: JSON.stringify({ step: 'x', to: 't3', todo: 'nope' }) });
+    assert.notEqual(bad.code, 0);
+    assert.match(bad.err, /No to-do "nope"/);
+  } finally {
+    cleanup();
+  }
+});
+
 test('a learner task can be skipped only with a grant the learner gave', () => {
   const { root, paths, cleanup } = approvedProject();
   const denied = cli(root, ['task', 'skip']);

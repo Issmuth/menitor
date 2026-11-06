@@ -59,7 +59,7 @@ The learner never rates themselves. Pick the level from evidence.
 - In an existing repo they wrote, read a few files and their git history.
 - Otherwise, give a warm-up of 10 minutes or less:
   1. Write the exercise to .menitor/warmup/README.md. Make it one small function in the language they'll use, with two or three example inputs and outputs.
-  2. Open the window with node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" window open --command check=/menitor:check --command hint=/menitor:hint --command stuck=/menitor:stuck --command go=/menitor:go --command start=/menitor:start --command skip=/menitor:skip. It shows the exercise, and an "I'm done" button.
+  2. Open the window with node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" window open --command check=/menitor:check --command hint=/menitor:hint --command stuck=/menitor:stuck --command go=/menitor:go --command start=/menitor:start --command skip=/menitor:skip --command add=/menitor:add. It shows the exercise, and an "I'm done" button.
   3. The learner writes their answer in .menitor/warmup/. Call `wait_for_learner` (the menitor MCP tool): their press, or a message in chat, says they're done.
   4. Read their code. Save one open question about it as `warmup-question`, and the window shows it with an answer box. Call `wait_for_learner` (the menitor MCP tool) again.
   5. Their answer arrives as `warmup-answer` in `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" setup show`. If they answer in chat instead, save it as `warmup-answer` yourself.

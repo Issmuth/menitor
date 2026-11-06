@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { statePaths } from '../lib/paths.js';
-import { setupStatus, statusData } from '../lib/ops.js';
+import { setupStatus, statusData, todoList } from '../lib/ops.js';
 import { PRD_SECTIONS, SETUP_STEPS } from '../lib/setup.js';
 import { cardData } from '../lib/card.js';
 import { findTask } from '../lib/plan.js';
@@ -17,7 +17,7 @@ import { parseLog } from '../lib/log.js';
 import { computeStats } from '../lib/stats.js';
 
 /** The only events a button can send (W-7). */
-export const EVENTS = /** @type {const} */ (['check', 'hint', 'stuck', 'go', 'warmup-done']);
+export const EVENTS = /** @type {const} */ (['check', 'hint', 'stuck', 'go', 'warmup-done', 'add']);
 /** @param {string} text */
 const listOf = (text) => text.split(',').map((s) => s.trim()).filter(Boolean);
 
@@ -42,7 +42,7 @@ const SETUP_WINDOW_KEYS = {
 const MAX_WARMUP = 12000;
 const MAX_TODO = 500;
 const MAX_TODOS = 200;
-const COMMAND_KEYS = ['start', 'go', 'check', 'hint', 'stuck', 'skip'];
+const COMMAND_KEYS = ['start', 'go', 'check', 'hint', 'stuck', 'skip', 'add'];
 const MAX_BODY = 16384;
 const MAX_ANSWER = 4000;
 const HEARTBEAT_MS = 20000;
@@ -124,7 +124,7 @@ export function windowState(paths, options) {
       written: status.written,
       commands: options.commands,
       listening: Boolean(liveListener(paths)),
-      todos: loadTodos(paths).todos,
+      todos: todoList(paths),
       press: pressState(paths),
     };
   } catch (err) {
@@ -382,7 +382,7 @@ export function cleanCommands(raw) {
 /**
  * Create the server. Call listen() to start it.
  * @param {string} root
- * @param {{ token?: string, code?: string, commands?: Record<string, unknown>, deliver?: (event: { type: import('../lib/inbox.js').InboxType, task: string | null }) => boolean }} [options]
+ * @param {{ token?: string, code?: string, commands?: Record<string, unknown>, deliver?: (event: { type: import('../lib/inbox.js').InboxType, task: string | null, todo?: string }) => boolean }} [options]
  *   code: the fingerprint of the code this server runs; tests pass an old one
  */
 export function createWindowServer(root, options = {}) {
@@ -516,16 +516,27 @@ export function createWindowServer(root, options = {}) {
       if (url.pathname === '/api/event') {
         const type = body.type;
         if (typeof type !== 'string' || !(/** @type {readonly string[]} */ (EVENTS)).includes(type)) return send(res, 400, 'Unknown event.');
-        let task = null;
+        /** @type {import('../lib/state.js').Session | null} */
+        let session = null;
         try {
-          task = loadSession(paths).currentTask;
+          session = loadSession(paths);
         } catch {
-          task = null;
+          session = null;
+        }
+        const task = session?.currentTask ?? null;
+        // Add to plan names a to-do by its ID only; the agent reads the text through the CLI (W-7).
+        /** @type {string | undefined} */
+        let todoId;
+        if (type === 'add') {
+          if (typeof body.todo !== 'string') return send(res, 400, 'Say which to-do to add.');
+          todoId = body.todo;
+          if (!loadTodos(paths).todos.some((t) => t.id === todoId)) return send(res, 404, 'That to-do is gone.');
+          if (session?.todosPlanned?.[todoId]) return send(res, 409, 'That to-do is already in the plan.');
         }
         // One press at a time: while the last one is still on its way or being worked on, send nothing.
         const pending = pressState(paths);
         if (pending && pending.state !== 'done') return sendJson(res, 200, { delivered: true, busy: true, command: /** @type {Record<string, string>} */ (commands)[type] });
-        const event = { type: /** @type {typeof EVENTS[number]} */ (type), task };
+        const event = { type: /** @type {typeof EVENTS[number]} */ (type), task, ...(todoId ? { todo: todoId } : {}) };
         const delivered = options.deliver ? options.deliver(event) : deliverToListener(paths, event).delivered;
         return sendJson(res, 200, { delivered, command: /** @type {Record<string, string>} */ (commands)[type] });
       }

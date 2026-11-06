@@ -150,6 +150,12 @@ test('a session that starts on a task opens the window; later starts reuse it', 
   plain.cleanup();
 });
 
+test('Add to plan reaches the session as a fixed instruction naming the to-do ID', () => {
+  const text = windowEventText('add', 't3', 'abc123');
+  assert.match(text, /sent to-do abc123 to the plan\. Read it with .* todos show abc123, then run the menitor:add skill on it/);
+  assert.match(text, /"todo": "abc123"/);
+});
+
 test('setup presses in the window reach the session as fixed instructions', () => {
   assert.match(windowEventText('warmup-done', 'the current task'), /the learner says they're done with the warm-up\. Read their code in \.menitor\/warmup\//);
   assert.match(windowEventText('warmup-done', 'x'), /setup set warmup-question/);

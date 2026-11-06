@@ -26,7 +26,7 @@ import { planProblems } from './plan.js';
  * @typedef {{ at: string, ok: boolean, head: string | null, problems?: number }} LastCheck
  * @typedef {{ id: string, text: string, try: 1 | 2, askedAt: string, outcome: null | 'good' | 'weak', feedback?: string | null, judgedAt?: string | null }} Question
  * @typedef {{ text: string, at: string, task?: string | null }} Waiting
- * @typedef {{ version: 1, currentTask: string | null, windowCommands?: Record<string, string>, waiting?: Waiting | null, tasks: Record<string, { startCommit: string | null, startedAt: string, lastCheck?: LastCheck, questions?: Question[] }> }} Session
+ * @typedef {{ version: 1, currentTask: string | null, windowCommands?: Record<string, string>, todosPlanned?: Record<string, { to: string, at: string }>, waiting?: Waiting | null, tasks: Record<string, { startCommit: string | null, startedAt: string, lastCheck?: LastCheck, questions?: Question[] }> }} Session
  * @typedef {{ version: 1, answers: Record<string, { text: string, at: string }> }} Answers
  * @typedef {{ id: string, text: string, done: boolean, at: string, doneAt?: string | null }} Todo
  * @typedef {{ version: 1, todos: Todo[] }} Todos

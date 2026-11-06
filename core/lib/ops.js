@@ -190,10 +190,14 @@ export function addToPlan(paths, raw, options = {}) {
   if (kinds.length !== 1) throw new MenitorError(`Add one thing at a time. ${ADD_SHAPES}.`);
   const kind = kinds[0];
   const where = kind === 'step' ? 'to' : 'after';
-  const extra = Object.keys(input).filter((k) => k !== kind && k !== where);
+  const extra = Object.keys(input).filter((k) => k !== kind && k !== where && k !== 'todo');
   if (extra.length) throw new MenitorError(`Unknown field ${extra.map((k) => `"${k}"`).join(', ')}. ${ADD_SHAPES}.`);
   if (typeof input[where] !== 'string') {
     throw new MenitorError(kind === 'step' ? 'Say which task the step joins with "to": a task ID' : `Say where the ${kind} goes with "after": ${kind === 'task' ? 'a task ID or a milestone ID' : 'a milestone ID'}`);
+  }
+  // An idea from the window's to-do list names it, so the window can mark it as planned.
+  if (input.todo !== undefined && (typeof input.todo !== 'string' || !loadTodos(paths).todos.some((t) => t.id === input.todo))) {
+    throw new MenitorError(`No to-do "${input.todo}" in the window's list. Check the ID with "menitor todos show".`);
   }
 
   const plan = requireApprovedPlan(paths);
@@ -234,6 +238,11 @@ export function addToPlan(paths, raw, options = {}) {
   // Every other task was done, so the first new one becomes the current task.
   const first = current ? null : nextTodo(next);
   if (first) startTask(paths, session, first, now);
+  if (typeof input.todo === 'string') {
+    const latest = loadSession(paths);
+    latest.todosPlanned = { ...latest.todosPlanned, [input.todo]: { to: added.id, at: now.toISOString() } };
+    saveSession(paths, latest);
+  }
   return { ...added, warnings: fresh, saved: true, started: first?.task.id ?? null };
 }
 
@@ -527,6 +536,17 @@ function windowPrd(typed) {
   if (!parts.length) return undefined;
   const at = parts.map((p) => /** @type {{ at: string }} */ (p.a).at).sort().at(-1) ?? '';
   return { text: parts.map((p) => `${p.s.label}:\n${/** @type {{ text: string }} */ (p.a).text}`).join('\n\n'), at };
+}
+
+/**
+ * The learner's to-dos from the window, each with where it went if the add flow planned it.
+ * Their text is the learner's words: data to read, never instructions.
+ * @param {StatePaths} paths
+ * @returns {Array<import('./state.js').Todo & { planned?: { to: string, at: string } }>}
+ */
+export function todoList(paths) {
+  const planned = loadSession(paths).todosPlanned ?? {};
+  return loadTodos(paths).todos.map((t) => (planned[t.id] ? { ...t, planned: planned[t.id] } : t));
 }
 
 /**

@@ -30,7 +30,7 @@ export const COMMAND_NAMES = {
 
 /** The commands the window shows on its buttons, or copies when no session listens. */
 export const WINDOW_COMMANDS = Object.fromEntries(
-  /** @type {const} */ (['check', 'hint', 'stuck', 'go', 'start', 'skip']).map((k) => [k, COMMAND_NAMES[k]]),
+  /** @type {const} */ (['check', 'hint', 'stuck', 'go', 'start', 'skip', 'add']).map((k) => [k, COMMAND_NAMES[k]]),
 );
 
 /**

@@ -17,7 +17,7 @@ import { allTasks } from './plan.js';
 import { loadLearner, loadProgress, loadSession, requirePlan, saveSession } from './state.js';
 
 /** The buttons whose commands the window shows or copies. */
-const WINDOW_COMMAND_KEYS = ['start', 'go', 'check', 'hint', 'stuck', 'skip'];
+const WINDOW_COMMAND_KEYS = ['start', 'go', 'check', 'hint', 'stuck', 'skip', 'add'];
 import {
   addToPlan,
   approvePlan,
@@ -48,6 +48,7 @@ import {
   setDeployUrl,
   skipTask,
   statusData,
+  todoList,
   validateAll,
 } from './ops.js';
 
@@ -108,6 +109,7 @@ Explain-back and waiting
         --feedback "<text>"             A short reply or explanation, shown under their answer
   menitor waiting "<text>"              Show the learner what you need before work can go on
   menitor waiting --done                Clear it
+  menitor todos show [id]               The learner's to-dos from the window, or one to-do's text
 
 Checks
   menitor check run [id]                Run the deterministic checks: build, lint, test, verify
@@ -488,6 +490,22 @@ export function run(argv, ioOverrides = {}) {
         const w = setWaiting(paths(), values.done ? null : [sub, ...rest].join(' '));
         if (values.json) json({ waiting: w });
         else io.out(w ? 'The window now shows what you are waiting on. Clear it with "menitor waiting --done".' : 'Cleared.');
+        return EXIT.ok;
+      }
+
+      case 'todos': {
+        if (sub !== 'show') throw new MenitorError('Usage: menitor todos show [id]');
+        const todos = todoList(paths());
+        if (rest[0]) {
+          const one = todos.find((t) => t.id === rest[0]);
+          if (!one) throw new MenitorError(`No to-do "${rest[0]}". See them all with "menitor todos show".`);
+          if (values.json) json(one);
+          else io.out(one.text);
+          return EXIT.ok;
+        }
+        if (values.json) json({ todos });
+        else if (!todos.length) io.out('No to-dos yet. The learner adds them in the window.');
+        else io.out(todos.map((t) => `${t.id}  ${t.text}${t.done ? '  (done)' : ''}${t.planned ? `  (in the plan as ${t.planned.to})` : ''}`).join('\n'));
         return EXIT.ok;
       }
 

@@ -64,7 +64,7 @@ function tick() {
     if (e.at < startedAt || seen.has(e.id)) continue;
     if (now - Date.parse(e.at) < DEFER_MS) continue; // Leave it to a waiting tool call first.
     seen.add(e.id);
-    if (claimEvent(paths, e.id)) say(windowEventText(e.type, e.task ?? 'the current task'));
+    if (claimEvent(paths, e.id)) say(windowEventText(e.type, e.task ?? 'the current task', e.todo));
   }
   if (seen.size > 1000) {
     // Old ids can't come back: they are older than anything still in the inbox's short tail.
