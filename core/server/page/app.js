@@ -977,6 +977,90 @@ function choicesPanel(s) {
   return h('section', { class: 'panel choices', 'aria-labelledby': 'choices-title' }, ...parts);
 }
 
+/** A PRD draft saves after this pause in typing. */
+const SAVE_PAUSE_MS = 800;
+/** @type {Map<string, ReturnType<typeof setTimeout>>} */
+const saveTimers = new Map();
+
+/**
+ * Save a PRD section after a pause in typing, as data. The session isn't woken.
+ * @param {string} key such as "prd-users"
+ * @param {HTMLTextAreaElement} box
+ */
+function queueDraftSave(key, box) {
+  clearTimeout(saveTimers.get(key));
+  saveTimers.set(
+    key,
+    setTimeout(async () => {
+      const text = box.value.trim();
+      if (!text) return;
+      try {
+        await post('/api/setup-answer', { key, text, notify: false });
+      } catch (err) {
+        showToast(`Your draft didn't save: ${/** @type {Error} */ (err).message}`, undefined, box.ownerDocument);
+      }
+    }, SAVE_PAUSE_MS),
+  );
+}
+
+/**
+ * Send the PRD core for feedback: save every section, then wake the session once.
+ * @param {any} s
+ * @param {Event} e
+ */
+async function sendPrd(s, e) {
+  const doc = docOf(e);
+  const sections = s.setup.prd.sections.map((/** @type {any} */ x) => ({ key: `prd-${x.key}`, text: (drafts.get(`prd-${x.key}`) ?? x.text ?? '').trim() }));
+  if (sections.some((/** @type {any} */ x) => !x.text)) {
+    showToast('Write all three sections first. A sentence or two each is enough.', undefined, doc);
+    return;
+  }
+  try {
+    let r;
+    for (const [i, x] of sections.entries()) {
+      clearTimeout(saveTimers.get(x.key));
+      r = await post('/api/setup-answer', { key: x.key, text: x.text, notify: i === sections.length - 1 });
+    }
+    render(r.state);
+    showToast(r.delivered ? 'Sent. Menitor reads your draft and replies under each section.' : "Saved. Menitor isn't listening right now, so tell your session your draft is ready.", undefined, doc);
+  } catch (err) {
+    showToast(`That didn't send: ${/** @type {Error} */ (err).message}`, undefined, doc);
+  }
+}
+
+/**
+ * Setup's PRD core: a box per section, saved as typed, with Menitor's feedback under each.
+ * @param {any} s
+ */
+function prdPanel(s) {
+  const sections = s.setup.prd.sections;
+  /** @type {Node[]} */
+  const parts = [h('header', { class: 'panel-head' }, h('h2', { id: 'prd-title' }, 'The core of your PRD'), h('span', { class: 'count' }, 'In your own words'))];
+  for (const sec of sections) {
+    const key = `prd-${sec.key}`;
+    const box = /** @type {HTMLTextAreaElement} */ (h('textarea', { id: `answer-${key}`, rows: sec.key === 'features' ? 5 : 3, maxlength: 4000, 'aria-describedby': `help-${key}`, 'data-key': `answer:${key}` }));
+    box.value = drafts.get(key) ?? sec.text ?? '';
+    box.addEventListener('input', () => {
+      drafts.set(key, box.value);
+      queueDraftSave(key, box);
+    });
+    const feedback = sec.critique
+      ? h('div', { class: 'prd-feedback' }, h('p', { class: 'prd-feedback-head' }, sec.revised ? "Menitor's feedback. You've revised since." : "Menitor's feedback"), h('p', null, sec.critique.text))
+      : null;
+    parts.push(h('div', { class: 'field' }, h('label', { class: 'field-label', for: box.id }, sec.label), h('p', { class: 'field-help', id: `help-${key}` }, sec.help), box, feedback));
+  }
+  const latest = sections.map((/** @type {any} */ x) => x.at).filter(Boolean).sort().at(-1);
+  parts.push(
+    h(
+      'div',
+      { class: 'qa-actions' },
+      h('p', { class: 'how' }, latest ? `Saved at ${clock(latest)}. Drafts save as you type.` : 'Drafts save as you type.'),
+      h('button', { type: 'button', class: 'btn primary', 'data-key': 'act:prd-send', onclick: (/** @type {Event} */ e) => sendPrd(s, e) }, 'Send for feedback'),
+    ),
+  );
+  return h('section', { class: 'panel prd', 'aria-labelledby': 'prd-title' }, ...parts);
+}
+
 /**
  * Setup, while it runs: the warm-up when it starts, and which answers are saved so far.
  * @param {any} s
@@ -995,8 +1079,8 @@ function setupView(s) {
       h('p', { class: 'why' }, 'Menitor is getting to know you and your idea. Each answer is saved as you give it, so nothing is lost if the session closes.'),
     ),
   );
-  // The newest step first: choices come after the warm-up in setup.
-  const panels = [su.choices ? choicesPanel(s) : null, su.warmup ? warmupPanel(s) : null].filter(Boolean);
+  // The newest step first: setup goes warm-up, then choices, then the PRD core.
+  const panels = [su.prd ? prdPanel(s) : null, su.choices ? choicesPanel(s) : null, su.warmup ? warmupPanel(s) : null].filter(Boolean);
   const main = h(
     'div',
     { class: 'setup-main' },

@@ -17,12 +17,21 @@ export const SETUP_STEPS = /** @type {const} */ ([
   { key: 'prd', label: 'PRD core draft' },
 ]);
 
+/** The PRD core sections the learner drafts in the window, each saved under "prd-<key>". */
+export const PRD_SECTIONS = /** @type {const} */ ([
+  { key: 'problem', label: 'Problem', help: 'What goes wrong today, for whom, and why it matters.' },
+  { key: 'users', label: 'Users', help: 'Who will use it. Be specific: a real person, if you can.' },
+  { key: 'features', label: 'Must-have features', help: 'Three to five, one per line. Each small enough to build and test.' },
+]);
+
 /**
+ * @typedef {typeof PRD_SECTIONS[number]['key']} PrdSection
+ * @typedef {Partial<Record<PrdSection, { text: string, at: string }>>} Critique
  * @typedef {typeof SETUP_STEPS[number]['key']} SetupKey
  * @typedef {{ key: SetupKey, label: string, value: string, at: string, source: 'session' | 'window' }} SetupAnswer
  * @typedef {{ name: string, reasons: string[], hosting?: string }} StackOption
- * @typedef {{ stack?: StackOption[], focus?: string[] }} SetupOptions
- * @typedef {{ answers: SetupAnswer[], missing: { key: SetupKey, label: string }[], options: SetupOptions }} SetupStatus
+ * @typedef {{ stack?: StackOption[], focus?: string[], prd?: true }} SetupOptions
+ * @typedef {{ answers: SetupAnswer[], missing: { key: SetupKey, label: string }[], options: SetupOptions, critique: Critique }} SetupStatus
  */
 
 /** @param {string} key */

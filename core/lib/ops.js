@@ -35,7 +35,7 @@ import {
   saveSetup,
   saveSolutions,
 } from './state.js';
-import { SETUP_STEPS, isSetupKey } from './setup.js';
+import { PRD_SECTIONS, SETUP_STEPS, isSetupKey } from './setup.js';
 
 /**
  * @typedef {import('./paths.js').StatePaths} StatePaths
@@ -466,6 +466,8 @@ export function setSetupOptions(paths, kind, raw) {
   const options = { ...setup.options };
   if (kind === 'focus') {
     options.focus = [...new Set(raw.split(',').map((s) => s.trim()).filter(Boolean))];
+  } else if (kind === 'prd') {
+    options.prd = true;
   } else if (kind === 'stack') {
     let parsed;
     try {
@@ -475,7 +477,7 @@ export function setSetupOptions(paths, kind, raw) {
     }
     options.stack = parsed;
   } else {
-    throw new MenitorError(`Unknown setup options "${kind}". Use focus or stack.`);
+    throw new MenitorError(`Unknown setup options "${kind}". Use focus, stack or prd.`);
   }
   setup.options = options;
   const errors = validate(SCHEMAS.setup, setup);
@@ -488,6 +490,35 @@ export function setSetupOptions(paths, kind, raw) {
 }
 
 /**
+ * Post the mentor's feedback on one PRD core section; the window shows it under that section.
+ * @param {StatePaths} paths
+ * @param {string} section problem, users or features
+ * @param {string} text
+ * @param {{ now?: Date }} [options]
+ */
+export function setSetupCritique(paths, section, text, options = {}) {
+  if (!PRD_SECTIONS.some((s) => s.key === section)) throw new MenitorError(`Unknown PRD section "${section}". Use ${PRD_SECTIONS.map((s) => s.key).join(', ')}.`);
+  const clean = text.replace(/\s+$/, '');
+  if (!clean.trim()) throw new MenitorError(`The feedback on ${section} needs some text`);
+  const setup = loadSetup(paths);
+  setup.critique = { ...setup.critique, [section]: { text: clean, at: (options.now ?? new Date()).toISOString() } };
+  saveSetup(paths, setup);
+  ignoreStateFile(paths, 'setup.json');
+  return setup.critique;
+}
+
+/**
+ * The PRD core drafted in the window, as one answer under headings, if any section is written.
+ * @param {Record<string, { text: string, at: string } | undefined>} typed
+ */
+function windowPrd(typed) {
+  const parts = PRD_SECTIONS.map((s) => ({ s, a: typed[`prd-${s.key}`] })).filter((p) => p.a);
+  if (!parts.length) return undefined;
+  const at = parts.map((p) => /** @type {{ at: string }} */ (p.a).at).sort().at(-1) ?? '';
+  return { text: parts.map((p) => `${p.s.label}:\n${/** @type {{ text: string }} */ (p.a).text}`).join('\n\n'), at };
+}
+
+/**
  * The setup answers saved so far, in the order setup asks, and those still to ask.
  * @param {StatePaths} paths
  * @returns {import('./setup.js').SetupStatus}
@@ -496,7 +527,8 @@ export function setupStatus(paths) {
   const setup = loadSetup(paths);
   const saved = setup.answers;
   // Answers typed in the window live in the window's own file; the newer of the two wins.
-  const typed = /** @type {Record<string, { text: string, at: string } | undefined>} */ (loadAnswers(paths).answers);
+  const typed = /** @type {Record<string, { text: string, at: string } | undefined>} */ ({ ...loadAnswers(paths).answers });
+  typed.prd = windowPrd(typed);
   /** @param {string} key */
   const pick = (key) => {
     const said = saved[key];
@@ -513,7 +545,7 @@ export function setupStatus(paths) {
     if (a) answers.push({ key: s.key, label: s.label, ...a });
     else missing.push({ key: s.key, label: s.label });
   }
-  return { answers, missing, options: setup.options ?? {} };
+  return { answers, missing, options: setup.options ?? {}, critique: setup.critique ?? {} };
 }
 
 /**

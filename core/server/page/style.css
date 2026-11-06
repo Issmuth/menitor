@@ -1290,7 +1290,9 @@ h1 {
   color: var(--muted);
 }
 
-.qa textarea {
+.qa textarea,
+.warmup textarea,
+.prd textarea {
   display: block;
   width: 100%;
   min-height: 112px;
@@ -1304,8 +1306,52 @@ h1 {
   resize: vertical;
 }
 
-.qa textarea:hover {
+.qa textarea:hover,
+.warmup textarea:hover,
+.prd textarea:hover {
   border-color: var(--muted);
+}
+
+/* Setup's PRD core: a box per section, Menitor's feedback under each. */
+.prd {
+  display: grid;
+  gap: 16px;
+}
+
+.prd .field {
+  display: grid;
+  gap: 6px;
+}
+
+.prd .field-label,
+.warmup .field-label {
+  margin-top: 0;
+}
+
+.prd .field-help,
+.warmup .field-help {
+  margin: 0;
+}
+
+/* Each box grows with its draft, so nothing hides behind a scroll bar. */
+.prd textarea {
+  field-sizing: content;
+  min-height: 5.5em;
+  max-height: 24em;
+}
+
+.prd-feedback {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius-inner);
+  background: var(--callout-bg);
+  max-width: 68ch;
+}
+
+.prd-feedback-head {
+  font-size: var(--fs-meta);
+  font-weight: 600;
 }
 
 .answer {

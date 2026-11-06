@@ -14,6 +14,7 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
   - the window receives a step's code only once that step is open.
 - A `typealong` scenario in the sample project.
 - **The window opens with the session.** When a session starts on a task, the window opens by itself, and the session already has its link. Set `MENITOR_WINDOW_AUTOSTART=0` to turn it off.
+- **Draft the core of your PRD in the window.** A box each for the problem, the users and the must-have features, saved as you type. **Send for feedback** wakes your session, and Menitor's feedback appears under each section, marked once you revise after it.
 - **Choose your stack and focus areas in the window.** Menitor offers one to three stacks side by side, each with its reasons and hosting, and the focus areas as checkboxes. Each pick is saved the moment you make it, and **Confirm choices** tells your session.
 - **The setup warm-up runs in the window.** The window shows the exercise, an **I'm done** button, then Menitor's question with an answer box, beside the setup answers saved so far. Your answer is saved as data and reaches the session through `menitor setup show`.
 - **Setup never loses an answer.** `/menitor:start` saves each answer the moment you give it, in `.menitor/setup.json`, with `menitor setup set`. If the session closes mid-setup, the next one picks up from `menitor setup show` and never asks the same question twice.

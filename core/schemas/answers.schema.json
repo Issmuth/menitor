@@ -10,7 +10,7 @@
     "version": { "const": 1 },
     "answers": {
       "type": "object",
-      "propertyNames": { "anyOf": [{ "pattern": "^[a-z][a-z0-9-]{0,31}\\.q[0-9]{1,2}$" }, { "enum": ["warmup-answer", "stack-choice", "focus"] }] },
+      "propertyNames": { "anyOf": [{ "pattern": "^[a-z][a-z0-9-]{0,31}\\.q[0-9]{1,2}$" }, { "enum": ["warmup-answer", "stack-choice", "focus", "prd-problem", "prd-users", "prd-features"] }] },
       "additionalProperties": {
         "type": "object",
         "required": ["text", "at"],

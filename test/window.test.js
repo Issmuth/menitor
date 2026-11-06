@@ -370,6 +370,52 @@ test('setup choices are made in the window: saved at once, and Confirm tells the
   }
 });
 
+test('the PRD core is drafted in the window, saved as typed, with feedback under each section', async () => {
+  const { root, paths, cleanup } = makeProject();
+  cli(root, ['init']);
+  /** @type {any[]} */
+  const delivered = [];
+  const win = createWindowServer(root, { deliver: (e) => (delivered.push(e), true) });
+  const port = await win.listen(0);
+  const auth = { 'X-Menitor-Token': win.token };
+  /** @param {unknown} body */
+  const save = (body) => request(port, { method: 'POST', path: '/api/setup-answer', headers: { ...auth, 'Content-Type': 'application/json', Origin: `http://127.0.0.1:${port}` }, body: JSON.stringify(body) });
+  const state = () => windowState(paths, { commands: {} });
+  const sections = () => state().setup.prd.sections.map((/** @type {any} */ x) => [x.key, x.text, x.critique?.text ?? null, x.revised]);
+  try {
+    assert.equal(state().setup.prd, null, 'not open yet');
+    assert.equal((await save({ key: 'prd-problem', text: 'Recipes get lost', notify: false })).status, 409);
+
+    cli(root, ['setup', 'options', 'prd']);
+    assert.deepEqual(sections(), [
+      ['problem', null, null, false],
+      ['users', null, null, false],
+      ['features', null, null, false],
+    ]);
+
+    // Drafts save as they're typed, without waking the session.
+    assert.equal((await save({ key: 'prd-problem', text: 'Family recipes live in a dozen places and get lost.', notify: false })).status, 200);
+    assert.equal((await save({ key: 'prd-users', text: 'My family.', notify: false })).status, 200);
+    assert.equal((await save({ key: 'prd-features', text: 'Add a recipe\nList recipes\nSearch by ingredient', notify: true })).status, 200, 'Send for feedback');
+    assert.deepEqual(delivered, [{ type: 'setup', task: null }]);
+
+    // The session reads the whole draft as one answer, under headings.
+    const prd = JSON.parse(cli(root, ['setup', 'show', '--json']).out).answers.find((/** @type {any} */ a) => a.key === 'prd');
+    assert.equal(prd.source, 'window');
+    assert.equal(prd.value, 'Problem:\nFamily recipes live in a dozen places and get lost.\n\nUsers:\nMy family.\n\nMust-have features:\nAdd a recipe\nList recipes\nSearch by ingredient');
+
+    // Feedback shows under its section, and a revision after it is marked.
+    cli(root, ['setup', 'critique', 'users', 'Who exactly? Name one person and what they do with recipes.']);
+    assert.deepEqual(sections()[1], ['users', 'My family.', 'Who exactly? Name one person and what they do with recipes.', false]);
+    await new Promise((r) => setTimeout(r, 15));
+    await save({ key: 'prd-users', text: 'My mum, who cooks every Sunday and keeps recipes on paper.', notify: false });
+    assert.equal(sections()[1][3], true, 'revised after the feedback');
+  } finally {
+    await win.close();
+    cleanup();
+  }
+});
+
 test('the event stream pushes new state when a state file changes', async () => {
   const { root, cleanup } = approvedProject();
   const { win, port, auth } = await serve(root);
