@@ -28,6 +28,7 @@ import {
   loadProgress,
   loadSession,
   loadSetup,
+  loadTodos,
   requirePlan,
   savePlan,
   saveLearner,
@@ -55,6 +56,7 @@ activity.jsonl
 solutions.json
 answers.json
 setup.json
+todos.json
 waiter.json
 claims/
 window.json
@@ -434,6 +436,15 @@ function ignoreStateFile(paths, name) {
   const text = readTextOrNull(paths.gitignore) ?? '';
   if (new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm').test(text)) return;
   writeFileAtomic(paths.gitignore, `${text.replace(/\n*$/, '\n')}${name}\n`);
+}
+
+/**
+ * Keep the files the window writes out of git, in projects set up before those files existed.
+ * The window never writes .menitor/.gitignore itself; the CLI does this when it opens the window.
+ * @param {StatePaths} paths
+ */
+export function ignoreWindowFiles(paths) {
+  ignoreStateFile(paths, 'todos.json');
 }
 
 /**
@@ -923,6 +934,7 @@ export function validateAll(paths) {
   const progress = attempt('progress.json', () => loadProgress(paths));
   const guard = attempt('guard.json', () => loadGuard(paths));
   attempt('setup.json', () => loadSetup(paths));
+  attempt('todos.json', () => loadTodos(paths));
   attempt('log.md', () => parseLog(fs.existsSync(paths.log) ? fs.readFileSync(paths.log, 'utf8') : ''));
 
   if (plan) {

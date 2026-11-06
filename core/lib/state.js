@@ -28,6 +28,8 @@ import { planProblems } from './plan.js';
  * @typedef {{ text: string, at: string, task?: string | null }} Waiting
  * @typedef {{ version: 1, currentTask: string | null, windowCommands?: Record<string, string>, waiting?: Waiting | null, tasks: Record<string, { startCommit: string | null, startedAt: string, lastCheck?: LastCheck, questions?: Question[] }> }} Session
  * @typedef {{ version: 1, answers: Record<string, { text: string, at: string }> }} Answers
+ * @typedef {{ id: string, text: string, done: boolean, at: string, doneAt?: string | null }} Todo
+ * @typedef {{ version: 1, todos: Todo[] }} Todos
  * @typedef {{ version: 1, options?: import('./setup.js').SetupOptions, critique?: import('./setup.js').Critique, answers: Record<string, { value: string, at: string }> }} Setup
  * @typedef {{ version: 1, ticks: Record<string, string>, seen?: Record<string, string> }} Progress
  * @typedef {{ version: 1, mentorMode: 'on' | 'off', modeChangedAt?: string | null, typeAlong?: boolean, skipRequests: Record<string, string>, grants: Record<string, string> }} Guard
@@ -57,6 +59,7 @@ export const SCHEMAS = {
   solutions: loadSchema('solutions'),
   answers: loadSchema('answers'),
   setup: loadSchema('setup'),
+  todos: loadSchema('todos'),
 };
 
 /**
@@ -243,6 +246,29 @@ export function loadAnswers(paths) {
 export function saveAnswers(paths, answers) {
   assertValid('answers', answers, 'The answers');
   writeJsonAtomic(paths.answers, answers);
+}
+
+// todos.json
+
+/**
+ * @param {StatePaths} paths
+ * @returns {Todos}
+ */
+export function loadTodos(paths) {
+  const todos = readJsonOrNull(paths.todos);
+  if (todos === null) return { version: 1, todos: [] };
+  assertValid('todos', todos, 'todos.json');
+  return /** @type {Todos} */ (todos);
+}
+
+/**
+ * For the task window only.
+ * @param {StatePaths} paths
+ * @param {Todos} todos
+ */
+export function saveTodos(paths, todos) {
+  assertValid('todos', todos, 'The to-dos');
+  writeJsonAtomic(paths.todos, todos);
 }
 
 // setup.json

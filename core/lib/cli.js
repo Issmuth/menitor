@@ -32,6 +32,7 @@ import {
   questionState,
   setWaiting,
   setSetupAnswer,
+  ignoreWindowFiles,
   setSetupCritique,
   setSetupOptions,
   setupStatus,
@@ -356,6 +357,7 @@ export function run(argv, ioOverrides = {}) {
         const text = pair.slice(eq + 1);
         if (WINDOW_COMMAND_KEYS.includes(key) && text && text.length <= 100) given[key] = text;
       }
+      ignoreWindowFiles(p);
       const session = loadSession(p);
       const named = Object.keys(given).length > 0;
       if (named && JSON.stringify(given) !== JSON.stringify(session.windowCommands ?? {})) {

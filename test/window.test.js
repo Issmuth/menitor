@@ -416,6 +416,39 @@ test('the PRD core is drafted in the window, saved as typed, with feedback under
   }
 });
 
+test('to-dos are kept in the window: add, edit, tick and delete, in their own file', async () => {
+  const { root, paths, cleanup } = approvedProject();
+  let { win, post } = await serve(root);
+  const list = (/** @type {{ body: string }} */ r) => JSON.parse(r.body).todos;
+  try {
+    assert.deepEqual(windowState(paths, { commands: {} }).todos, []);
+    let r = await post('/api/todo', { action: 'add', text: '  Dark mode for the window  ' });
+    assert.equal(r.status, 200, r.body);
+    const [first] = list(r);
+    assert.deepEqual([first.text, first.done], ['Dark mode for the window', false]);
+    await post('/api/todo', { action: 'add', text: 'A history of finished tasks' });
+    await post('/api/todo', { action: 'edit', id: first.id, text: 'A dark mode toggle' });
+    r = await post('/api/todo', { action: 'tick', id: first.id, done: true });
+    assert.deepEqual(list(r).map((/** @type {any} */ t) => [t.text, t.done]), [['A dark mode toggle', true], ['A history of finished tasks', false]]);
+
+    // A new server, as after a restart or a new session, reads the same file.
+    await win.close();
+    ({ win, post } = await serve(root));
+    assert.deepEqual(windowState(paths, { commands: {} }).todos.map((/** @type {any} */ t) => t.text), ['A dark mode toggle', 'A history of finished tasks']);
+    r = await post('/api/todo', { action: 'delete', id: first.id });
+    assert.deepEqual(list(r).map((/** @type {any} */ t) => t.text), ['A history of finished tasks']);
+
+    assert.equal((await post('/api/todo', { action: 'add', text: '   ' })).status, 400);
+    assert.equal((await post('/api/todo', { action: 'add', text: 'x'.repeat(501) })).status, 400);
+    assert.equal((await post('/api/todo', { action: 'edit', id: 'nope', text: 'x' })).status, 404);
+    assert.equal((await post('/api/todo', { action: 'shout', text: 'x' })).status, 400);
+    assert.equal(cli(root, ['validate']).code, 0, 'validate reads todos.json');
+  } finally {
+    await win.close();
+    cleanup();
+  }
+});
+
 test('the event stream pushes new state when a state file changes', async () => {
   const { root, cleanup } = approvedProject();
   const { win, port, auth } = await serve(root);
@@ -619,6 +652,8 @@ test('the app window opens maximized in its own browser profile, unless turned o
 test('menitor open works from a terminal, with the button commands the last window had', () => {
   const { root, paths, cleanup } = approvedProject();
   try {
+    // Projects set up before to-dos get the line when the CLI opens the window.
+    fs.writeFileSync(paths.gitignore, fs.readFileSync(paths.gitignore, 'utf8').replace(/^todos\.json\n/m, ''));
     cli(root, ['window', 'open', '--no-browser', '--command', 'check=/menitor:check', '--command', 'go=/menitor:go']);
     assert.deepEqual(loadSession(paths).windowCommands, { check: '/menitor:check', go: '/menitor:go' }, 'the commands are remembered');
     cli(root, ['window', 'stop']);
@@ -629,6 +664,7 @@ test('menitor open works from a terminal, with the button commands the last wind
     assert.match(r.out, /Started the task window: http:\/\/127\.0\.0\.1:\d+/);
     assert.equal(readWindowInfo(paths)?.commands.check, '/menitor:check', 'the buttons keep their commands');
     assert.match(cli(root, ['open', '--no-browser']).out, /already running/);
+    assert.match(fs.readFileSync(paths.gitignore, 'utf8'), /^todos\.json$/m, 'to-dos stay out of git');
   } finally {
     cli(root, ['window', 'stop']);
     cleanup();

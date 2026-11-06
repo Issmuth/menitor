@@ -10,7 +10,7 @@ import { setupStatus, statusData } from '../lib/ops.js';
 import { PRD_SECTIONS, SETUP_STEPS } from '../lib/setup.js';
 import { cardData } from '../lib/card.js';
 import { findTask } from '../lib/plan.js';
-import { loadAnswers, loadGuard, loadPlan, loadProgress, loadSession, loadSolutions, saveAnswers, saveProgress } from '../lib/state.js';
+import { loadAnswers, loadGuard, loadPlan, loadProgress, loadSession, loadSolutions, loadTodos, saveAnswers, saveProgress, saveTodos } from '../lib/state.js';
 import { deliverToListener, liveListener, pressState, readInbox } from '../lib/inbox.js';
 import { codeFingerprint } from '../lib/fingerprint.js';
 import { parseLog } from '../lib/log.js';
@@ -40,6 +40,8 @@ const SETUP_WINDOW_KEYS = {
   ...Object.fromEntries(PRD_SECTIONS.map((p) => [`prd-${p.key}`, (/** @type {string} */ _text, /** @type {import('../lib/setup.js').SetupStatus} */ s) => (s.options.prd ? null : [409, 'The PRD draft is not open yet.'])])),
 };
 const MAX_WARMUP = 12000;
+const MAX_TODO = 500;
+const MAX_TODOS = 200;
 const COMMAND_KEYS = ['start', 'go', 'check', 'hint', 'stuck', 'skip'];
 const MAX_BODY = 16384;
 const MAX_ANSWER = 4000;
@@ -122,6 +124,7 @@ export function windowState(paths, options) {
       written: status.written,
       commands: options.commands,
       listening: Boolean(liveListener(paths)),
+      todos: loadTodos(paths).todos,
       press: pressState(paths),
     };
   } catch (err) {
@@ -508,6 +511,7 @@ export function createWindowServer(root, options = {}) {
       if (url.pathname === '/api/tick') return tick(res, body);
       if (url.pathname === '/api/answer') return answer(res, body);
       if (url.pathname === '/api/setup-answer') return setupAnswer(res, body);
+      if (url.pathname === '/api/todo') return todo(res, body);
       if (url.pathname === '/api/continue') return dismiss(res, body);
       if (url.pathname === '/api/event') {
         const type = body.type;
@@ -577,6 +581,41 @@ export function createWindowServer(root, options = {}) {
       const progress = loadProgress(paths);
       progress.seen = { ...progress.seen, [task]: new Date().toISOString() };
       saveProgress(paths, progress);
+      refresh();
+      return send(res, 200, lastJson, { 'Content-Type': 'application/json; charset=utf-8' });
+    } catch (err) {
+      return send(res, 500, /** @type {Error} */ (err).message);
+    }
+  }
+
+  /**
+   * The learner's to-dos: add, edit, tick or delete one. Their own notes, kept as data in
+   * todos.json; nothing reaches the session.
+   * @param {http.ServerResponse} res
+   * @param {Record<string, unknown>} body
+   */
+  function todo(res, body) {
+    const { action, id, text, done } = body;
+    if (!['add', 'edit', 'tick', 'delete'].includes(String(action))) return send(res, 400, 'Send an action: add, edit, tick or delete.');
+    const clean = typeof text === 'string' ? text.trim() : '';
+    if ((action === 'add' || action === 'edit') && (!clean || clean.length > MAX_TODO)) return send(res, 400, `A to-do is 1 to ${MAX_TODO} characters.`);
+    if (action === 'tick' && typeof done !== 'boolean') return send(res, 400, 'Send { action: "tick", id, done }.');
+    try {
+      const todos = loadTodos(paths);
+      const now = new Date().toISOString();
+      if (action === 'add') {
+        if (todos.todos.length >= MAX_TODOS) return send(res, 409, `The list holds ${MAX_TODOS} to-dos. Delete some done ones first.`);
+        todos.todos.push({ id: crypto.randomBytes(9).toString('base64url'), text: clean, done: false, at: now });
+      } else {
+        const item = todos.todos.find((t) => t.id === id);
+        if (!item) return send(res, 404, 'There is no such to-do.');
+        if (action === 'edit') item.text = clean;
+        else if (action === 'tick') {
+          item.done = /** @type {boolean} */ (done);
+          item.doneAt = done ? now : null;
+        } else todos.todos = todos.todos.filter((t) => t !== item);
+      }
+      saveTodos(paths, todos);
       refresh();
       return send(res, 200, lastJson, { 'Content-Type': 'application/json; charset=utf-8' });
     } catch (err) {
