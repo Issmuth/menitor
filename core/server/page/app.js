@@ -882,6 +882,102 @@ function warmupPanel(s) {
 }
 
 /**
+ * Setup: save a pick at once, without waking the session, or confirm with notify.
+ * @param {string} key
+ * @param {string} text
+ * @param {boolean} notify
+ * @param {Event} e
+ */
+async function saveChoice(key, text, notify, e) {
+  const doc = docOf(e);
+  try {
+    const r = await post('/api/setup-answer', { key, text, notify });
+    render(r.state);
+    if (notify) showToast(r.delivered ? 'Sent. Menitor carries on in your session.' : "Saved. Menitor isn't listening right now, so tell your session you've chosen.", undefined, doc);
+  } catch (err) {
+    showToast(`That didn't save: ${/** @type {Error} */ (err).message}`, undefined, doc);
+  }
+}
+
+/**
+ * Setup's choices: the stacks offered, side by side with their reasons, and the focus areas.
+ * Each pick saves at once; Confirm tells the session.
+ * @param {any} s
+ */
+function choicesPanel(s) {
+  const c = s.setup.choices;
+  /** @type {Node[]} */
+  const parts = [h('header', { class: 'panel-head' }, h('h2', { id: 'choices-title' }, 'Your choices'))];
+  if (c.stack) {
+    parts.push(
+      h(
+        'fieldset',
+        null,
+        h('legend', null, 'Stack'),
+        h(
+          'div',
+          { class: 'stack-options' },
+          ...c.stack.options.map((/** @type {any} */ o, /** @type {number} */ i) =>
+            h(
+              'label',
+              { class: `stack-option${c.stack.chosen === o.name ? ' selected' : ''}` },
+              h(
+                'span',
+                { class: 'stack-top' },
+                h('input', { type: 'radio', name: 'stack', value: o.name, checked: c.stack.chosen === o.name, 'data-key': `stack:${i}`, onchange: (/** @type {Event} */ e) => saveChoice('stack-choice', o.name, false, e) }),
+                h('span', { class: 'stack-name' }, o.name),
+                i === 0 ? h('span', { class: 'tag' }, 'Recommended') : null,
+              ),
+              o.hosting ? h('span', { class: 'stack-hosting' }, `Hosting: ${o.hosting}`) : null,
+              h('ul', { class: 'stack-reasons' }, ...o.reasons.map((/** @type {string} */ r) => h('li', null, r))),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+  if (c.focus) {
+    const picked = new Set(c.focus.chosen);
+    const save = (/** @type {Event} */ e) => {
+      const boxes = /** @type {NodeListOf<HTMLInputElement>} */ (docOf(e).querySelectorAll('input[name="focus"]'));
+      const areas = [...boxes].filter((b) => b.checked).map((b) => b.value);
+      if (areas.length) saveChoice('focus', areas.join(','), false, e);
+    };
+    parts.push(
+      h(
+        'fieldset',
+        null,
+        h('legend', null, 'Focus areas'),
+        h('p', { class: 'field-help' }, 'What you want to learn. Menitor does the tasks outside these and leaves you a note.'),
+        h(
+          'div',
+          { class: 'focus-options' },
+          ...c.focus.options.map((/** @type {string} */ area, /** @type {number} */ i) =>
+            h('label', { class: `focus-option${picked.has(area) ? ' selected' : ''}` }, h('input', { type: 'checkbox', name: 'focus', value: area, checked: picked.has(area), 'data-key': `focus:${i}`, onchange: save }), area),
+          ),
+        ),
+      ),
+    );
+  }
+  const ready = (!c.stack || c.stack.chosen) && (!c.focus || c.focus.chosen.length > 0);
+  const confirm = (/** @type {Event} */ e) => {
+    if (c.stack && c.focus) {
+      saveChoice('stack-choice', c.stack.chosen, false, e).then(() => saveChoice('focus', c.focus.chosen.join(','), true, e));
+    } else if (c.stack) saveChoice('stack-choice', c.stack.chosen, true, e);
+    else saveChoice('focus', c.focus.chosen.join(','), true, e);
+  };
+  parts.push(
+    h(
+      'div',
+      { class: 'qa-actions' },
+      h('p', { class: 'how' }, 'Each pick is saved as you make it.'),
+      h('button', { type: 'button', class: 'btn primary', 'data-key': 'act:confirm-choices', disabled: !ready, onclick: confirm }, 'Confirm choices'),
+    ),
+  );
+  return h('section', { class: 'panel choices', 'aria-labelledby': 'choices-title' }, ...parts);
+}
+
+/**
  * Setup, while it runs: the warm-up when it starts, and which answers are saved so far.
  * @param {any} s
  */
@@ -899,14 +995,22 @@ function setupView(s) {
       h('p', { class: 'why' }, 'Menitor is getting to know you and your idea. Each answer is saved as you give it, so nothing is lost if the session closes.'),
     ),
   );
-  const main = su.warmup
-    ? warmupPanel(s)
-    : h(
-        'section',
-        { class: 'panel', 'aria-labelledby': 'setup-wait-title' },
-        h('header', { class: 'panel-head' }, h('h2', { id: 'setup-wait-title' }, 'In your session')),
-        h('p', null, 'Menitor is asking its questions in your coding session. The warm-up shows up here when it starts.'),
-      );
+  // The newest step first: choices come after the warm-up in setup.
+  const panels = [su.choices ? choicesPanel(s) : null, su.warmup ? warmupPanel(s) : null].filter(Boolean);
+  const main = h(
+    'div',
+    { class: 'setup-main' },
+    ...(panels.length
+      ? panels
+      : [
+          h(
+            'section',
+            { class: 'panel', 'aria-labelledby': 'setup-wait-title' },
+            h('header', { class: 'panel-head' }, h('h2', { id: 'setup-wait-title' }, 'In your session')),
+            h('p', null, 'Menitor is asking its questions in your coding session. The warm-up shows up here when it starts.'),
+          ),
+        ]),
+  );
   const steps = h(
     'section',
     { class: 'panel setup-steps', 'aria-labelledby': 'setup-steps-title' },

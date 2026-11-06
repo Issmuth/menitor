@@ -133,7 +133,7 @@ test('setup answers are saved as they are given, and show what is left to ask', 
     assert.deepEqual(show().answers, []);
     assert.deepEqual(
       show().missing.map((/** @type {any} */ m) => m.key),
-      ['idea', 'goal', 'time', 'experience', 'stack', 'warmup-question', 'warmup-answer', 'help', 'stack-choice', 'prd'],
+      ['idea', 'goal', 'time', 'experience', 'stack', 'warmup-question', 'warmup-answer', 'focus', 'help', 'stack-choice', 'prd'],
       'every setup answer, in the order setup asks',
     );
 
@@ -158,6 +158,29 @@ test('setup answers are saved as they are given, and show what is left to ask', 
     // Personal, so it stays out of git; and validate checks it.
     assert.match(fs.readFileSync(paths.gitignore, 'utf8'), /^setup\.json$/m);
     assert.equal(cli(root, ['validate']).code, 0);
+  } finally {
+    cleanup();
+  }
+});
+
+test('setup options for the stack and focus areas are posted through the CLI', () => {
+  const { root, cleanup } = makeProject();
+  try {
+    cli(root, ['init']);
+    assert.equal(cli(root, ['setup', 'options', 'focus', 'frontend, backend and APIs,database']).code, 0);
+    const stacks = [
+      { name: 'Next.js and Postgres', reasons: ['One language front to back', 'Free hosting on Vercel'], hosting: 'Vercel and Neon' },
+      { name: 'Express and SQLite', reasons: ['Fewer moving parts'] },
+    ];
+    assert.equal(cli(root, ['setup', 'options', 'stack', '-'], { stdin: JSON.stringify(stacks) }).code, 0);
+    const shown = JSON.parse(cli(root, ['setup', 'show', '--json']).out);
+    assert.deepEqual(shown.options.focus, ['frontend', 'backend and APIs', 'database']);
+    assert.deepEqual(shown.options.stack, stacks);
+
+    assert.notEqual(cli(root, ['setup', 'options', 'stack', '-'], { stdin: '[]' }).code, 0, 'one to three stacks');
+    assert.notEqual(cli(root, ['setup', 'options', 'stack', '-'], { stdin: '[{"name":"x"}]' }).code, 0, 'each with its reasons');
+    assert.notEqual(cli(root, ['setup', 'options', 'colour', 'red']).code, 0);
+    assert.match(cli(root, ['setup', 'options', 'stack', '-'], { stdin: 'not json' }).err, /JSON/);
   } finally {
     cleanup();
   }

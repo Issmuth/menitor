@@ -32,6 +32,7 @@ import {
   questionState,
   setWaiting,
   setSetupAnswer,
+  setSetupOptions,
   setupStatus,
   initProject,
   learnerAdd,
@@ -63,6 +64,9 @@ Plan
   menitor setup set <key> <text|->      Save one setup answer the moment it's given (- reads stdin):
                                         idea, goal, time, experience, stack, warmup-question,
                                         warmup-answer, help, stack-choice, prd
+  menitor setup options focus <a,b>     Offer focus areas to pick from in the window
+  menitor setup options stack <file|->  Offer 1 to 3 stacks in the window, recommended first:
+                                        [{"name": "...", "reasons": ["..."], "hosting": "..."}]
   menitor setup show                    The setup answers saved so far, and what's still to ask
   menitor plan lint <file|->            Check a draft plan without saving it
   menitor plan import <file|->          Save the plan (only before approval)
@@ -441,6 +445,15 @@ export function run(argv, ioOverrides = {}) {
           const saved = setSetupAnswer(p, key, text);
           if (values.json) json({ key, ...saved });
           else io.out(`Saved the ${key} answer.`);
+          return EXIT.ok;
+        }
+        if (sub === 'options') {
+          const [kind, ...words] = rest;
+          if (!kind) throw new MenitorError('Usage: menitor setup options focus "<area>,<area>" | menitor setup options stack -');
+          const text = words.length === 1 && words[0] === '-' ? io.readStdin() : words.join(' ');
+          const options = setSetupOptions(p, kind, text);
+          if (values.json) json(options);
+          else io.out(`The window now offers the ${kind} options.`);
           return EXIT.ok;
         }
         if (sub === 'show') {

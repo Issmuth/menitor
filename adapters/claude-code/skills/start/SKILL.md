@@ -75,7 +75,10 @@ Record it with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" learner set lev
 
 ## 4. Focus areas
 
-Ask what they want to learn, with the AskUserQuestion tool as a multi-select: frontend, backend and APIs, database, auth, testing, deployment, git and workflow. Let them add their own.
+Ask what they want to learn: frontend, backend and APIs, database, auth, testing, deployment, git and workflow. Let them add their own.
+
+- Offer them in the window with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" setup options focus "<area>,<area>"`, and call `wait_for_learner` (the menitor MCP tool). Their pick arrives as `focus` in `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" setup show`.
+- If they answer in chat instead, save it as `focus` yourself.
 
 Record them with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" learner set focusAreas "<area>,<area>"`. Explain in one sentence that tasks outside these are delegated: you do them and leave a short note.
 
@@ -91,7 +94,8 @@ Save their choice as `help`: "hints" or "type-along". Only they can turn type-al
 - If they named a stack, check that it fits their goal, level and time. If it's too complex for the project, push back once, kindly, with a simpler option.
 - If they didn't, recommend one stack with two or three reasons tied to their goal and level. Prefer well-documented tools with free hosting.
 - Free hosting: Vercel or Netlify for front-end and full-stack JavaScript, Render's free tier for a separate backend, and Neon or Supabase for Postgres.
-- Once they agree, save the stack and its hosting as `stack-choice`.
+- Offer one to three stacks in the window, the recommended one first, with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" setup options stack -`. Send JSON on stdin with a heredoc: `[{"name": "...", "reasons": ["..."], "hosting": "..."}]`. Then call `wait_for_learner` (the menitor MCP tool).
+- Their pick arrives as `stack-choice` in `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" setup show`. If they agree in chat instead, save the stack and its hosting as `stack-choice` yourself.
 
 ## 6. The core of the PRD
 

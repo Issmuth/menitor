@@ -1134,6 +1134,114 @@ h1 {
   line-height: 1.55;
 }
 
+.setup-main {
+  display: grid;
+  gap: var(--gap);
+}
+
+/* Setup's choices: stacks side by side as cards, focus areas as checkbox chips. */
+.choices {
+  display: grid;
+  gap: 20px;
+}
+
+.choices fieldset {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choices legend {
+  margin-bottom: 2px;
+  padding: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.choices input {
+  accent-color: var(--accent);
+}
+
+.stack-options {
+  display: grid;
+  gap: 12px;
+}
+
+.stack-option {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-inner);
+  background: var(--raised);
+  cursor: pointer;
+}
+
+/* A 2px edge marks the pick; the padding gives back the extra pixel, so nothing moves. */
+.stack-option.selected {
+  padding: 13px 15px;
+  border: 2px solid var(--text);
+}
+
+.stack-option:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.stack-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.stack-name {
+  font-weight: 600;
+}
+
+.stack-hosting {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+.stack-reasons {
+  display: grid;
+  gap: 2px;
+  padding-left: 18px;
+  font-size: var(--fs-meta);
+  list-style: disc;
+}
+
+.focus-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.focus-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--control);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.focus-option.selected {
+  border-color: var(--text);
+}
+
+.focus-option:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .setup-list li {
   display: flex;
   align-items: baseline;
@@ -1626,6 +1734,10 @@ h1 {
 
   .setup-body > :first-child {
     grid-column: 1 / span 8;
+  }
+
+  .stack-options {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   }
 
   .setup-body > .setup-steps {

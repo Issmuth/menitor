@@ -115,7 +115,7 @@ To open it yourself, without asking the agent, run `menitor open` in your projec
 - **Its own window:** with Chrome, Edge, Chromium or Brave installed, the window opens as an app, maximized, with no tabs or address bar. If an older Menitor window is still open, the new one opens at its normal size instead. Set `MENITOR_WINDOW_MAXIMIZED=0` for a normal-size window, or `MENITOR_WINDOW_APP=0` to always use a tab. Without one of those browsers, it opens in a tab.
 - **Pop out:** an always-on-top mini window in desktop Chrome, Edge and other Chromium browsers. Other browsers get a small separate window.
 - **The plan:** every task in your plan as one cell, marked by who did it: you, Menitor, skipped, the one you're on, or still to do. A dot marks tasks added after you approved the plan, and their card says **Added**.
-- **Setup:** while `/menitor:start` runs, the window shows the answers saved so far, and the warm-up exercise with an **I'm done** button and Menitor's question about your code.
+- **Setup:** while `/menitor:start` runs, the window shows the answers saved so far, the warm-up exercise with an **I'm done** button and Menitor's question about your code, and the stacks and focus areas to choose from.
 - **The finish:** when every task in your plan has passed, the window shows what you built and how: the tasks you wrote, what Menitor did, your hints and explain-backs, and a link to your live app.
 - **Hints:** the four-rung ladder shows which hints are open, with their text beside it. Code hints are set as code.
 - **Type-along:** each step opens to its instructions and code, with line numbers to keep your place. Locked steps don't reach the window until you tick the step before.

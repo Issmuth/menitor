@@ -326,6 +326,50 @@ test('setup runs the warm-up in the window, and the answer reaches setup show as
   }
 });
 
+test('setup choices are made in the window: saved at once, and Confirm tells the session', async () => {
+  const { root, paths, cleanup } = makeProject();
+  cli(root, ['init']);
+  /** @type {any[]} */
+  const delivered = [];
+  const win = createWindowServer(root, { deliver: (e) => (delivered.push(e), true) });
+  const port = await win.listen(0);
+  const auth = { 'X-Menitor-Token': win.token };
+  /** @param {unknown} body */
+  const choose = (body) => request(port, { method: 'POST', path: '/api/setup-answer', headers: { ...auth, 'Content-Type': 'application/json', Origin: `http://127.0.0.1:${port}` }, body: JSON.stringify(body) });
+  const state = () => windowState(paths, { commands: {} });
+  try {
+    assert.equal(state().setup.choices, null, 'nothing to choose yet');
+    assert.equal((await choose({ key: 'stack-choice', text: 'Next.js and Postgres' })).status, 409, 'no options posted yet');
+
+    cli(root, ['setup', 'options', 'focus', 'frontend,backend and APIs,database']);
+    cli(root, ['setup', 'options', 'stack', '-'], { stdin: JSON.stringify([{ name: 'Next.js and Postgres', reasons: ['One language'] }, { name: 'Express and SQLite', reasons: ['Fewer parts'] }]) });
+    assert.deepEqual(state().setup.choices, {
+      stack: { options: [{ name: 'Next.js and Postgres', reasons: ['One language'] }, { name: 'Express and SQLite', reasons: ['Fewer parts'] }], chosen: null },
+      focus: { options: ['frontend', 'backend and APIs', 'database'], chosen: [] },
+    });
+
+    // Each pick is saved at once, without waking the session.
+    assert.equal((await choose({ key: 'stack-choice', text: 'Express and SQLite', notify: false })).status, 200);
+    assert.equal((await choose({ key: 'focus', text: 'backend and APIs,database', notify: false })).status, 200);
+    assert.equal(delivered.length, 0);
+    assert.deepEqual(state().setup.choices.stack.chosen, 'Express and SQLite');
+    assert.deepEqual(state().setup.choices.focus.chosen, ['backend and APIs', 'database']);
+
+    // Only what was offered.
+    assert.equal((await choose({ key: 'stack-choice', text: 'Rails', notify: false })).status, 400);
+    assert.equal((await choose({ key: 'focus', text: 'frontend,cooking', notify: false })).status, 400);
+
+    // Confirm tells the session, which reads the picks with setup show.
+    assert.equal((await choose({ key: 'focus', text: 'backend and APIs,database' })).status, 200);
+    assert.deepEqual(delivered, [{ type: 'setup', task: null }]);
+    const answers = JSON.parse(cli(root, ['setup', 'show', '--json']).out).answers;
+    assert.deepEqual(answers.filter((/** @type {any} */ a) => a.source === 'window').map((/** @type {any} */ a) => [a.key, a.value]), [['focus', 'backend and APIs,database'], ['stack-choice', 'Express and SQLite']]);
+  } finally {
+    await win.close();
+    cleanup();
+  }
+});
+
 test('the event stream pushes new state when a state file changes', async () => {
   const { root, cleanup } = approvedProject();
   const { win, port, auth } = await serve(root);

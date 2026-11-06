@@ -11,6 +11,7 @@ export const SETUP_STEPS = /** @type {const} */ ([
   { key: 'stack', label: 'Stack wanted' },
   { key: 'warmup-question', label: 'Warm-up question' },
   { key: 'warmup-answer', label: 'Warm-up answer' },
+  { key: 'focus', label: 'Focus areas' },
   { key: 'help', label: 'Hints or type-along' },
   { key: 'stack-choice', label: 'Stack agreed' },
   { key: 'prd', label: 'PRD core draft' },
@@ -19,7 +20,9 @@ export const SETUP_STEPS = /** @type {const} */ ([
 /**
  * @typedef {typeof SETUP_STEPS[number]['key']} SetupKey
  * @typedef {{ key: SetupKey, label: string, value: string, at: string, source: 'session' | 'window' }} SetupAnswer
- * @typedef {{ answers: SetupAnswer[], missing: { key: SetupKey, label: string }[] }} SetupStatus
+ * @typedef {{ name: string, reasons: string[], hosting?: string }} StackOption
+ * @typedef {{ stack?: StackOption[], focus?: string[] }} SetupOptions
+ * @typedef {{ answers: SetupAnswer[], missing: { key: SetupKey, label: string }[], options: SetupOptions }} SetupStatus
  */
 
 /** @param {string} key */

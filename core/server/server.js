@@ -18,8 +18,26 @@ import { computeStats } from '../lib/stats.js';
 
 /** The only events a button can send (W-7). */
 export const EVENTS = /** @type {const} */ (['check', 'hint', 'stuck', 'go', 'warmup-done']);
-/** Setup answers the window may take, each with the question that must be asked first. */
-const SETUP_WINDOW_KEYS = /** @type {Record<string, string>} */ ({ 'warmup-answer': 'warmup-question' });
+/** @param {string} text */
+const listOf = (text) => text.split(',').map((s) => s.trim()).filter(Boolean);
+
+/**
+ * Setup answers the window may take, each with what must hold first: its question asked, or its
+ * options offered and the answer among them. Each returns a refusal, or null.
+ * @type {Record<string, (text: string, status: import('../lib/setup.js').SetupStatus) => [number, string] | null>}
+ */
+const SETUP_WINDOW_KEYS = {
+  'warmup-answer': (_text, s) => (s.answers.some((a) => a.key === 'warmup-question') ? null : [409, 'That question has not been asked yet.']),
+  'stack-choice': (text, s) => {
+    if (!s.options.stack) return [409, 'No stacks are offered yet.'];
+    return s.options.stack.some((o) => o.name === text) ? null : [400, 'Choose one of the stacks offered.'];
+  },
+  focus: (text, s) => {
+    if (!s.options.focus) return [409, 'No focus areas are offered yet.'];
+    const offered = s.options.focus;
+    return listOf(text).every((area) => offered.includes(area)) ? null : [400, 'Choose from the focus areas offered.'];
+  },
+};
 const MAX_WARMUP = 12000;
 const COMMAND_KEYS = ['start', 'go', 'check', 'hint', 'stuck', 'skip'];
 const MAX_BODY = 16384;
@@ -170,9 +188,17 @@ export function setupWindow(paths) {
   }
   const question = answer('warmup-question');
   const reply = answer('warmup-answer');
+  const { stack, focus } = status.options;
   return {
     steps: SETUP_STEPS.map((s) => ({ key: s.key, label: s.label, done: Boolean(answer(s.key)) })),
     warmup: exercise || question ? { exercise, question: question?.value ?? null, answer: reply ? { text: reply.value, at: reply.at } : null } : null,
+    choices:
+      stack || focus
+        ? {
+            stack: stack ? { options: stack, chosen: answer('stack-choice')?.value ?? null } : null,
+            focus: focus ? { options: focus, chosen: listOf(answer('focus')?.value ?? '') } : null,
+          }
+        : null,
   };
 }
 
@@ -559,12 +585,17 @@ export function createWindowServer(root, options = {}) {
     if (!clean || clean.length > MAX_ANSWER) return send(res, 400, `An answer is 1 to ${MAX_ANSWER} characters.`);
     try {
       if (loadPlan(paths)?.approvedAt) return send(res, 409, 'Setup is over: the plan is approved.');
-      if (!setupStatus(paths).answers.some((a) => a.key === SETUP_WINDOW_KEYS[key])) return send(res, 409, 'That question has not been asked yet.');
+      const refusal = SETUP_WINDOW_KEYS[key](clean, setupStatus(paths));
+      if (refusal) return send(res, refusal[0], refusal[1]);
       const answers = loadAnswers(paths);
       answers.answers[key] = { text: clean, at: new Date().toISOString() };
       saveAnswers(paths, answers);
-      const event = { type: /** @type {const} */ ('setup'), task: null };
-      const delivered = options.deliver ? options.deliver(event) : deliverToListener(paths, event).delivered;
+      // A pick is saved at once; only a confirm or a sent answer wakes the session.
+      let delivered = false;
+      if (body.notify !== false) {
+        const event = { type: /** @type {const} */ ('setup'), task: null };
+        delivered = options.deliver ? options.deliver(event) : deliverToListener(paths, event).delivered;
+      }
       refresh();
       return sendJson(res, 200, { delivered, state: JSON.parse(lastJson) });
     } catch (err) {
