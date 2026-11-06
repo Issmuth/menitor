@@ -47,7 +47,7 @@ export const SKILLS = {
     description: 'Set up a Menitor project: interview the learner, calibrate their level, set focus areas, write lean docs and an ordered task plan, and get the plan approved.',
     learnerOnly: true,
     argumentHint: '[idea, or paths to existing docs]',
-    allowedTools: [CLI_RULE, ...GIT_READ_RULES],
+    allowedTools: [CLI_RULE, ...GIT_READ_RULES, WAIT_TOOL],
   },
   go: {
     description: "Show the current Menitor task card and pick up where the learner left off, even in a fresh session. Use when the learner wants to continue, asks what's next, or comes back to the project.",

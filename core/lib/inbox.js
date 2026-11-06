@@ -28,7 +28,7 @@ const MAX_LINES = 500;
 
 /**
  * @typedef {import('./paths.js').StatePaths} StatePaths
- * @typedef {'check' | 'hint' | 'stuck' | 'go' | 'answer'} InboxType
+ * @typedef {'check' | 'hint' | 'stuck' | 'go' | 'answer' | 'warmup-done' | 'setup'} InboxType
  * @typedef {{ id: string, at: string, type: InboxType, task: string | null }} InboxEvent
  * @typedef {{ version: 1, pid: number, beatAt: string, startedAt: string, agent: string }} Listener
  */

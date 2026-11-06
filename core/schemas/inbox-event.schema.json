@@ -9,7 +9,7 @@
   "properties": {
     "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{8,64}$" },
     "at": { "type": "string" },
-    "type": { "enum": ["check", "hint", "stuck", "go", "answer"] },
+    "type": { "enum": ["check", "hint", "stuck", "go", "answer", "warmup-done", "setup"] },
     "task": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9-]{0,31}$" }
   }
 }

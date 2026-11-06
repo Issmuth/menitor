@@ -96,6 +96,8 @@ export function windowEventText(type, task) {
     stuck: `Menitor window: the learner pressed "I'm stuck" on task ${task}. Run the menitor:stuck skill now, exactly as if they had typed /menitor:stuck.`,
     go: `Menitor window: the learner pressed "Start it" on task ${task}, which is yours. Run the menitor:go skill now, exactly as if they had typed /menitor:go.`,
     answer: `Menitor window: the learner answered your explain-back question on task ${task} in the window. Run the menitor:check skill now to read the answer with "question show" and judge it.`,
+    'warmup-done': `Menitor window: the learner says they're done with the warm-up. Read their code in .menitor/warmup/, then save your one question about it with ${CLI} setup set warmup-question "<question>", so the window shows it, and wait for their answer.`,
+    setup: `Menitor window: the learner answered in the setup window. Read it with ${CLI} setup show, then go on with setup.`,
   };
   return say[type] ?? `Menitor window: an event of an unknown kind arrived on task ${task}. Run ${COMMANDS.go} to see where things stand.`;
 }

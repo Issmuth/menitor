@@ -754,6 +754,168 @@ function resultView(s) {
   return { nodes: [head, h('div', { class: 'result-body' }, h('div', { class: 'result-main' }, said, next), planPanel(s))], bar: false };
 }
 
+/**
+ * Setup: tell the session the warm-up code is written. A fixed event; nothing else is sent.
+ * @param {Event} e
+ */
+async function onWarmupDone(e) {
+  const doc = docOf(e);
+  try {
+    const r = await post('/api/event', { type: 'warmup-done' });
+    showToast(r.delivered ? 'Sent. Menitor is reading your code now.' : "Menitor isn't listening right now. Tell your session you're done.", undefined, doc);
+  } catch (err) {
+    showToast(`That didn't work: ${/** @type {Error} */ (err).message}`, undefined, doc);
+  }
+}
+
+/**
+ * Setup: send the answer to the warm-up question. It's saved as data; the session only hears
+ * that it arrived.
+ * @param {HTMLTextAreaElement} box
+ * @param {Event} e
+ */
+async function sendWarmupAnswer(box, e) {
+  const doc = docOf(e);
+  const text = box.value.trim();
+  if (!text) {
+    showToast('Write your answer first, in your own words.', undefined, doc);
+    box.focus();
+    return;
+  }
+  try {
+    const r = await post('/api/setup-answer', { key: 'warmup-answer', text });
+    drafts.delete('warmup');
+    editing.delete('warmup');
+    render(r.state);
+    if (!r.delivered) showToast("Saved. Menitor isn't listening right now, so tell your session you've answered.", undefined, doc);
+  } catch (err) {
+    showToast(`That didn't work: ${/** @type {Error} */ (err).message}`, undefined, doc);
+  }
+}
+
+/**
+ * A line of text with its `inline code` set as code. Built from text nodes, so nothing runs.
+ * @param {string} tag
+ * @param {string} text
+ */
+function withCode(tag, text) {
+  const parts = text.split(/`([^`]+)`/);
+  return h(tag, null, ...parts.map((part, i) => (i % 2 ? h('code', null, part) : part)));
+}
+
+/**
+ * The warm-up as the page draws it: text blocks only, never markup. List items group into a list.
+ * @param {{ kind: string, text: string }[]} blocks
+ */
+function warmupText(blocks) {
+  /** @type {Node[]} */
+  const nodes = [];
+  /** @type {HTMLElement | null} */
+  let list = null;
+  for (const b of blocks) {
+    if (b.kind === 'item') {
+      if (!list) nodes.push((list = h('ul', { class: 'warmup-list' })));
+      list.append(withCode('li', b.text));
+      continue;
+    }
+    list = null;
+    if (b.kind === 'heading') nodes.push(withCode('h3', b.text));
+    else if (b.kind === 'code') nodes.push(h('pre', null, h('code', null, b.text)));
+    else nodes.push(withCode('p', b.text));
+  }
+  return h('div', { class: 'warmup-text' }, ...nodes);
+}
+
+/**
+ * Setup's warm-up: the exercise, then "I'm done", then Menitor's question with an answer box.
+ * @param {any} s
+ */
+function warmupPanel(s) {
+  const w = s.setup.warmup;
+  // The exercise's own first heading names the panel, so "Warm-up" isn't said twice.
+  const blocks = /** @type {{ kind: string, text: string }[]} */ (w.exercise ?? []);
+  const title = blocks[0]?.kind === 'heading' ? blocks[0].text : 'Warm-up';
+  const body = blocks[0]?.kind === 'heading' ? blocks.slice(1) : blocks;
+  /** @type {(Node | null)[]} */
+  const parts = [h('header', { class: 'panel-head' }, h('h2', { id: 'warmup-title' }, title), h('span', { class: 'count' }, '10 minutes or less'))];
+  if (body.length) parts.push(warmupText(body));
+  if (!w.question) {
+    parts.push(
+      h(
+        'div',
+        { class: 'qa-actions' },
+        h('p', { class: 'how' }, 'Write your answer in .menitor/warmup/, then let Menitor know.'),
+        h('button', { type: 'button', class: 'btn primary', 'data-key': 'act:warmup-done', onclick: onWarmupDone }, "I'm done"),
+      ),
+    );
+  } else if (w.answer && !editing.has('warmup')) {
+    parts.push(
+      h('p', { class: 'question' }, w.question),
+      h('div', { class: 'answer' }, h('p', { class: 'answer-text' }, w.answer.text)),
+      h(
+        'div',
+        { class: 'qa-actions' },
+        h('p', { class: 'how' }, `Sent at ${clock(w.answer.at)}. Menitor replies in your session.`),
+        h('button', { type: 'button', class: 'btn secondary small', 'data-key': 'edit:warmup', onclick: () => (editing.add('warmup'), drafts.set('warmup', w.answer.text), render(state)) }, 'Change answer'),
+      ),
+    );
+  } else {
+    const box = /** @type {HTMLTextAreaElement} */ (h('textarea', { id: 'answer-warmup', rows: 4, maxlength: 4000, 'aria-describedby': 'help-warmup', 'data-key': 'answer:warmup' }));
+    box.value = drafts.get('warmup') ?? '';
+    box.addEventListener('input', () => drafts.set('warmup', box.value));
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendWarmupAnswer(box, e);
+    });
+    parts.push(
+      h('p', { class: 'question' }, w.question),
+      h(
+        'div',
+        { class: 'field' },
+        h('label', { class: 'field-label', for: 'answer-warmup' }, 'Your answer'),
+        h('p', { class: 'field-help', id: 'help-warmup' }, 'In your own words. A sentence or two is enough.'),
+        box,
+      ),
+      h('div', { class: 'qa-actions' }, h('p', { class: 'how' }, 'You can answer in your session instead.'), h('button', { type: 'button', class: 'btn primary', 'data-key': 'send:warmup', onclick: (/** @type {Event} */ e) => sendWarmupAnswer(box, e) }, 'Send answer')),
+    );
+  }
+  return h('section', { class: 'panel warmup', 'aria-labelledby': 'warmup-title' }, ...parts);
+}
+
+/**
+ * Setup, while it runs: the warm-up when it starts, and which answers are saved so far.
+ * @param {any} s
+ */
+function setupView(s) {
+  const su = s.setup;
+  const saved = su.steps.filter((/** @type {any} */ x) => x.done).length;
+  const head = h(
+    'header',
+    { class: 'head' },
+    h(
+      'div',
+      { class: 'head-text' },
+      h('h1', { id: 'title' }, 'Setup'),
+      h('p', { class: 'status' }, h('span', { class: 'num' }, `${saved} of ${su.steps.length} answers saved`)),
+      h('p', { class: 'why' }, 'Menitor is getting to know you and your idea. Each answer is saved as you give it, so nothing is lost if the session closes.'),
+    ),
+  );
+  const main = su.warmup
+    ? warmupPanel(s)
+    : h(
+        'section',
+        { class: 'panel', 'aria-labelledby': 'setup-wait-title' },
+        h('header', { class: 'panel-head' }, h('h2', { id: 'setup-wait-title' }, 'In your session')),
+        h('p', null, 'Menitor is asking its questions in your coding session. The warm-up shows up here when it starts.'),
+      );
+  const steps = h(
+    'section',
+    { class: 'panel setup-steps', 'aria-labelledby': 'setup-steps-title' },
+    h('header', { class: 'panel-head' }, h('h2', { id: 'setup-steps-title' }, 'Setup so far')),
+    h('ol', { class: 'setup-list' }, ...su.steps.map((/** @type {any} */ x) => h('li', { class: x.done ? 'done' : '' }, h('span', null, x.label), h('span', { class: 'setup-mark' }, x.done ? 'Saved' : 'Not yet')))),
+  );
+  return { nodes: [head, h('div', { class: 'setup-body' }, main, steps)], bar: false };
+}
+
 /** @param {string} iso A short date, such as "Nov 6". */
 function day(iso) {
   const d = new Date(iso);
@@ -926,6 +1088,7 @@ function render(s) {
   else if (s.result) view = resultView(s);
   else if (s.phase === 'task' && s.card) view = taskView(s);
   else if (s.phase === 'done' && s.finish) view = finishView(s);
+  else if ((s.phase === 'no-plan' || s.phase === 'draft') && s.setup) view = setupView(s);
   else view = messageView(s);
 
   const notice = s.ok && s.mentorMode === 'off' ? h('p', { class: 'notice', role: 'status' }, 'Mentor mode is off, so the agent may write code anywhere.') : null;

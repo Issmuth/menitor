@@ -18,7 +18,7 @@ export const SETUP_STEPS = /** @type {const} */ ([
 
 /**
  * @typedef {typeof SETUP_STEPS[number]['key']} SetupKey
- * @typedef {{ key: SetupKey, label: string, value: string, at: string }} SetupAnswer
+ * @typedef {{ key: SetupKey, label: string, value: string, at: string, source: 'session' | 'window' }} SetupAnswer
  * @typedef {{ answers: SetupAnswer[], missing: { key: SetupKey, label: string }[] }} SetupStatus
  */
 

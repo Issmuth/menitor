@@ -1076,6 +1076,84 @@ h1 {
   color: var(--muted);
 }
 
+/* Setup: the warm-up and its question on the left, the answers saved so far on the right. */
+
+.setup-body {
+  display: grid;
+  gap: var(--gap);
+  align-items: start;
+}
+
+.warmup {
+  display: grid;
+  gap: 16px;
+}
+
+.warmup-text {
+  display: grid;
+  gap: 10px;
+  max-width: 68ch;
+}
+
+.warmup-text h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.warmup-text :not(pre) > code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--raised);
+  font-size: 0.9em;
+}
+
+/* A label, its help line and the box read as one field. */
+.warmup .field {
+  display: grid;
+  gap: 6px;
+}
+
+.warmup-text p,
+.warmup-list li {
+  text-wrap: pretty;
+}
+
+.warmup-list {
+  display: grid;
+  gap: 4px;
+  padding-left: 18px;
+  list-style: disc;
+}
+
+.warmup-text pre {
+  padding: 12px 14px;
+  border-radius: var(--radius-inner);
+  background: var(--raised);
+  overflow-x: auto;
+  white-space: pre;
+  line-height: 1.55;
+}
+
+.setup-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 0;
+  border-top: 1px solid var(--rule);
+  color: var(--muted);
+}
+
+.setup-list li.done {
+  color: var(--text);
+}
+
+.setup-mark {
+  flex: none;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
 /* Explain your code: the agent's question, answered here */
 
 .qa {
@@ -1539,6 +1617,19 @@ h1 {
   .result-body > .plan {
     grid-column: 9 / span 4;
     align-self: start;
+  }
+
+  /* Setup: the warm-up on the left, the answers saved so far on the right. */
+  .setup-body {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .setup-body > :first-child {
+    grid-column: 1 / span 8;
+  }
+
+  .setup-body > .setup-steps {
+    grid-column: 9 / span 4;
   }
 
   /* The finish line: what you built on the left, the plan on the right. */
