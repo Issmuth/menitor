@@ -6,7 +6,8 @@ import fs from 'node:fs';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { statePaths } from '../lib/paths.js';
-import { statusData } from '../lib/ops.js';
+import { setupStatus, statusData } from '../lib/ops.js';
+import { SETUP_STEPS } from '../lib/setup.js';
 import { cardData } from '../lib/card.js';
 import { findTask } from '../lib/plan.js';
 import { loadAnswers, loadGuard, loadPlan, loadProgress, loadSession, loadSolutions, saveAnswers, saveProgress } from '../lib/state.js';
@@ -16,7 +17,10 @@ import { parseLog } from '../lib/log.js';
 import { computeStats } from '../lib/stats.js';
 
 /** The only events a button can send (W-7). */
-export const EVENTS = /** @type {const} */ (['check', 'hint', 'stuck', 'go']);
+export const EVENTS = /** @type {const} */ (['check', 'hint', 'stuck', 'go', 'warmup-done']);
+/** Setup answers the window may take, each with the question that must be asked first. */
+const SETUP_WINDOW_KEYS = /** @type {Record<string, string>} */ ({ 'warmup-answer': 'warmup-question' });
+const MAX_WARMUP = 12000;
 const COMMAND_KEYS = ['start', 'go', 'check', 'hint', 'stuck', 'skip'];
 const MAX_BODY = 16384;
 const MAX_ANSWER = 4000;
@@ -91,6 +95,7 @@ export function windowState(paths, options) {
       card,
       lastCheck: record?.lastCheck ?? null,
       result: lastResult(paths, plan, session, card),
+      setup: phase === 'no-plan' || phase === 'draft' ? setupWindow(paths) : undefined,
       finish: phase === 'done' && plan ? finishOf(paths, plan) : null,
       milestones: status.milestones.map((m, i) => ({ ...m, current: current?.milestone.id === m.id, tasks: tasksOf(i) })),
       done: status.done,
@@ -103,6 +108,72 @@ export function windowState(paths, options) {
   } catch (err) {
     return { ok: false, error: /** @type {Error} */ (err).message, commands: options.commands };
   }
+}
+
+/**
+ * A warm-up exercise as blocks of text, so the page never renders it as markup: headings, plain
+ * paragraphs, list items and code. Markdown inside a line stays as typed.
+ * @param {string} text
+ * @returns {{ kind: 'heading' | 'text' | 'item' | 'code', text: string }[]}
+ */
+export function warmupBlocks(text) {
+  /** @type {{ kind: 'heading' | 'text' | 'item' | 'code', text: string }[]} */
+  const blocks = [];
+  /** @type {string[]} */
+  let para = [];
+  /** @type {string[] | null} */
+  let code = null;
+  const flush = () => {
+    if (para.length) blocks.push({ kind: 'text', text: para.join(' ') });
+    para = [];
+  };
+  for (const line of text.split(/\r?\n/)) {
+    if (code !== null) {
+      if (/^\s*```/.test(line)) {
+        blocks.push({ kind: 'code', text: code.join('\n') });
+        code = null;
+      } else code.push(line);
+      continue;
+    }
+    if (/^\s*```/.test(line)) {
+      flush();
+      code = [];
+      continue;
+    }
+    const heading = /^#{1,6}\s+(.*)$/.exec(line);
+    const item = /^\s*(?:[-*]|\d+\.)\s+(.*)$/.exec(line);
+    if (heading || item) {
+      flush();
+      blocks.push(heading ? { kind: 'heading', text: heading[1].trim() } : { kind: 'item', text: /** @type {RegExpExecArray} */ (item)[1].trim() });
+    } else if (!line.trim()) flush();
+    else para.push(line.trim());
+  }
+  if (code !== null) blocks.push({ kind: 'code', text: code.join('\n') });
+  flush();
+  return blocks;
+}
+
+/**
+ * What the window shows during setup: which answers are saved, and the warm-up with its question
+ * and the learner's answer.
+ * @param {StatePaths} paths
+ */
+export function setupWindow(paths) {
+  const status = setupStatus(paths);
+  const answer = (/** @type {string} */ key) => status.answers.find((a) => a.key === key) ?? null;
+  let exercise = null;
+  try {
+    const text = fs.readFileSync(`${paths.dir}/warmup/README.md`, 'utf8').slice(0, MAX_WARMUP);
+    exercise = warmupBlocks(text);
+  } catch {
+    exercise = null;
+  }
+  const question = answer('warmup-question');
+  const reply = answer('warmup-answer');
+  return {
+    steps: SETUP_STEPS.map((s) => ({ key: s.key, label: s.label, done: Boolean(answer(s.key)) })),
+    warmup: exercise || question ? { exercise, question: question?.value ?? null, answer: reply ? { text: reply.value, at: reply.at } : null } : null,
+  };
 }
 
 /**
@@ -397,6 +468,7 @@ export function createWindowServer(root, options = {}) {
 
       if (url.pathname === '/api/tick') return tick(res, body);
       if (url.pathname === '/api/answer') return answer(res, body);
+      if (url.pathname === '/api/setup-answer') return setupAnswer(res, body);
       if (url.pathname === '/api/continue') return dismiss(res, body);
       if (url.pathname === '/api/event') {
         const type = body.type;
@@ -410,7 +482,7 @@ export function createWindowServer(root, options = {}) {
         // One press at a time: while the last one is still on its way or being worked on, send nothing.
         const pending = pressState(paths);
         if (pending && pending.state !== 'done') return sendJson(res, 200, { delivered: true, busy: true, command: /** @type {Record<string, string>} */ (commands)[type] });
-        const event = { type: /** @type {'check' | 'hint' | 'stuck' | 'go'} */ (type), task };
+        const event = { type: /** @type {typeof EVENTS[number]} */ (type), task };
         const delivered = options.deliver ? options.deliver(event) : deliverToListener(paths, event).delivered;
         return sendJson(res, 200, { delivered, command: /** @type {Record<string, string>} */ (commands)[type] });
       }
@@ -468,6 +540,33 @@ export function createWindowServer(root, options = {}) {
       saveProgress(paths, progress);
       refresh();
       return send(res, 200, lastJson, { 'Content-Type': 'application/json; charset=utf-8' });
+    } catch (err) {
+      return send(res, 500, /** @type {Error} */ (err).message);
+    }
+  }
+
+  /**
+   * Setup: save an answer to a setup question the window shows, as data in answers.json. The
+   * session gets only a fixed event, and reads the answer with "setup show".
+   * @param {http.ServerResponse} res
+   * @param {Record<string, unknown>} body
+   */
+  function setupAnswer(res, body) {
+    const { key, text } = body;
+    if (typeof key !== 'string' || typeof text !== 'string') return send(res, 400, 'Send { key, text }.');
+    if (!(key in SETUP_WINDOW_KEYS)) return send(res, 400, 'The window takes answers only to the setup questions it shows.');
+    const clean = text.trim();
+    if (!clean || clean.length > MAX_ANSWER) return send(res, 400, `An answer is 1 to ${MAX_ANSWER} characters.`);
+    try {
+      if (loadPlan(paths)?.approvedAt) return send(res, 409, 'Setup is over: the plan is approved.');
+      if (!setupStatus(paths).answers.some((a) => a.key === SETUP_WINDOW_KEYS[key])) return send(res, 409, 'That question has not been asked yet.');
+      const answers = loadAnswers(paths);
+      answers.answers[key] = { text: clean, at: new Date().toISOString() };
+      saveAnswers(paths, answers);
+      const event = { type: /** @type {const} */ ('setup'), task: null };
+      const delivered = options.deliver ? options.deliver(event) : deliverToListener(paths, event).delivered;
+      refresh();
+      return sendJson(res, 200, { delivered, state: JSON.parse(lastJson) });
     } catch (err) {
       return send(res, 500, /** @type {Error} */ (err).message);
     }

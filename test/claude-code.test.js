@@ -10,6 +10,7 @@ import { changedFiles, parseLearnerPrompt, onHandlerError } from '../adapters/cl
 import { loadGuard } from '../core/lib/state.js';
 import { parseLog } from '../core/lib/log.js';
 import { readWindowInfo } from '../core/lib/window.js';
+import { windowEventText } from '../adapters/claude-code/messages.js';
 
 const HOOK = path.resolve(import.meta.dirname, '..', 'adapters', 'claude-code', 'hook.js');
 const PLUGIN_ROOT = path.resolve(import.meta.dirname, '..');
@@ -147,6 +148,12 @@ test('a session that starts on a task opens the window; later starts reuse it', 
   hook('SessionStart', { cwd: plain.root, source: 'startup' }, on);
   assert.equal(readWindowInfo(plain.paths), null, 'no task, no window');
   plain.cleanup();
+});
+
+test('setup presses in the window reach the session as fixed instructions', () => {
+  assert.match(windowEventText('warmup-done', 'the current task'), /the learner says they're done with the warm-up\. Read their code in \.menitor\/warmup\//);
+  assert.match(windowEventText('warmup-done', 'x'), /setup set warmup-question/);
+  assert.match(windowEventText('setup', 'x'), /answered in the setup window\. Read it with .* setup show/);
 });
 
 test('Stop records the end of the agent turn, so the window knows a press was answered', () => {

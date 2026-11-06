@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
-import { approvedProject, cli, makeProject } from './helpers.js';
+import { approvedProject, cli, makeProject, samplePlan } from './helpers.js';
 import { createWindowServer, cleanCommands, windowState } from '../core/server/server.js';
 import { loadProgress, loadSession } from '../core/lib/state.js';
 import { appArgs, appBrowser, readWindowInfo } from '../core/lib/window.js';
@@ -220,7 +220,7 @@ test('the page has a view for every screen the server sends', () => {
   // Merges have dropped a branch of render() before; the server tests can't see that.
   const app = fs.readFileSync(new URL('../core/server/page/app.js', import.meta.url), 'utf8');
   const chain = /function render\(s\) \{[\s\S]*?content\.replaceChildren/.exec(app)?.[0] ?? '';
-  for (const view of ['problemView', 'resultView', 'taskView', 'finishView', 'messageView']) {
+  for (const view of ['problemView', 'resultView', 'taskView', 'finishView', 'setupView', 'messageView']) {
     assert.match(chain, new RegExp(`view = ${view}\\(`), `render() shows ${view}`);
   }
   assert.ok(chain.indexOf('resultView(') < chain.indexOf('taskView('), 'a passed result shows before the next card');
@@ -262,6 +262,64 @@ test('a press shows as sent, then working, then done; a second press meanwhile s
     assert.equal(state().press?.state, 'working');
     listen(Date.now() + 1000);
     assert.equal(state().press?.state, 'done');
+  } finally {
+    await win.close();
+    cleanup();
+  }
+});
+
+test('setup runs the warm-up in the window, and the answer reaches setup show as data', async () => {
+  const { root, paths, cleanup } = makeProject();
+  cli(root, ['init']);
+  /** @type {any[]} */
+  const delivered = [];
+  const win = createWindowServer(root, { deliver: (e) => (delivered.push(e), true) });
+  const port = await win.listen(0);
+  const auth = { 'X-Menitor-Token': win.token };
+  /** @param {string} p @param {unknown} body */
+  const post = (p, body) => request(port, { method: 'POST', path: p, headers: { ...auth, 'Content-Type': 'application/json', Origin: `http://127.0.0.1:${port}` }, body: JSON.stringify(body) });
+  const state = () => windowState(paths, { commands: {} });
+  try {
+    cli(root, ['setup', 'set', 'idea', 'A recipe box']);
+    let s = state();
+    assert.equal(s.phase, 'no-plan');
+    assert.deepEqual(s.setup.steps.slice(0, 2), [{ key: 'idea', label: 'Idea', done: true }, { key: 'goal', label: 'Goal', done: false }]);
+    assert.equal(s.setup.warmup, null, 'no warm-up yet');
+
+    // The agent writes the exercise; the window shows it as text blocks.
+    fs.mkdirSync(path.join(paths.dir, 'warmup'), { recursive: true });
+    fs.writeFileSync(path.join(paths.dir, 'warmup', 'README.md'), '# Warm-up\n\nWrite `total(prices)`.\n\n```js\ntotal([1, 2]) // 3\n```\n');
+    s = state();
+    assert.deepEqual(s.setup.warmup.exercise, [
+      { kind: 'heading', text: 'Warm-up' },
+      { kind: 'text', text: 'Write `total(prices)`.' },
+      { kind: 'code', text: 'total([1, 2]) // 3' },
+    ]);
+    assert.equal(s.setup.warmup.question, null);
+
+    // I'm done: a fixed event, nothing more.
+    assert.equal((await post('/api/event', { type: 'warmup-done' })).status, 200);
+    assert.deepEqual(delivered.at(-1), { type: 'warmup-done', task: null });
+
+    assert.equal((await post('/api/setup-answer', { key: 'warmup-answer', text: 'It adds them.' })).status, 409, 'no question asked yet');
+    cli(root, ['setup', 'set', 'warmup-question', 'Why does total start from 0?']);
+    assert.equal(state().setup.warmup.question, 'Why does total start from 0?');
+    assert.equal((await post('/api/setup-answer', { key: 'idea', text: 'x' })).status, 400, 'only answers the window asks for');
+
+    const r = await post('/api/setup-answer', { key: 'warmup-answer', text: 'So an empty list adds up to 0.' });
+    assert.equal(r.status, 200, r.body);
+    assert.deepEqual(delivered.at(-1), { type: 'setup', task: null });
+    assert.equal(state().setup.warmup.answer?.text, 'So an empty list adds up to 0.');
+
+    // The agent reads it through the CLI, marked as typed in the window.
+    const shown = JSON.parse(cli(root, ['setup', 'show', '--json']).out).answers.find((/** @type {any} */ a) => a.key === 'warmup-answer');
+    assert.deepEqual([shown.value, shown.source], ['So an empty list adds up to 0.', 'window']);
+
+    // Once the plan is approved, setup is over.
+    cli(root, ['plan', 'import', '-'], { stdin: JSON.stringify(samplePlan()) });
+    cli(root, ['plan', 'approve']);
+    assert.equal((await post('/api/setup-answer', { key: 'warmup-answer', text: 'Again' })).status, 409);
+    assert.equal(state().setup, undefined, 'no setup view once the plan is approved');
   } finally {
     await win.close();
     cleanup();

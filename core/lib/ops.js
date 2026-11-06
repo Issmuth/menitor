@@ -461,10 +461,25 @@ export function setSetupAnswer(paths, key, value, options = {}) {
  */
 export function setupStatus(paths) {
   const saved = loadSetup(paths).answers;
-  return {
-    answers: SETUP_STEPS.filter((s) => saved[s.key]).map((s) => ({ key: s.key, label: s.label, value: saved[s.key].value, at: saved[s.key].at })),
-    missing: SETUP_STEPS.filter((s) => !saved[s.key]).map((s) => ({ key: s.key, label: s.label })),
+  // Answers typed in the window live in the window's own file; the newer of the two wins.
+  const typed = /** @type {Record<string, { text: string, at: string } | undefined>} */ (loadAnswers(paths).answers);
+  /** @param {string} key */
+  const pick = (key) => {
+    const said = saved[key];
+    const window = typed[key];
+    if (window && (!said || window.at > said.at)) return { value: window.text, at: window.at, source: /** @type {const} */ ('window') };
+    return said ? { value: said.value, at: said.at, source: /** @type {const} */ ('session') } : null;
   };
+  /** @type {import('./setup.js').SetupAnswer[]} */
+  const answers = [];
+  /** @type {{ key: import('./setup.js').SetupKey, label: string }[]} */
+  const missing = [];
+  for (const s of SETUP_STEPS) {
+    const a = pick(s.key);
+    if (a) answers.push({ key: s.key, label: s.label, ...a });
+    else missing.push({ key: s.key, label: s.label });
+  }
+  return { answers, missing };
 }
 
 /**

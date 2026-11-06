@@ -14,6 +14,7 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
   - the window receives a step's code only once that step is open.
 - A `typealong` scenario in the sample project.
 - **The window opens with the session.** When a session starts on a task, the window opens by itself, and the session already has its link. Set `MENITOR_WINDOW_AUTOSTART=0` to turn it off.
+- **The setup warm-up runs in the window.** The window shows the exercise, an **I'm done** button, then Menitor's question with an answer box, beside the setup answers saved so far. Your answer is saved as data and reaches the session through `menitor setup show`.
 - **Setup never loses an answer.** `/menitor:start` saves each answer the moment you give it, in `.menitor/setup.json`, with `menitor setup set`. If the session closes mid-setup, the next one picks up from `menitor setup show` and never asks the same question twice.
 - **Explain-back in the window.** The agent asks with `menitor question ask` and judges with `menitor question judge`. The learner answers in the window or in chat, and the reply and any follow-up show under the answer. Answers are saved as data in `.menitor/answers.json`.
 - **`menitor open` opens the window from a terminal,** with no agent involved. The buttons keep the commands from the last `/menitor:go`, which `session.json` now remembers. `npm link` in the Menitor folder puts `menitor` on your PATH.
