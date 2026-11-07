@@ -16,7 +16,7 @@ import { readDocLink } from './docs.js';
 import { languageWarnings } from './lint.js';
 import { readTextOrNull } from './fsx.js';
 import { runCheck } from './check.js';
-import { emptyGraph, refreshGraph } from './graph.js';
+import { emptyGraph, foldedSection, refreshGraph, reviewMap } from './graph.js';
 import {
   SCHEMAS,
   defaultSession,
@@ -307,6 +307,13 @@ export function checkTask(paths, id, options = {}) {
     },
     options,
   );
+  // Where the review should look, from the context graph: the changed lines, the files importing a
+  // changed file, and the doc sections naming it (ADR 17).
+  try {
+    report.review = reviewMap(contextGraph(paths).graph, report.diff, report.files);
+  } catch {
+    report.review = [];
+  }
   if (report.ranCommands && start) {
     // Read the session again: the checks may have run for minutes.
     const fresh = loadSession(paths);
@@ -891,7 +898,7 @@ export function briefData(paths, id) {
     checks: plan.checks ?? {},
     verify: task.verify ?? [],
     deployUrl: plan.project.deployUrl ?? null,
-    doc: readDocLink(paths.root, task.docs),
+    doc: briefDoc(paths, task.docs),
     typeAlong: Boolean(loadGuard(paths).typeAlong),
     questions: (start?.questions ?? []).map((q) => ({ ...q, answer: loadAnswers(paths).answers[q.id] ?? null })),
     waiting: session.waiting ?? null,
@@ -901,6 +908,31 @@ export function briefData(paths, id) {
       return { stored: ids.filter((id) => steps[id]), missing: ids.filter((id) => !steps[id]) };
     })(),
   };
+}
+
+/**
+ * The doc a task links, as its brief shows it: whole when short, folded through the context graph
+ * when long (ADR 17), so the brief carries the opening and an outline instead of every line.
+ * @param {StatePaths} paths
+ * @param {string} link
+ */
+function briefDoc(paths, link) {
+  const doc = readDocLink(paths.root, link);
+  /** @type {{ link: string, heading: string, lines: [number, number], chars: number }[]} */
+  let more = [];
+  if (doc.found === 'section' || doc.found === 'file') {
+    try {
+      const folded = foldedSection(paths.root, contextGraph(paths).graph, link);
+      if (folded) {
+        doc.text = folded.text;
+        doc.truncated = false;
+        more = folded.more;
+      }
+    } catch {
+      // The whole section still serves.
+    }
+  }
+  return { ...doc, more };
 }
 
 /**

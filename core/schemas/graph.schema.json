@@ -7,7 +7,7 @@
   "required": ["version", "files", "tasks"],
   "additionalProperties": false,
   "properties": {
-    "version": { "const": 1 },
+    "version": { "description": "2 counts a section's names in its own lines. A graph of an older version is rebuilt.", "const": 2 },
     "files": {
       "description": "Every project file by its path from the root, with forward slashes.",
       "type": "object",

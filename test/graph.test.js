@@ -85,3 +85,41 @@ test('the graph answers what a task touches, reads only changed files, and stays
     cleanup();
   }
 });
+
+test('a long doc section is folded for the brief: its opening, then an outline of the rest', () => {
+  const { root, cleanup } = approvedProject();
+  try {
+    const para = (/** @type {string} */ word) => `${word} `.repeat(120).trim();
+    const prd = ['# PRD', '', '## Skeleton', '', para('Opening'), '', '### Routes', '', para('Routes'), '', '### Tests', '', para('Tests'), '', '## Deploy', '', 'Ship it.', ''].join('\n');
+    fs.writeFileSync(path.join(root, 'docs', 'prd.md'), prd);
+    const brief = cli(root, ['task', 'brief', 't1']).out;
+    assert.match(brief, /Opening Opening/, 'the opening stays');
+    assert.doesNotMatch(brief, /Routes Routes/, 'the subsections are folded');
+    assert.match(brief, /More, folded to keep the brief short/);
+    assert.match(brief, /Routes · docs\/prd\.md#routes · lines 7-10 · \d+ chars/);
+    assert.match(brief, /Tests · docs\/prd\.md#tests · lines 11-14 · \d+ chars/);
+    assert.match(cli(root, ['graph', 'section', 'docs/prd.md#routes']).out, /^### Routes\n\nRoutes Routes/);
+    assert.notEqual(cli(root, ['graph', 'section', 'docs/prd.md#nope']).code, 0);
+    assert.doesNotMatch(cli(root, ['task', 'brief', 't2']).out, /folded/, 'a short section comes whole');
+  } finally {
+    cleanup();
+  }
+});
+
+test('the check carries a review map: the changed lines, the importers and the docs naming each file', () => {
+  const { root, cleanup } = approvedProject();
+  try {
+    fs.writeFileSync(path.join(root, 'docs', 'prd.md'), '# PRD\n\n## Skeleton\n\nThe page lives in `src/app.js`.\n');
+    fs.mkdirSync(path.join(root, 'src'));
+    fs.writeFileSync(path.join(root, 'src', 'app.js'), 'export const a = 1;\n');
+    fs.writeFileSync(path.join(root, 'src', 'server.js'), "import { a } from './app.js';\nexport default a;\n");
+    execFileSync('git', ['add', '-A'], { cwd: root });
+    execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'feat: app'], { cwd: root });
+    fs.writeFileSync(path.join(root, 'src', 'app.js'), 'export const a = 1;\nexport const b = 2;\n');
+    const out = cli(root, ['check', 'run', '--no-commands', '--no-diff']).out;
+    assert.match(out, /Review map: read these lines, not whole files/);
+    assert.match(out, /src\/app\.js {2}lines 1-2 · imported by src\/server\.js · named in docs\/prd\.md#skeleton/);
+  } finally {
+    cleanup();
+  }
+});

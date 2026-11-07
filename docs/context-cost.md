@@ -72,3 +72,19 @@ Task t29 makes on, off and go nearly free. Task t30 trims the session-start cont
 - **The diff** in `check run` leaves out git's index lines, which hold only blob hashes and file modes.
 
 No rule, step or fact was dropped: each cut is a repeat or a line that says nothing to the agent.
+
+## After t33: briefs and checks read through the graph
+
+Measured with `task brief` for every task and `check run --no-commands` on the task in progress, v1's CLI against this branch's, on the same projects. A check is counted as its output plus what the review reads beyond it. Before, that is each changed file whole; now, only the lines the review map lists.
+
+| What | Baseline | Now | Change |
+| --- | ---: | ---: | ---: |
+| This repo: briefs for all 35 tasks | 27,231 | 20,189 | 26% less (778 to 577 per task) |
+| This repo: a check, with its review reads (8 changed files) | 45,137 | 8,851 | 80% less |
+| Sample project: briefs for all 5 tasks | 1,186 | 1,186 | the same |
+| Sample project: a check, with its review reads (1 small file) | 468 | 489 | 4% more |
+
+- **The brief** folds a doc section over 1,500 characters: it keeps the opening, up to the first subsection or about 1,200 characters, and lists the rest with line numbers and sizes. `menitor graph section <link>` prints a part when the task needs it. Short sections come whole, as before.
+- **The check** adds a review map: the lines each change covers, the files that import a changed file, and the doc sections naming it. The check skill reads there instead of whole files. The diff itself is unchanged, so the review sees every change it saw before.
+- **Where it costs more:** on the sample's single 30-line file, reading the whole file was already cheap, so the map's 39 tokens and the skill's new line outweigh the saving. The map still names the file's importer and its doc section, which is what a review needs to catch a broken caller.
+- **What the model assumes:** the baseline review opens every changed file in full. A reviewer who read only the diff before saved nothing on reads, and pays the map's small cost for the importers and docs it now sees.

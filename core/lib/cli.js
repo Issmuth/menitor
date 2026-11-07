@@ -15,6 +15,7 @@ import { renderCheck } from './check.js';
 import { openWindow, readWindowInfo, isAlive, stopWindow, windowUrl } from './window.js';
 import { allTasks, findTask } from './plan.js';
 import { fileLinks, taskTouches } from './graph.js';
+import { readDocLink } from './docs.js';
 import { loadLearner, loadPlan, loadProgress, loadSession, loadSolutions, requirePlan, saveSession } from './state.js';
 
 /** The buttons whose commands the window shows or copies. */
@@ -140,6 +141,7 @@ Context
                                         changed, the files one import away, and their sizes
   menitor graph file <path>             What imports a file and what it imports, the sections that
                                         name it, and the tasks that changed it
+  menitor graph section <file#anchor>   Print one doc section, such as a part a brief folded
 
 History
   menitor log <event> key=value...      Log check, explain, stuck, dispute, deploy or note
@@ -271,6 +273,10 @@ function renderBrief(b) {
   // Found: the card above already names the doc, so only its section follows.
   else lines.push(doc.text);
   if (doc.truncated) lines.push('[cut at 4000 characters]');
+  if (doc.more?.length) {
+    lines.push('', 'More, folded to keep the brief short. "graph section <link>" prints one:');
+    for (const m of doc.more) lines.push(`  ${m.heading} · ${m.link} · lines ${m.lines[0]}-${m.lines[1]} · ${m.chars} chars`);
+  }
   return lines.join('\n');
 }
 
@@ -691,6 +697,14 @@ export function run(argv, ioOverrides = {}) {
           else io.out(renderTouches(t, read));
           return EXIT.ok;
         }
+        if (sub === 'section') {
+          if (!rest[0]) throw new MenitorError('Usage: menitor graph section <file#anchor>');
+          const section = readDocLink(p.root, rest[0]);
+          if (section.found === 'missing-file' || section.found === 'missing-section') throw new MenitorError(`No section "${rest[0]}". The brief's outline lists the links.`);
+          if (values.json) json(section);
+          else io.out(`${section.text}${section.truncated ? '\n[cut at 4000 characters]' : ''}`);
+          return EXIT.ok;
+        }
         if (sub === 'file') {
           if (!rest[0]) throw new MenitorError('Usage: menitor graph file <path>');
           const file = rest[0].replaceAll('\\', '/').replace(/^\.\//, '');
@@ -700,7 +714,7 @@ export function run(argv, ioOverrides = {}) {
           else io.out(renderFileLinks(f, read));
           return EXIT.ok;
         }
-        throw new MenitorError('Usage: menitor graph [task [id] | file <path>]');
+        throw new MenitorError('Usage: menitor graph [task [id] | file <path> | section <file#anchor>]');
       }
 
       case 'go': {
