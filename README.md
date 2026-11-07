@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="logo/Frame%20102.svg">
+  <img src="logo/Frame%20103.svg" alt="" width="72" height="72">
+</picture>
+
 # Menitor
 
 > **You need Node.js 22 or newer on your PATH.** Menitor's state CLI, task window and hooks run on Node. Check with `node --version`.

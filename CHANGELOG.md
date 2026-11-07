@@ -6,6 +6,7 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
+- **A new mark.** Menitor's egg-and-petals logo replaces the M in the window's top bar, the browser tab and the plugin icon, in three colourways (`logo/`). The window's accent moves to the mark's teal.
 - **Type-along mode** (`/menitor:typealong`, learner-only):
   - each step in the window opens to plain instructions and the full code for that step, with line numbers;
   - the code can't be selected or copied there, so the learner types it by hand;
