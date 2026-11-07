@@ -583,8 +583,12 @@ function hintsPanel(c) {
   return h('section', { class: 'panel hints', 'aria-labelledby': 'hints-title' }, h('div', { class: 'hints-side' }, ...side), h('div', { class: 'hints-body' }, ...body));
 }
 
-/** @param {any} c What to read first, the doc section the task builds, and its branch. */
-function learnPanel(c) {
+/**
+ * What to read first, the doc section the task builds, and its branch.
+ * @param {any} c
+ * @param {string} [title]
+ */
+function learnPanel(c, title = 'Before you code') {
   const kv = h('dl', { class: 'kv' }, h('dt', null, 'Docs'), h('dd', null, h('code', null, c.docs)));
   if (c.branch) kv.append(h('dt', null, 'Branch'), h('dd', null, h('code', null, c.branch)));
   let learn = null;
@@ -599,7 +603,7 @@ function learnPanel(c) {
   } else if (c.learn) {
     learn = h('p', { class: 'learn-link' }, c.learn.label);
   }
-  return h('section', { class: 'panel learn', 'aria-labelledby': 'learn-title' }, h('header', { class: 'panel-head' }, h('h2', { id: 'learn-title' }, 'Before you code')), learn, kv);
+  return h('section', { class: 'panel learn', 'aria-labelledby': 'learn-title' }, h('header', { class: 'panel-head' }, h('h2', { id: 'learn-title' }, title)), learn, kv);
 }
 
 const KIND_WORDS = /** @type {Record<string, string>} */ ({
@@ -621,7 +625,13 @@ function planPanel(s) {
       counts[kind] += 1;
       if (t.added) counts.added += 1;
       const added = t.added ? ' (added later)' : '';
-      cells.append(h('li', { class: `cell ${kind}${t.added ? ' added' : ''}`, title: `Task ${t.number}${added}: ${t.goal}` }, h('span', { class: 'sr-only' }, `Task ${t.number}${added}, ${t.goal}: ${KIND_WORDS[kind]}`)));
+      const label = `Task ${t.number}${added}, ${t.goal}: ${KIND_WORDS[kind]}`;
+      const viewing = finished?.id === t.id;
+      // A finished task opens to look back on; the others are only marks.
+      const mark = t.done
+        ? h('button', { type: 'button', class: 'cell-open', 'data-key': `cell:${t.id}`, 'aria-label': label, 'aria-current': viewing ? 'true' : undefined, onclick: (/** @type {Event} */ e) => openFinished(t.id, e) })
+        : h('span', { class: 'sr-only' }, label);
+      cells.append(h('li', { class: `cell ${kind}${t.added ? ' added' : ''}${viewing ? ' viewing' : ''}`, title: `Task ${t.number}${added}: ${t.goal}` }, mark));
     }
     rows.append(
       h(
@@ -650,6 +660,7 @@ function planPanel(s) {
     h('header', { class: 'panel-head' }, h('h2', { id: 'plan-title' }, 'Plan'), h('span', { class: 'count num' }, `${s.done} of ${plural(s.total, 'task')} done`)),
     rows,
     legend,
+    s.done ? h('p', { class: 'ledger-tip' }, 'Select a finished task to look back on it.') : null,
   );
 }
 
@@ -710,6 +721,152 @@ async function continueOn(r, e) {
 }
 
 /**
+ * The explain-back questions, each with the learner's answer and Menitor's reply (C-6).
+ * @param {any[]} questions
+ */
+function explainList(questions) {
+  return h(
+    'ol',
+    { class: 'result-list' },
+    ...questions.map((/** @type {any} */ q) =>
+      h(
+        'li',
+        { class: 'result-item' },
+        h('p', { class: 'past-q' }, q.text),
+        q.answer ? h('p', { class: 'past-a' }, q.answer.text) : h('p', { class: 'empty' }, 'Answered in your session.'),
+        h('p', { class: `finding ${q.outcome === 'good' ? 'good' : ''}` }, q.outcome === 'good' ? 'Good answer' : 'Not quite yet'),
+        q.feedback ? h('p', { class: 'result-feedback' }, q.feedback) : null,
+      ),
+    ),
+  );
+}
+
+/** The finished task the learner opened from the plan, as the server sent it. */
+let finished = /** @type {{ id: string, data: any } | null} */ (null);
+
+/** @param {string | null} id Keep the open task in the address, so a reload opens it again. */
+function setFinishedHash(id) {
+  try {
+    history.replaceState(null, '', id ? `#task=${id}` : `${location.pathname}${location.search}`);
+  } catch {
+    // Nothing to keep it in.
+  }
+}
+
+/**
+ * Open a finished task to look back on. Done tasks never change, so the window asks for one only
+ * when the learner opens it.
+ * @param {string} id
+ * @param {Event} [e]
+ */
+async function openFinished(id, e) {
+  try {
+    const res = await fetch(`/api/task?id=${encodeURIComponent(id)}`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+    const stepping = Boolean(finished);
+    finished = { id, data: await res.json() };
+    setFinishedHash(id);
+    if (!state) return;
+    render(state);
+    // Opened from the plan, the keyboard moves to the task; Previous and Next keep it where it is.
+    // Opened from a link, nothing was pressed, so focus stays put.
+    const doc = content.ownerDocument;
+    if (!e) return;
+    if (!stepping || !content.contains(doc.activeElement) || /** @type {HTMLButtonElement} */ (doc.activeElement).disabled) {
+      /** @type {HTMLElement | null} */ (content.querySelector('#title'))?.focus();
+    }
+  } catch (err) {
+    if (!finished) setFinishedHash(null);
+    showToast(`Couldn't open that task: ${/** @type {Error} */ (err).message}`, undefined, docOf(e));
+  }
+}
+
+/** Back to where the learner was, with the keyboard on the task they had open. */
+function closeFinished() {
+  const id = finished?.id ?? '';
+  finished = null;
+  setFinishedHash(null);
+  if (!state) return;
+  render(state);
+  /** @type {HTMLElement | null} */ (content.querySelector(`[data-key="cell:${CSS.escape(id)}"]`))?.focus();
+}
+
+/** @param {any} t Who did a task, in words. */
+function whoDid(t) {
+  if (t.owner === 'learner') return 'Written by you';
+  return t.skipped ? 'You skipped it, so Menitor did it' : 'Done by Menitor';
+}
+
+/**
+ * A finished task, opened from the plan to look back on: who did it, its steps and fixes, the
+ * notes, the explanation and the hints opened. Nothing here can be changed.
+ * @param {any} s
+ * @param {any} t
+ */
+function finishedView(s, t) {
+  const learner = t.owner === 'learner';
+  const nav = h(
+    'nav',
+    { class: 'history-nav', 'aria-label': 'Finished tasks' },
+    h('button', { type: 'button', class: 'btn secondary small', 'data-key': 'history:back', onclick: closeFinished }, s.card && !s.result ? `Back to task ${s.card.number}` : 'Back'),
+    h('button', { type: 'button', class: 'btn ghost small', 'data-key': 'history:prev', 'aria-label': 'Previous finished task', disabled: !t.prev, onclick: (/** @type {Event} */ e) => t.prev && openFinished(t.prev, e) }, 'Previous'),
+    h('button', { type: 'button', class: 'btn ghost small', 'data-key': 'history:next', 'aria-label': 'Next finished task', disabled: !t.next, onclick: (/** @type {Event} */ e) => t.next && openFinished(t.next, e) }, 'Next'),
+  );
+  const head = h(
+    'header',
+    { class: 'head history-head' },
+    h(
+      'div',
+      { class: 'head-text' },
+      h('h1', { id: 'title', tabindex: '-1' }, t.goal),
+      h(
+        'p',
+        { class: 'status' },
+        h('span', { class: 'num' }, `Task ${t.number} of ${t.total} · ${t.milestone.title}`),
+        t.added ? h('span', { class: 'tag' }, 'Added') : null,
+        h('span', { class: 'finding good' }, t.passedAt ? `Passed ${day(t.passedAt)}` : 'Passed'),
+        h('span', null, whoDid(t)),
+      ),
+      h('p', { class: 'why' }, t.why),
+    ),
+    nav,
+  );
+  const fixes = t.checklist.filter((/** @type {any} */ i) => i.source === 'fix').length;
+  const steps = h(
+    'section',
+    { class: 'panel history-steps', 'aria-labelledby': 'steps-title' },
+    h('header', { class: 'panel-head' }, h('h2', { id: 'steps-title' }, 'Steps'), h('span', { class: 'count num' }, fixes ? `${plural(t.checklist.length, 'step')}, ${plural(fixes, 'fix', 'fixes')} after a check` : plural(t.checklist.length, 'step'))),
+    h('ol', { class: 'history-list' }, ...t.checklist.map((/** @type {any} */ i) => h('li', null, h('span', null, i.text), i.source === 'fix' ? h('span', { class: 'pill negative' }, 'Fix') : null))),
+    h('div', { class: 'done-when' }, h('h3', null, 'Done when'), h('ul', null, ...t.doneWhen.map((/** @type {string} */ d) => h('li', null, d)))),
+    t.note ? h('div', { class: 'history-note' }, h('h3', null, 'Note'), h('p', null, t.note)) : null,
+  );
+  const explain = learner
+    ? h(
+        'section',
+        { class: 'panel result', 'aria-labelledby': 'explain-title' },
+        h('header', { class: 'panel-head' }, h('h2', { id: 'explain-title' }, 'Your explanation')),
+        t.questions.length ? explainList(t.questions) : h('p', { class: 'empty' }, 'No explain-back questions on this task.'),
+        t.revisit.length ? h('p', { class: 'note' }, `To revisit: ${t.revisit.join(', ')}`) : null,
+      )
+    : null;
+  const opened = t.hints.rungs.filter((/** @type {any} */ r) => r.open && r.text);
+  const hints =
+    learner && t.hints.stored
+      ? h(
+          'section',
+          { class: 'panel history-hints', 'aria-labelledby': 'hints-title' },
+          h('header', { class: 'panel-head' }, h('h2', { id: 'hints-title' }, 'Hints'), h('span', { class: 'count num' }, `${t.hints.revealed} of ${t.hints.rungs.length} opened`)),
+          ...(opened.length
+            ? opened.map((/** @type {any} */ r) => h('div', { class: 'hint' }, h('h3', null, RUNGS[r.rung] ?? r.rung), CODE_RUNGS.has(r.rung) ? h('pre', null, h('code', null, r.text)) : h('p', null, r.text)))
+            : [h('p', { class: 'empty' }, 'You opened no hints on this task.')]),
+        )
+      : null;
+  const main = h('div', { class: 'history-main' }, steps, explain, hints);
+  const side = h('div', { class: 'history-side' }, learnPanel(t, 'Docs'), planPanel(s));
+  return { nodes: [head, h('div', { class: 'history-body' }, main, side)], bar: false };
+}
+
+/**
  * C-6: what Menitor said about the learner's explain-back on the task that just passed. It stays
  * until they press Continue, so the next card never replaces feedback they haven't read.
  * @param {any} s
@@ -730,20 +887,7 @@ function resultView(s) {
     'section',
     { class: 'panel result', 'aria-labelledby': 'result-title' },
     h('header', { class: 'panel-head' }, h('h2', { id: 'result-title' }, 'Your explanation')),
-    h(
-      'ol',
-      { class: 'result-list' },
-      ...r.questions.map((/** @type {any} */ q) =>
-        h(
-          'li',
-          { class: 'result-item' },
-          h('p', { class: 'past-q' }, q.text),
-          q.answer ? h('p', { class: 'past-a' }, q.answer.text) : h('p', { class: 'empty' }, 'Answered in your session.'),
-          h('p', { class: `finding ${q.outcome === 'good' ? 'good' : ''}` }, q.outcome === 'good' ? 'Good answer' : 'Not quite yet'),
-          q.feedback ? h('p', { class: 'result-feedback' }, q.feedback) : null,
-        ),
-      ),
-    ),
+    explainList(r.questions),
   );
   const nextText = r.next ? `Task ${r.next.number} of ${s.total}: ${r.next.goal}` : 'That was the last task in your plan.';
   const next = callout(
@@ -1335,7 +1479,7 @@ function finishView(s) {
         h(
           'ol',
           { class: 'built-list' },
-          ...m.tasks.map((/** @type {any} */ t) => h('li', null, h('span', null, t.goal), h('span', { class: 'built-by' }, t.by === 'learner' ? 'You' : t.skipped ? 'Menitor, skipped' : 'Menitor'))),
+          ...m.tasks.map((/** @type {any} */ t) => h('li', null, h('button', { type: 'button', class: 'built-open', 'data-key': `built:${t.id}`, onclick: (/** @type {Event} */ e) => openFinished(t.id, e) }, t.goal), h('span', { class: 'built-by' }, t.by === 'learner' ? 'You' : t.skipped ? 'Menitor, skipped' : 'Menitor'))),
         ),
       ),
     ),
@@ -1437,6 +1581,7 @@ function render(s) {
   if (!s.ok && s.stale) {
     view = problemView('This window is out of date', 'Menitor was updated after this window started, so it reads your plan with old rules. Ask your coding session to open the window again.');
   } else if (!s.ok) view = problemView("Menitor's state has a problem", `${s.error} Ask your coding session to validate Menitor's state and fix it.`);
+  else if (finished) view = finishedView(s, finished.data);
   else if (s.result) view = resultView(s);
   else if (s.phase === 'task' && s.card) view = taskView(s);
   else if (s.phase === 'done' && s.finish) view = finishView(s);
@@ -1448,7 +1593,7 @@ function render(s) {
   sheet.classList.toggle('has-bar', view.bar);
 
   $('project').textContent = s.project ?? 'Your project';
-  doc.title = s.result ? `Passed · ${s.result.goal}` : s.card ? `${s.card.number}/${s.card.total} · ${s.card.goal}` : s.finish ? `${s.project ?? 'Your project'} is done` : 'Menitor';
+  doc.title = finished && s.ok ? `Task ${finished.data.number} · ${finished.data.goal}` : s.result ? `Passed · ${s.result.goal}` : s.card ? `${s.card.number}/${s.card.total} · ${s.card.goal}` : s.finish ? `${s.project ?? 'Your project'} is done` : 'Menitor';
   if (focusKey) {
     const again = /** @type {HTMLElement | null} */ (content.querySelector(`[data-key="${CSS.escape(focusKey)}"]`));
     again?.focus({ preventScroll: true });
@@ -1534,6 +1679,11 @@ function setupPopout() {
 
 guardDocumentCopy(document);
 setupPopout();
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && finished && !e.defaultPrevented) closeFinished();
+});
+const finishedInLink = /^#task=([a-z][a-z0-9-]{0,31})$/.exec(location.hash)?.[1];
+if (finishedInLink) openFinished(finishedInLink);
 // A press's words change with time alone: "done" fades back to the usual line, and a press this
 // page sent stops showing if the server never saw it. Re-render only when the line would change.
 setInterval(() => {

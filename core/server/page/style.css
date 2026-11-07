@@ -163,6 +163,11 @@ ol {
   outline-offset: 2px;
 }
 
+/* A heading the keyboard is moved to is a place, not a control: no ring around it. */
+h1[tabindex="-1"]:focus {
+  outline: none;
+}
+
 a {
   color: var(--accent);
   text-decoration: none;
@@ -1070,10 +1075,70 @@ h1 {
   border-top: 1px solid var(--rule);
 }
 
+/* Each finished task in the list opens it, like its cell in the plan. */
+.built-open {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--control);
+  text-underline-offset: 3px;
+}
+
+.built-open:hover {
+  text-decoration-color: currentColor;
+}
+
 .built-by {
   flex: none;
   font-size: var(--fs-meta);
   color: var(--muted);
+}
+
+/* A finished task, opened from the plan: the work and the explanation on the left, its docs and
+ * the plan on the right. Each column stacks at its own height. */
+
+.history-body,
+.history-main,
+.history-side {
+  display: grid;
+  gap: var(--gap);
+  align-content: start;
+}
+
+.history-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.history-note {
+  margin-top: 18px;
+}
+
+.history-note h3 {
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.history-note p {
+  max-width: 68ch;
+  text-wrap: pretty;
 }
 
 /* Setup: the warm-up and its question on the left, the answers saved so far on the right. */
@@ -1614,6 +1679,7 @@ h1 {
 .cell.added::after,
 .swatch.added::after {
   content: "";
+  pointer-events: none;
   position: absolute;
   inset: 0;
   margin: auto;
@@ -1631,6 +1697,37 @@ h1 {
 .legend .swatch.added::after {
   width: 4px;
   height: 4px;
+}
+
+/* A finished task's cell is a button over the mark, opening it to look back on. */
+.cell {
+  position: relative;
+}
+
+.cell-open {
+  position: absolute;
+  inset: -1px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.cell-open:hover {
+  outline: 2px solid var(--muted);
+  outline-offset: 2px;
+}
+
+.cell.viewing {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.ledger-tip {
+  margin-top: 10px;
+  font-size: var(--fs-small);
+  color: var(--muted);
 }
 
 .legend {
@@ -1875,6 +1972,27 @@ h1 {
 
   .result-body > .plan {
     grid-column: 9 / span 4;
+    align-self: start;
+  }
+
+  .history-body {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .history-main {
+    grid-column: 1 / span 8;
+  }
+
+  /* The plan stays in reach while the work and the explanation scroll past. */
+  .history-side {
+    grid-column: 9 / span 4;
+    align-self: start;
+    position: sticky;
+    top: 16px;
+  }
+
+  .history-head .history-nav {
+    justify-content: flex-end;
     align-self: start;
   }
 

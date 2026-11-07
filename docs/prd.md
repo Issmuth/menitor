@@ -131,6 +131,7 @@ The window is a localhost page in the learner’s browser that shows one task ca
 | W-9 | A banner shows whose turn it is: a delegated task with a Start it button, a skip waiting for the learner's confirm, or anything the agent is waiting on. |
 | W-10 | Explain-back questions appear in the window with an answer box. The learner answers there or in the session, and the mentor's reply shows under the answer. |
 | W-11 | Tasks added after approval carry an Added tag on the card and a dot in the plan ledger ([ADR 15](adr/015-adding-to-a-locked-plan.md)). |
+| W-12 | Any finished task opens from the plan ledger, read-only, with who did it, its steps and fixes, the notes, the hints opened and the explain-back answers. |
 
 Every task renders in this card shape. “Why” is two sentences at most, and a card never contains code. In type-along mode, a step's code shows under that step only once it is open (H-9).
 
