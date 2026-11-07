@@ -320,6 +320,48 @@ test('a press shows as sent, then working, then done; a second press meanwhile s
   }
 });
 
+test('the setup interview runs in the window: one question at a time, saved as it is given', async () => {
+  const { root, paths, cleanup } = makeProject();
+  cli(root, ['init']);
+  /** @type {any[]} */
+  const delivered = [];
+  const win = createWindowServer(root, { deliver: (e) => (delivered.push(e), true) });
+  const port = await win.listen(0);
+  const auth = { 'X-Menitor-Token': win.token };
+  /** @param {string} p @param {unknown} body */
+  const post = (p, body) => request(port, { method: 'POST', path: p, headers: { ...auth, 'Content-Type': 'application/json', Origin: `http://127.0.0.1:${port}` }, body: JSON.stringify(body) });
+  const interview = () => windowState(paths, { commands: {} }).setup.interview;
+  try {
+    let qs = interview();
+    assert.deepEqual(
+      qs.map((/** @type {any} */ q) => q.key),
+      ['idea', 'goal', 'time', 'experience', 'stack'],
+    );
+    assert.ok(qs.every((/** @type {any} */ q) => q.answer === null && q.question));
+    assert.deepEqual(qs[1].choices, ['A portfolio piece', 'A job hunt', 'Learning a skill', 'Something real people will use']);
+
+    // Answered in the window: saved as data, and the session hears a fixed event.
+    const r = await post('/api/setup-answer', { key: 'idea', text: 'A recipe box for my family' });
+    assert.equal(r.status, 200, r.body);
+    assert.equal(JSON.parse(r.body).delivered, true);
+    assert.deepEqual(delivered, [{ type: 'setup', task: null }]);
+    // Answered in chat instead: the window shows it too.
+    cli(root, ['setup', 'set', 'goal', 'A job hunt']);
+    qs = interview();
+    assert.equal(qs[0].answer, 'A recipe box for my family');
+    assert.equal(qs[1].answer, 'A job hunt');
+    assert.match(cli(root, ['setup', 'show']).out, /Idea\s+A recipe box for my family/, 'the session reads window answers');
+
+    // Changing an answer in the window replaces it.
+    await post('/api/setup-answer', { key: 'goal', text: 'Learning a skill' });
+    assert.equal(interview()[1].answer, 'Learning a skill');
+    assert.equal((await post('/api/setup-answer', { key: 'goal', text: '  ' })).status, 400, 'an answer has words');
+  } finally {
+    await win.close();
+    cleanup();
+  }
+});
+
 test('setup runs the warm-up in the window, and the answer reaches setup show as data', async () => {
   const { root, paths, cleanup } = makeProject();
   cli(root, ['init']);
@@ -357,7 +399,7 @@ test('setup runs the warm-up in the window, and the answer reaches setup show as
     assert.equal((await post('/api/setup-answer', { key: 'warmup-answer', text: 'It adds them.' })).status, 409, 'no question asked yet');
     cli(root, ['setup', 'set', 'warmup-question', 'Why does total start from 0?']);
     assert.equal(state().setup.warmup.question, 'Why does total start from 0?');
-    assert.equal((await post('/api/setup-answer', { key: 'idea', text: 'x' })).status, 400, 'only answers the window asks for');
+    assert.equal((await post('/api/setup-answer', { key: 'warmup-question', text: 'x' })).status, 400, 'only answers the window asks for');
 
     const r = await post('/api/setup-answer', { key: 'warmup-answer', text: 'So an empty list adds up to 0.' });
     assert.equal(r.status, 200, r.body);

@@ -1245,6 +1245,62 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+/* Each answer's label with its Change button at the line's end. */
+.told dt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.told dt .btn {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+/* The interview: one question at a time, quick picks above the answer box. */
+.interview-q {
+  display: grid;
+  gap: 12px;
+}
+
+.interview-q .question {
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.interview-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* The pick already saved: a 2px edge, as the chosen stack card has. */
+.interview-choices .btn.selected {
+  border: 2px solid var(--accent);
+  padding: 0 13px;
+}
+
+.interview-q input[type="text"] {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-inner);
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+}
+
+.interview-q input[type="text"] {
+  min-height: var(--control-height);
+}
+
+.interview textarea {
+  min-height: 80px;
+}
+
 /* Setup: the warm-up and its question on the left, the answers saved so far on the right. */
 
 .setup-body {
@@ -1604,7 +1660,8 @@ h1 {
 
 .qa textarea,
 .warmup textarea,
-.prd textarea {
+.prd textarea,
+.interview textarea {
   display: block;
   width: 100%;
   min-height: 112px;
@@ -1620,7 +1677,9 @@ h1 {
 
 .qa textarea:hover,
 .warmup textarea:hover,
-.prd textarea:hover {
+.prd textarea:hover,
+.interview textarea:hover,
+.interview-q input[type="text"]:hover {
   border-color: var(--muted);
 }
 

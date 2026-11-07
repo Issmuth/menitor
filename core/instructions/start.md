@@ -6,7 +6,7 @@ Turn the learner's idea into lean docs and an ordered plan. Setup ends with thre
 - lean docs in docs/, about one page each;
 - an approved plan whose first milestone is a deployed walking skeleton.
 
-Work through the steps in order. Ask one question at a time and wait for the answer. Keep every message short and plain.
+Work through the steps in order. Setup runs in the task window: it asks one question at a time and saves each answer. Keep every chat message short and plain.
 
 Save each answer the moment it's given, with `{{cli}} setup set <key> "<answer>"`. Then a session that closes mid-setup loses nothing. For long text, such as the PRD draft, pass `-` and send the text on stdin with a heredoc. The key for each answer is named below.
 
@@ -18,16 +18,19 @@ Run `{{cli}} status`, and `{{cli}} setup show` once .menitor/ exists.
 
 - It says there is no .menitor/ folder: this is a fresh start. Go to step 1.
 - The plan is approved: setup is already done. Say so, point to {{cmd:go}}, and stop.
-- Setup answers, a profile or a draft plan exist: resume at the first step that isn't done, and say where. Never ask again for an answer that `setup show` lists.
+- Setup answers, a profile or a draft plan exist: open the window with {{window}}. Then resume at the first step that isn't done, and say where. Never ask again for an answer that `setup show` lists.
 
 ## 1. Set up
 
 - Run `{{cli}} init` in the project root.
+- Open the window with {{window}}, before you ask anything. Setup runs there from now on.
 - If the folder isn't a git repo yet, the learner creates it. Explain in one sentence that git records every step of their work. Give them `git init` and wait. You can't run it for them.
 
 ## 2. Interview
 
-Ask these one at a time. Use {{ask}} for the choices. Ask for the idea in free text.
+The window asks these one at a time, with quick picks where they fit, and saves each answer. Tell the learner in one line that the questions are in the window. Then call {{wait}}.
+
+Each answer wakes you. Read it with `{{cli}} setup show`, and call {{wait}} again until all five are saved. Don't repeat the questions in chat. If they answer in chat instead, save the answer with `setup set` yourself; the window shows it.
 
 1. The idea (`idea`): what they want to build, in a sentence or two.
 2. The goal (`goal`): a portfolio piece, a job hunt, learning a skill, or something real people will use.
@@ -44,7 +47,7 @@ The learner never rates themselves. Pick the level from evidence.
 - In an existing repo they wrote, read a few files and their git history.
 - Otherwise, give a warm-up of 10 minutes or less:
   1. Write the exercise to .menitor/warmup/README.md. Make it one small function in the language they'll use, with two or three example inputs and outputs.
-  2. Open the window with {{window}}. It shows the exercise, and an "I'm done" button.
+  2. The window shows the exercise, and an "I'm done" button.
   3. The learner writes their answer in .menitor/warmup/. Call {{wait}}: their press, or a message in chat, says they're done.
   4. Read their code. Save one open question about it as `warmup-question`, and the window shows it with an answer box. Call {{wait}} again.
   5. Their answer arrives as `warmup-answer` in `{{cli}} setup show`. If they answer in chat instead, save it as `warmup-answer` yourself.

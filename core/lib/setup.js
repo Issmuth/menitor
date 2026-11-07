@@ -17,6 +17,18 @@ export const SETUP_STEPS = /** @type {const} */ ([
   { key: 'prd', label: 'PRD core draft' },
 ]);
 
+/**
+ * The interview that opens setup, asked in the window one question at a time. Choices are quick
+ * picks; a learner can always answer in their own words instead.
+ */
+export const INTERVIEW = /** @type {const} */ ([
+  { key: 'idea', question: 'What do you want to build?', help: 'A sentence or two is enough.', choices: [] },
+  { key: 'goal', question: 'What is this project for?', help: 'Pick one, or say it your way.', choices: ['A portfolio piece', 'A job hunt', 'Learning a skill', 'Something real people will use'] },
+  { key: 'time', question: 'How much time can you give it each week?', help: 'A rough guess is fine.', choices: ['Under 3 hours', '3 to 6 hours', '6 to 10 hours', 'More than 10 hours'] },
+  { key: 'experience', question: 'What have you built before, and in which languages?', help: 'Projects, courses or exercises all count.', choices: [] },
+  { key: 'stack', question: 'Is there a stack you want to use?', help: 'Name the tools, or let Menitor recommend one.', choices: ['Recommend one'] },
+]);
+
 /** The PRD core sections the learner drafts in the window, each saved under "prd-<key>". */
 export const PRD_SECTIONS = /** @type {const} */ ([
   { key: 'problem', label: 'Problem', help: 'What goes wrong today, for whom, and why it matters.' },

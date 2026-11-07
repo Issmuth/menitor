@@ -1279,6 +1279,106 @@ function warmupPanel(s) {
   return h('section', { class: 'panel warmup', 'aria-labelledby': 'warmup-title' }, ...parts);
 }
 
+/** The interview answer being changed, if any. */
+let changingSetup = /** @type {string | null} */ (null);
+
+/**
+ * Setup's interview: save an answer, and wake the session so it can go on.
+ * @param {string} key
+ * @param {string} text
+ * @param {Event} e
+ */
+async function sendInterview(key, text, e) {
+  const doc = docOf(e);
+  const clean = text.trim();
+  if (!clean) {
+    showToast('Write your answer first, in your own words.', undefined, doc);
+    return;
+  }
+  try {
+    const r = await post('/api/setup-answer', { key, text: clean });
+    drafts.delete(`interview:${key}`);
+    changingSetup = null;
+    render(r.state);
+    if (!r.delivered) showToast("Saved. Menitor isn't listening right now, so tell your session you've answered.", undefined, doc);
+  } catch (err) {
+    showToast(`That didn't save: ${/** @type {Error} */ (err).message}`, undefined, doc);
+  }
+}
+
+/**
+ * The interview answers given so far, each with Change.
+ * @param {any[]} answered
+ */
+function toldList(answered) {
+  return h(
+    'dl',
+    { class: 'told-list' },
+    ...answered.flatMap((/** @type {any} */ q) => [
+      h(
+        'dt',
+        null,
+        h('span', null, q.label),
+        h('button', { type: 'button', class: 'btn ghost small', 'data-key': `change:${q.key}`, 'aria-label': `Change: ${q.label}`, onclick: () => ((changingSetup = q.key), drafts.set(`interview:${q.key}`, q.answer), render(state)) }, 'Change'),
+      ),
+      h('dd', { 'data-m': `told:${q.key}` }, q.answer),
+    ]),
+  );
+}
+
+/**
+ * Setup's interview, in the window from the first question: one question at a time, with quick
+ * picks where they fit, saved the moment it's answered. The answers so far sit below it.
+ * @param {any} s
+ */
+function interviewPanel(s) {
+  const qs = /** @type {any[]} */ (s.setup.interview);
+  const open = qs.find((q) => q.key === changingSetup) ?? qs.find((q) => !q.answer);
+  const answered = qs.filter((q) => q.answer && q !== open);
+  /** @type {(Node | null)[]} */
+  const parts = [h('header', { class: 'panel-head' }, h('h2', { id: 'interview-title' }, 'Getting to know you'), h('span', { class: 'count num' }, `${qs.filter((q) => q.answer).length} of ${qs.length} answered`))];
+  if (open) {
+    const id = `interview-${open.key}`;
+    const long = !open.choices.length;
+    const box = /** @type {HTMLTextAreaElement | HTMLInputElement} */ (
+      long ? h('textarea', { id, rows: 3, maxlength: 4000, 'aria-describedby': `${id}-help`, 'data-key': `interview:${open.key}` }) : h('input', { type: 'text', id, maxlength: 4000, 'aria-describedby': `${id}-help`, 'data-key': `interview:${open.key}` })
+    );
+    box.value = drafts.get(`interview:${open.key}`) ?? '';
+    box.addEventListener('input', () => drafts.set(`interview:${open.key}`, box.value));
+    box.addEventListener('keydown', (e) => {
+      const k = /** @type {KeyboardEvent} */ (e);
+      if (k.key === 'Enter' && (long ? k.ctrlKey || k.metaKey : true)) {
+        e.preventDefault();
+        sendInterview(open.key, box.value, e);
+      }
+    });
+    parts.push(
+      h(
+        'div',
+        { class: 'interview-q', 'data-m': `ask:${open.key}` },
+        h('p', { class: 'question' }, open.question),
+        open.choices.length
+          ? h(
+              'div',
+              { class: 'interview-choices', role: 'group', 'aria-label': 'Quick answers' },
+              ...open.choices.map((/** @type {string} */ c) => h('button', { type: 'button', class: `btn secondary small${open.answer === c ? ' selected' : ''}`, 'data-key': `pick:${open.key}:${c}`, onclick: (/** @type {Event} */ e) => sendInterview(open.key, c, e) }, c)),
+            )
+          : null,
+        h('div', { class: 'field' }, h('label', { class: 'field-label', for: id }, open.choices.length ? 'Or in your own words' : 'Your answer'), h('p', { class: 'field-help', id: `${id}-help` }, open.help), box),
+        h(
+          'div',
+          { class: 'qa-actions' },
+          h('p', { class: 'how' }, 'You can answer in your session instead.'),
+          changingSetup ? h('button', { type: 'button', class: 'btn ghost small', onclick: () => ((changingSetup = null), render(state)) }, 'Cancel') : null,
+          h('button', { type: 'button', class: 'btn primary', 'data-key': `send:${open.key}`, onclick: (/** @type {Event} */ e) => sendInterview(open.key, box.value, e) }, 'Save answer'),
+        ),
+      ),
+    );
+  }
+  if (answered.length) parts.push(h('div', { class: 'told' }, h('h3', null, 'Your answers so far'), toldList(answered)));
+  return h('section', { class: 'panel interview', 'aria-labelledby': 'interview-title' }, ...parts);
+}
+
 /**
  * Setup: save a pick at once, without waking the session, or confirm with notify.
  * @param {string} key
@@ -1477,8 +1577,10 @@ function setupView(s) {
       h('p', { class: 'why' }, 'Menitor is getting to know you and your idea. Each answer is saved as you give it, so nothing is lost if the session closes.'),
     ),
   );
-  // The newest step first: setup goes warm-up, then choices, then the PRD core.
-  const panels = [su.prd ? prdPanel(s) : null, su.choices ? choicesPanel(s) : null, su.warmup ? warmupPanel(s) : null].filter(Boolean);
+  // The interview comes first while a question is open, or while an answer is being changed. After
+  // it, the newest step first: setup goes warm-up, then choices, then the PRD core.
+  const interviewing = (su.interview ?? []).some((/** @type {any} */ q) => !q.answer || q.key === changingSetup);
+  const panels = [interviewing ? interviewPanel(s) : null, su.prd ? prdPanel(s) : null, su.choices ? choicesPanel(s) : null, su.warmup ? warmupPanel(s) : null].filter(Boolean);
   const main = h(
     'div',
     { class: 'setup-main' },
@@ -1489,15 +1591,10 @@ function setupView(s) {
             'section',
             { class: 'panel', 'aria-labelledby': 'setup-wait-title' },
             h('header', { class: 'panel-head' }, h('h2', { id: 'setup-wait-title' }, 'In your session')),
-            h('p', null, 'Menitor is asking its questions in your coding session. The warm-up shows up here when it starts.'),
+            h('p', null, 'Menitor has your answers and is getting the next step ready. It shows up here when it starts.'),
             // What they have said so far, in their own words: proof it was heard and saved.
-            su.told?.length
-              ? h(
-                  'div',
-                  { class: 'told' },
-                  h('h3', null, 'What you have told Menitor'),
-                  h('dl', null, ...su.told.flatMap((/** @type {any} */ x) => [h('dt', null, x.label), h('dd', { 'data-m': `told:${x.key}` }, x.value)])),
-                )
+            (su.interview ?? []).some((/** @type {any} */ q) => q.answer)
+              ? h('div', { class: 'told' }, h('h3', null, 'What you have told Menitor'), toldList(su.interview.filter((/** @type {any} */ q) => q.answer)))
               : null,
           ),
         ]),

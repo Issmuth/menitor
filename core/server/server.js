@@ -7,7 +7,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { statePaths } from '../lib/paths.js';
 import { setupStatus, statusData, todoList } from '../lib/ops.js';
-import { PRD_SECTIONS, SETUP_STEPS } from '../lib/setup.js';
+import { INTERVIEW, PRD_SECTIONS, SETUP_STEPS } from '../lib/setup.js';
 import { cardData } from '../lib/card.js';
 import { allTasks, findTask } from '../lib/plan.js';
 import { loadAnswers, loadGuard, loadPlan, loadProgress, loadSession, loadSolutions, loadTodos, saveAnswers, saveProgress, saveTodos } from '../lib/state.js';
@@ -27,6 +27,8 @@ const listOf = (text) => text.split(',').map((s) => s.trim()).filter(Boolean);
  * @type {Record<string, (text: string, status: import('../lib/setup.js').SetupStatus) => [number, string] | null>}
  */
 const SETUP_WINDOW_KEYS = {
+  // The interview opens setup, so its questions are always open until the plan is approved.
+  ...Object.fromEntries(INTERVIEW.map((q) => [q.key, () => null])),
   'warmup-answer': (_text, s) => (s.answers.some((a) => a.key === 'warmup-question') ? null : [409, 'That question has not been asked yet.']),
   'stack-choice': (text, s) => {
     if (!s.options.stack) return [409, 'No stacks are offered yet.'];
@@ -209,6 +211,8 @@ export function setupWindow(paths) {
   return {
     prd,
     steps: SETUP_STEPS.map((s) => ({ key: s.key, label: s.label, done: Boolean(answer(s.key)) })),
+    // The interview: each question with its answer so far, in the order setup asks them.
+    interview: INTERVIEW.map((q) => ({ ...q, label: SETUP_STEPS.find((s) => s.key === q.key)?.label ?? q.key, answer: answer(q.key)?.value ?? null })),
     told: SETUP_STEPS.filter((s) => TOLD.includes(s.key) && answer(s.key)).map((s) => ({ key: s.key, label: s.label, value: /** @type {{ value: string }} */ (answer(s.key)).value })),
     warmup: exercise || question ? { exercise, question: question?.value ?? null, answer: reply ? { text: reply.value, at: reply.at } : null } : null,
     choices:
