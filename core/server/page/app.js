@@ -176,7 +176,11 @@ function markChanges(prev, s) {
   }
   if (s.waiting && s.waiting.text !== prev.waiting?.text) mark('waiting', 'm-arrive', 400);
   const saved = new Set((prev.setup?.steps ?? []).filter((/** @type {any} */ x) => x.done).map((/** @type {any} */ x) => x.key));
-  for (const x of s.setup?.steps ?? []) if (x.done && !saved.has(x.key) && prev.setup) mark(`setup:${x.key}`, 'm-fade', 360);
+  for (const x of s.setup?.steps ?? []) {
+    if (!x.done || saved.has(x.key) || !prev.setup) continue;
+    mark(`setup:${x.key}`, 'm-fade', 360);
+    mark(`told:${x.key}`, 'm-arrive', 360);
+  }
   const tasks = new Map((prev.milestones ?? []).flatMap((/** @type {any} */ m) => m.tasks ?? []).map((/** @type {any} */ t) => [t.id, t]));
   for (const t of (s.milestones ?? []).flatMap((/** @type {any} */ m) => m.tasks ?? [])) {
     const old = /** @type {any} */ (tasks.get(t.id));
@@ -1486,6 +1490,15 @@ function setupView(s) {
             { class: 'panel', 'aria-labelledby': 'setup-wait-title' },
             h('header', { class: 'panel-head' }, h('h2', { id: 'setup-wait-title' }, 'In your session')),
             h('p', null, 'Menitor is asking its questions in your coding session. The warm-up shows up here when it starts.'),
+            // What they have said so far, in their own words: proof it was heard and saved.
+            su.told?.length
+              ? h(
+                  'div',
+                  { class: 'told' },
+                  h('h3', null, 'What you have told Menitor'),
+                  h('dl', null, ...su.told.flatMap((/** @type {any} */ x) => [h('dt', null, x.label), h('dd', { 'data-m': `told:${x.key}` }, x.value)])),
+                )
+              : null,
           ),
         ]),
   );

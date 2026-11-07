@@ -337,6 +337,7 @@ test('setup runs the warm-up in the window, and the answer reaches setup show as
     assert.equal(s.phase, 'no-plan');
     assert.deepEqual(s.setup.steps.slice(0, 2), [{ key: 'idea', label: 'Idea', done: true }, { key: 'goal', label: 'Goal', done: false }]);
     assert.equal(s.setup.warmup, null, 'no warm-up yet');
+    assert.deepEqual(s.setup.told, [{ key: 'idea', label: 'Idea', value: 'A recipe box' }], 'the interview answers so far, shown back in the window');
 
     // The agent writes the exercise; the window shows it as text blocks.
     fs.mkdirSync(path.join(paths.dir, 'warmup'), { recursive: true });

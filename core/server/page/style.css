@@ -1214,6 +1214,37 @@ h1 {
   text-wrap: pretty;
 }
 
+/* Setup, before the warm-up: the learner's own answers so far, shown back to them. */
+.told {
+  margin-top: 20px;
+}
+
+.told h3 {
+  margin-bottom: 8px;
+  font-size: var(--fs-meta);
+  font-weight: 600;
+}
+
+.told dl {
+  display: grid;
+  gap: 4px;
+}
+
+.told dt {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+.told dt:not(:first-child) {
+  margin-top: 10px;
+}
+
+.told dd {
+  max-width: 68ch;
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+
 /* Setup: the warm-up and its question on the left, the answers saved so far on the right. */
 
 .setup-body {

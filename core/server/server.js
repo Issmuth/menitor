@@ -40,6 +40,8 @@ const SETUP_WINDOW_KEYS = {
   ...Object.fromEntries(PRD_SECTIONS.map((p) => [`prd-${p.key}`, (/** @type {string} */ _text, /** @type {import('../lib/setup.js').SetupStatus} */ s) => (s.options.prd ? null : [409, 'The PRD draft is not open yet.'])])),
 };
 const MAX_WARMUP = 12000;
+/** The interview answers the window shows back while Menitor asks the rest: the learner's own words. */
+const TOLD = ['idea', 'goal', 'time', 'experience', 'stack'];
 const MAX_TODO = 500;
 const MAX_TODOS = 200;
 const COMMAND_KEYS = ['start', 'go', 'check', 'hint', 'stuck', 'skip', 'add'];
@@ -207,6 +209,7 @@ export function setupWindow(paths) {
   return {
     prd,
     steps: SETUP_STEPS.map((s) => ({ key: s.key, label: s.label, done: Boolean(answer(s.key)) })),
+    told: SETUP_STEPS.filter((s) => TOLD.includes(s.key) && answer(s.key)).map((s) => ({ key: s.key, label: s.label, value: /** @type {{ value: string }} */ (answer(s.key)).value })),
     warmup: exercise || question ? { exercise, question: question?.value ?? null, answer: reply ? { text: reply.value, at: reply.at } : null } : null,
     choices:
       stack || focus
