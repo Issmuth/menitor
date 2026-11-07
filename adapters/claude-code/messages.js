@@ -140,13 +140,13 @@ export function learnerCommandContext(r) {
         `Then run ${CLI} task pass --note "<what you did, in two lines>".`,
       ].join(' ');
     case 'mode-off':
-      return `Menitor: the learner turned mentor mode off (recorded). You may write project files. ${TAKE_TASKS} Menitor state still changes only through ${CLI}. They can type ${COMMANDS.on} to turn it back on.`;
+      return `Menitor: the learner turned mentor mode off (recorded). You may write project files. To do one of their tasks, first run "task skip" so Menitor records it as yours. Tell them you can now write code anywhere and take their tasks, that their plan and progress stay as they are, and that ${COMMANDS.on} turns it back on.`;
     case 'already-off':
-      return `Menitor: mentor mode is already off. ${TAKE_TASKS} The learner can type ${COMMANDS.on} to turn it back on.`;
+      return `Menitor: mentor mode is already off. ${TAKE_TASKS} Tell the learner it was already off, and that ${COMMANDS.on} turns it back on.`;
     case 'mode-on':
-      return `Menitor: the learner turned mentor mode back on (recorded). Project code on learner tasks is theirs to write again.`;
+      return `Menitor: the learner turned mentor mode back on (recorded). Project code on learner tasks is theirs to write again. Tell them so, and that their current card is in the task window.`;
     case 'already-on':
-      return 'Menitor: mentor mode is already on.';
+      return 'Menitor: mentor mode is already on. Tell the learner it was already on.';
     case 'typealong-on':
     case 'already-typealong-on':
       return [

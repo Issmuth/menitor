@@ -114,9 +114,9 @@ export function renderInstructions(text, vars) {
     }
     if (key === 'cli') return vars.cli;
     if (key === 'wait') return '`wait_for_learner` (the menitor MCP tool)';
-    if (key === 'window') {
+    if (key === 'window' || key === 'go') {
       const pairs = Object.entries(WINDOW_COMMANDS).map(([k, v]) => `--command ${k}=${v}`);
-      return `${vars.cli} window open ${pairs.join(' ')}`;
+      return `${vars.cli} ${key === 'go' ? 'go' : 'window open'} ${pairs.join(' ')}`;
     }
     if (key === 'templates') return vars.templates;
     if (key === 'args') return vars.args;

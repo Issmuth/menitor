@@ -46,3 +46,14 @@ Two rows are lower bounds. `start` counts only its opening reads; the interview 
 - **Every session starts at about 1,600 tokens,** over half of it the session-start context with the current card.
 
 Task t29 makes on, off and go nearly free. Task t30 trims the session-start context and the CLI output read most.
+
+## After t29: on, off and go
+
+| Command | Baseline | Now | Share of baseline |
+| --- | ---: | ---: | ---: |
+| /menitor:go | 1395 | 666 | 48% |
+| /menitor:on | 424 | 138 | 33% |
+| /menitor:off | 444 | 186 | 42% |
+
+- **go** is one CLI call, `menitor go`. It opens the window and prints the brief and the git changes since the task started. Then it prints only the next steps that apply: hints for a new milestone, type-along code, Menitor's own task, or the learner's card. The skill shrank from 1,051 to 239 tokens. The old run also made window and git calls the baseline did not count, so the real saving is larger.
+- **on** and **off** no longer run the CLI. The hook already records the change, so its note says what to tell the learner, and each skill is one short paragraph.

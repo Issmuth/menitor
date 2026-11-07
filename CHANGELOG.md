@@ -6,6 +6,7 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
+- **`menitor go`: the current task in one call.** It opens the window and prints the brief, what changed in git since the task started, and only the next steps that apply. `/menitor:go` now runs just that, and `/menitor:on` and `/menitor:off` take what to say from their hook note. Together they load about half or less of their earlier context ([docs/context-cost.md](docs/context-cost.md)).
 - **What each command costs in context.** `npm run context-cost` measures the skill text, hook context and first CLI output of every command, the same way for all, and what every session loads. The baseline is in [docs/context-cost.md](docs/context-cost.md).
 - **Setup shows your answers back.** While Menitor asks its questions, the window shows what you've told it so far, in your own words.
 - **Quiet motion for each action.** A tick settles in and draws its check, a new hint fills its rung, fixes, replies and to-dos rise into place, a pass fills its cell in the plan and rings the next one, and folded milestones drop in as they open. Changing tabs or screens fades through, with the open tab's pill gliding across. Everything is still with reduced motion.
