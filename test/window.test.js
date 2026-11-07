@@ -270,11 +270,12 @@ test('the page has a view for every screen the server sends', () => {
   // Merges have dropped a branch of render() before; the server tests can't see that.
   const app = fs.readFileSync(new URL('../core/server/page/app.js', import.meta.url), 'utf8');
   const chain = /function render\(s\) \{[\s\S]*?content\.replaceChildren/.exec(app)?.[0] ?? '';
-  for (const view of ['problemView', 'finishedView', 'resultView', 'taskView', 'finishView', 'setupView', 'messageView']) {
+  for (const view of ['problemView', 'finishedView', 'todosView', 'resultView', 'taskView', 'finishView', 'setupView', 'messageView']) {
     assert.match(chain, new RegExp(`view = ${view}\\(`), `render() shows ${view}`);
   }
   assert.ok(chain.indexOf('resultView(') < chain.indexOf('taskView('), 'a passed result shows before the next card');
   assert.ok(chain.indexOf('finishedView(') < chain.indexOf('resultView('), 'a finished task the learner opened shows over the rest');
+  assert.ok(chain.indexOf('todosView(') < chain.indexOf('resultView('), 'the to-dos tab shows whatever the main screen holds');
 });
 
 test('a press shows as sent, then working, then done; a second press meanwhile sends nothing', async () => {

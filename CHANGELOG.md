@@ -6,6 +6,8 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
+- **To-dos have a tab of their own,** beside **Task** in the top bar, so the task screen holds only the task. A dot on the Task tab says when something there needs you. A deleted to-do can be brought back with **Undo** for a few seconds.
+- **The plan card keeps its size.** Finished milestones fold into one row and the ones still to come into another, each still showing every task as a small cell. Select a folded row to open it.
 - **A new mark.** Menitor's egg-and-petals logo replaces the M in the window's top bar, the browser tab and the plugin icon, in three colourways (`logo/`). The window's accent moves to the mark's teal.
 - **Type-along mode** (`/menitor:typealong`, learner-only):
   - each step in the window opens to plain instructions and the full code for that step, with line numbers;

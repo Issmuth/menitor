@@ -63,6 +63,8 @@
   --toast-ink: #ffffff;
   --mark-tile: #1b6e66; /* the mark: mint on teal in light, teal on mint in dark */
   --mark-glyph: #dcfae5;
+  --track: #e6e9e5; /* the tabs: a track one step off the top bar, the open tab lifted out of it */
+  --track-active: #ffffff;
 
   --font: "Instrument Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, "Liberation Mono", monospace; /* taste-skill-ignore: literal code only (doc paths, branches, hint snippets) */
@@ -117,6 +119,8 @@
     --toast-ink: #141514;
     --mark-tile: #dcfae5;
     --mark-glyph: #1b6e66;
+    --track: #1c1e1c;
+    --track-active: #2e312e;
   }
 }
 
@@ -321,8 +325,62 @@ pre {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   font-size: 15px;
+}
+
+/* The tabs: the main screen and the to-do list, in a quiet track beside the project's name. */
+.tabs {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  margin-left: 16px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--track);
+}
+
+.tab {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font: 500 14px/1 var(--font);
+  cursor: pointer;
+  transition: color 0.18s ease;
+}
+
+.tab:hover,
+.tab[aria-current="page"] {
+  color: var(--text);
+}
+
+/* The open tab's pill sits behind its label, so it can glide from tab to tab. */
+.tab-pill {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--track-active);
+}
+
+.tab-count {
+  color: var(--muted);
+}
+
+.tab-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
 }
 
 .mark {
@@ -358,6 +416,7 @@ pre {
   align-items: center;
   gap: 6px;
   flex: none;
+  margin-left: auto;
   font-size: 13px;
   color: var(--muted);
 }
@@ -1341,7 +1400,13 @@ h1 {
 
 .todo-form {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+.todo-form .field-label {
+  flex: 1 0 100%;
+  margin: 0;
 }
 
 .todo-form input {
@@ -1411,6 +1476,50 @@ h1 {
 
 .todo-actions .plan-todo:disabled {
   color: var(--muted);
+}
+
+/* Where a deleted to-do was, for a few seconds, with Undo. */
+.todo-list li.undo {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.todo.undo .todo-text {
+  color: var(--muted);
+}
+
+.todo.undo .todo-actions {
+  grid-column: 2;
+}
+
+.todos-body {
+  display: grid;
+  gap: var(--gap);
+  align-items: start;
+}
+
+.todo-list {
+  container-type: inline-size;
+}
+
+@container (min-width: 520px) {
+  .todo-list li {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .todo-list .todo-actions {
+    grid-column: 3;
+    flex-wrap: nowrap;
+  }
+
+  .todo-list .todo-actions .plan-todo {
+    margin: 0 4px 0 0;
+  }
+
+  .todo-list .todo-planned {
+    margin-right: 8px;
+  }
 }
 
 /* Where a to-do went once the plan took it. */
@@ -1724,6 +1833,63 @@ h1 {
   outline-offset: 2px;
 }
 
+/* Milestones folded into one row: done, or still to come. The whole row is the button. */
+.fold-toggle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px 10px;
+  width: 100%;
+  min-height: 32px;
+  margin: -4px 0;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ms.fold {
+  display: block;
+}
+
+.fold-toggle:hover .ms-name {
+  color: var(--text);
+}
+
+.fold-toggle .chev {
+  width: 7px;
+  height: 7px;
+  margin: 0 3px 3px 0;
+  border-width: 0 1.5px 1.5px 0;
+  border-style: solid;
+  border-color: var(--muted);
+  transform: rotate(45deg);
+}
+
+.ms.fold.open .chev {
+  margin: 3px 3px 0 0;
+  transform: rotate(-135deg);
+}
+
+.fold-toggle:hover .chev {
+  border-color: var(--text);
+}
+
+.cells.mini {
+  grid-column: 1 / -1;
+  gap: 3px;
+}
+
+.cells.mini .cell {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
 .ledger-tip {
   margin-top: 10px;
   font-size: var(--fs-small);
@@ -1925,30 +2091,17 @@ h1 {
     text-align: right;
   }
 
-  /* The steps take 8 columns and span two rows. Before you code (row 1) and the plan (row 2) take
-   * the other 4. The plan's row is flexible, so it absorbs any difference and the columns end
-   * level. The hints run all 12 columns below. */
-  /* Rows: before you code and the plan beside the steps (the plan stretches, so the columns end
-   * level), then the hints and the to-dos side by side. With no hints, the to-dos sit under the steps. */
+  /* Two stacks that never stretch a card: the steps (rows 1-2) and the hints (row 3) on the left,
+   * before you code (row 1) and the plan (rows 2-3) on the right. The spans interleave, so each
+   * column runs on at its own height, with no blank band inside a card. */
   .board {
     grid-template-columns: repeat(12, minmax(0, 1fr));
-    grid-template-rows: auto 1fr auto;
-  }
-
-  .board > .todos {
-    grid-column: 9 / span 4;
-    grid-row: 3;
-    align-self: start;
-  }
-
-  .board:not(:has(> .hints)) > .todos {
-    grid-column: 1 / span 8;
+    align-items: start;
   }
 
   .board > .learn {
     grid-column: 9 / span 4;
     grid-row: 1;
-    align-self: start;
   }
 
   .board > .steps {
@@ -1958,7 +2111,22 @@ h1 {
 
   .board > .plan {
     grid-column: 9 / span 4;
-    grid-row: 2;
+    grid-row: 2 / span 2;
+  }
+
+  /* The to-dos page: the list on the left, the plan it can join in reach on the right. */
+  .todos-body {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .todos-body > .todos {
+    grid-column: 1 / span 8;
+  }
+
+  .todos-body > .plan {
+    grid-column: 9 / span 4;
+    position: sticky;
+    top: 16px;
   }
 
   /* A passed task's result: the explanation and Up next on the left, the plan on the right. */
@@ -2020,13 +2188,13 @@ h1 {
 
   .finish-body > .built {
     grid-column: 1 / span 8;
-    grid-row: 1 / span 2;
   }
 
-  .finish-body > .plan,
-  .finish-body > .todos {
+  .finish-body > .plan {
     grid-column: 9 / span 4;
     align-self: start;
+    position: sticky;
+    top: 16px;
   }
 
   /* Type-along steps grow as code opens: the plan stays in view beside them instead of stretching. */
@@ -2059,9 +2227,8 @@ h1 {
     grid-column: 9 / span 4;
   }
 
-  /* The hints share the last row with the to-dos, at their own height: the to-do list grows with
-   * the learner's notes, so it runs on down the right-hand column. In 8 columns the ladder takes
-   * half, so its four labels have room. */
+  /* The hints sit under the steps, at their own height. In 8 columns the ladder takes half, so its
+   * four labels have room. */
   .board > .hints {
     grid-column: 1 / span 8;
     display: grid;
@@ -2096,6 +2263,26 @@ h1 {
 /* The narrowest phones: tighter buttons, and the mark stands in for the wordmark */
 
 @media (max-width: 640px) {
+  .bar-inner {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 52px;
+    padding-top: 8px;
+    padding-bottom: 10px;
+    row-gap: 8px;
+  }
+
+  .tabs {
+    order: 5;
+    flex: 1 0 100%;
+    margin-left: 0;
+  }
+
+  .tab {
+    flex: 1 1 0;
+    min-height: 36px;
+  }
+
   .solution {
     padding-left: 14px;
   }
@@ -2133,7 +2320,7 @@ h1 {
 /* A narrow pop-out keeps the phone layout; trim its padding */
 
 .pip .bar-inner {
-  height: 44px;
+  min-height: 44px;
 }
 
 @media (prefers-reduced-motion: reduce) {
