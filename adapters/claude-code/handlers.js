@@ -212,7 +212,7 @@ export function userPromptSubmit(input, env) {
 export function sessionContext(ctx, windowLine = null) {
   if (!ctx.paths) return '';
   const lines = [`Menitor is active in this project. Mentor mode is ${ctx.mode}.`];
-  lines.push(`State CLI: ${CLI} <command>. It is the only way to change .menitor/. Its "help" command lists the rest.`);
+  lines.push(`State CLI: ${CLI} <command>, written \`menitor\` below. It is the only way to change .menitor/. Its "help" command lists the rest.`);
   if (ctx.mode === 'off') {
     lines.push(`The learner turned mentor mode off, so help normally. ${TAKE_TASKS} They can type ${COMMANDS.on} to turn it back on.`);
   } else {
@@ -221,11 +221,12 @@ export function sessionContext(ctx, windowLine = null) {
   if (ctx.mode === 'on' && typeAlongOn(ctx)) {
     lines.push('', `Type-along is on: the window shows each step's instructions and full code, and the learner types it. Never paste step code into chat; point them to the window. You still never write their files. Steps without code yet need it: see "task brief" and "steps import".`);
   }
-  lines.push('', 'The task window has Check, Hint and Stuck buttons. A press arrives as a "Menitor window" notification. Run the skill it names right away, as if the learner had typed the command.');
+  lines.push('', 'A "Menitor window" notification is a button press in the task window: run the skill it names right away.');
   if (windowLine) lines.push(windowLine);
   try {
-    lines.push('', renderStatus(statusData(ctx.paths)));
     const plan = loadPlan(ctx.paths);
+    // The card below names the current task, and "plan show" lists the milestones: neither is repeated here.
+    lines.push('', renderStatus(statusData(ctx.paths), { milestones: false, current: !(plan?.approvedAt && ctx.task) }));
     if (!plan) {
       lines.push('', `No plan yet. The learner sets one up with ${COMMANDS.start}.`);
     } else if (!plan.approvedAt) {

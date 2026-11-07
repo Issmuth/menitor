@@ -84,7 +84,9 @@ test('task brief prints the card, start commit, checks and only the linked secti
   assert.match(r.out, /Branch {5}feat\/skeleton/);
   assert.match(r.out, /Start {6}[0-9a-f]{12} \(\d{4}-\d{2}-\d{2}\)/);
   assert.match(r.out, /Checks {5}build: npm run build · lint: npm run lint · test: npm test/);
-  assert.match(r.out, /Docs: docs\/prd\.md#skeleton\n## Skeleton\n\nA hello page\./);
+  assert.match(r.out, /Docs {7}docs\/prd\.md#skeleton/, 'the card names the doc');
+  assert.match(r.out, /\n\n## Skeleton\n\nA hello page\./, 'and only its section follows');
+  assert.doesNotMatch(r.out, /Docs: /, 'without naming the doc twice');
   assert.doesNotMatch(r.out, /Not this/);
 
   const deploy = cli(root, ['task', 'brief', 't2']).out;

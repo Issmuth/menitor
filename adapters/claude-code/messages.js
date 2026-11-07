@@ -11,15 +11,16 @@ export const CLI_PATH = fileURLToPath(new URL('../../core/bin/menitor.js', impor
 export const CLI = `node "${CLI_PATH}"`;
 
 /** While mentor mode is off, the agent may take the learner's tasks, recorded as skips (ADR 16). */
-export const TAKE_TASKS = `To do one of the learner's tasks, first run ${CLI} task skip, so Menitor records it as yours. No skip from the learner is needed.`;
+export const TAKE_TASKS = 'To do one of the learner\'s tasks, first run "task skip" so Menitor records it as yours. No skip from the learner is needed.';
 
 /**
  * The agent-neutral mentor rules with this adapter's command names filled in.
  */
 export function mentorRules() {
   const text = fs.readFileSync(new URL('../../core/instructions/mentor-rules.md', import.meta.url), 'utf8');
+  // The session context names the CLI just above the rules, so they call it by its short name.
   return renderInstructions(text, {
-    cli: CLI,
+    cli: 'menitor',
     templates: fileURLToPath(new URL('../../core/templates/docs', import.meta.url)),
     args: '',
   }).trim();

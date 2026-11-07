@@ -57,3 +57,18 @@ Task t29 makes on, off and go nearly free. Task t30 trims the session-start cont
 
 - **go** is one CLI call, `menitor go`. It opens the window and prints the brief and the git changes since the task started. Then it prints only the next steps that apply: hints for a new milestone, type-along code, Menitor's own task, or the learner's card. The skill shrank from 1,051 to 239 tokens. The old run also made window and git calls the baseline did not count, so the real saving is larger.
 - **on** and **off** no longer run the CLI. The hook already records the change, so its note says what to tell the learner, and each skill is one short paragraph.
+
+## After t30: the session start and the busiest output
+
+| What | Baseline | Now | Cut |
+| --- | ---: | ---: | ---: |
+| Session-start context | 883 | 705 | 20% |
+| Every session, in all | 1613 | 1435 | 11% |
+| CLI output of /menitor:check | 623 | 610 | 2% |
+| CLI output of /menitor:go | 427 | 421 | 1% |
+
+- **The session start** names the CLI once, as `menitor`, instead of printing its full path four times. The two rules that repeated the wait tool's own instructions are one line now. The status leaves out the milestone list and the current task, since the card below names the task and `plan show` lists the milestones. The sample plan has two milestones, so a longer plan saves more: one line per milestone.
+- **The brief** no longer names the doc twice: the card's Docs line names it, and only its section follows. Every skill that reads the brief, including `go`, gets this.
+- **The diff** in `check run` leaves out git's index lines, which hold only blob hashes and file modes.
+
+No rule, step or fact was dropped: each cut is a repeat or a line that says nothing to the agent.

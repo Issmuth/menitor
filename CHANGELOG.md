@@ -6,6 +6,7 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
+- **A leaner session start.** Every session now starts about 180 tokens lighter: the CLI path is printed once, repeated rules are merged, and the status leaves out what the card already says. The task brief names its doc once, and the review diff drops git's index lines ([docs/context-cost.md](docs/context-cost.md)).
 - **`menitor go`: the current task in one call.** It opens the window and prints the brief, what changed in git since the task started, and only the next steps that apply. `/menitor:go` now runs just that, and `/menitor:on` and `/menitor:off` take what to say from their hook note. Together they load about half or less of their earlier context ([docs/context-cost.md](docs/context-cost.md)).
 - **What each command costs in context.** `npm run context-cost` measures the skill text, hook context and first CLI output of every command, the same way for all, and what every session loads. The baseline is in [docs/context-cost.md](docs/context-cost.md).
 - **Setup shows your answers back.** While Menitor asks its questions, the window shows what you've told it so far, in your own words.
