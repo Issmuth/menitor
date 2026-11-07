@@ -11,7 +11,7 @@ import path from 'node:path';
 import { git } from './git.js';
 import { slugify } from './docs.js';
 
-export const GRAPH_VERSION = 1;
+export const GRAPH_VERSION = 2;
 /** Source files larger than this are listed but not read for links. */
 const MAX_READ_BYTES = 200_000;
 const CODE = /\.(m?js|cjs|jsx|ts|tsx|mts|cts|py)$/;
@@ -26,7 +26,7 @@ const JS_EXTS = ['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.mts', '.cts', '
  * @typedef {{ anchor: string, heading: string, level: number, start: number, end: number, chars: number, mentions: string[], links: string[] }} Section
  * @typedef {{ key: string, size: number, sections?: Section[], imports?: string[] }} FileNode
  * @typedef {{ section: string | null, range: string | null, touched: string[] }} TaskNode
- * @typedef {{ version: 1, files: Record<string, FileNode>, tasks: Record<string, TaskNode> }} Graph
+ * @typedef {{ version: 2, files: Record<string, FileNode>, tasks: Record<string, TaskNode> }} Graph
  */
 
 /** @returns {Graph} */
@@ -90,7 +90,9 @@ export function parseSections(markdown) {
     const next = heads.slice(i + 1).find((x) => x.level <= h.level);
     const end = next ? next.start - 1 : lines.length;
     const body = lines.slice(h.start - 1, end);
-    return { ...h, end, chars: body.join('\n').length, ...namesIn(body) };
+    // What a section names is counted where it is written: in its own lines, before any subsection.
+    const own = lines.slice(h.start - 1, heads[i + 1] ? heads[i + 1].start - 1 : lines.length);
+    return { ...h, end, chars: body.join('\n').length, ...namesIn(own) };
   });
 }
 
@@ -330,7 +332,101 @@ export function findSection(graph, link) {
   if (!node?.sections) return null;
   if (!anchor) return { file, anchor: null, heading: null, start: 1, end: Math.max(1, ...node.sections.map((s) => s.end)), chars: node.size, mentions: node.sections.flatMap((s) => s.mentions), links: node.sections.flatMap((s) => s.links) };
   const s = node.sections.find((x) => x.anchor === anchor.toLowerCase());
-  return s ? { file, ...s } : null;
+  if (!s) return null;
+  // A section names what it and its subsections name.
+  const within = node.sections.filter((x) => x.start >= s.start && x.end <= s.end);
+  return { file, ...s, mentions: [...new Set(within.flatMap((x) => x.mentions))], links: [...new Set(within.flatMap((x) => x.links))] };
+}
+
+/** Sections longer than this are folded in a brief: their opening, then what else they hold. */
+export const FOLD_CHARS = 1500;
+/** How much of a long section's own text a folded brief keeps, cut at a line. */
+const KEEP_CHARS = 1200;
+
+/**
+ * A linked doc as a brief should show it. A short section comes whole. A long one comes as its
+ * opening (up to its first subsection, and never more than about 1,200 characters), then an outline
+ * of the rest with line numbers and sizes, so the reader asks for a part only when it needs it.
+ * @param {string} root
+ * @param {Graph} graph
+ * @param {string} link such as "docs/prd.md#sign-up", or a whole file
+ * @returns {{ text: string, more: { link: string, heading: string, lines: [number, number], chars: number }[] } | null} null when the graph doesn't know the section
+ */
+export function foldedSection(root, graph, link) {
+  const s = findSection(graph, link);
+  if (!s || s.chars <= FOLD_CHARS) return null;
+  const file = link.split('#')[0];
+  const inside = (graph.files[file].sections ?? []).filter((x) => x.start > s.start && x.end <= s.end);
+  const top = inside.length ? Math.min(...inside.map((x) => x.level)) : 0;
+  const children = inside.filter((x) => x.level === top);
+  const lines = fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n').split('\n');
+  const ownEnd = children.length ? children[0].start - 1 : s.end;
+  /** @type {string[]} */
+  const kept = [];
+  let size = 0;
+  let last = s.start - 1;
+  for (let i = s.start - 1; i < ownEnd; i++) {
+    if (size + lines[i].length > KEEP_CHARS && kept.length) break;
+    kept.push(lines[i]);
+    size += lines[i].length + 1;
+    last = i + 1;
+  }
+  const more = [];
+  // The rest of the section's own text, when it was cut, then each subsection.
+  if (last < ownEnd) {
+    const rest = lines.slice(last, ownEnd).join('\n');
+    if (rest.trim()) more.push({ link, heading: 'The rest of this section', lines: /** @type {[number, number]} */ ([last + 1, ownEnd]), chars: rest.length });
+  }
+  for (const c of children) more.push({ link: `${file}#${c.anchor}`, heading: c.heading, lines: /** @type {[number, number]} */ ([c.start, c.end]), chars: c.chars });
+  return { text: kept.join('\n').trim(), more };
+}
+
+/**
+ * Where each changed file's changes sit in its new version, from a unified diff's hunk headers.
+ * @param {string} diff
+ * @returns {Map<string, [number, number][]>}
+ */
+export function changedRanges(diff) {
+  /** @type {Map<string, [number, number][]>} */
+  const out = new Map();
+  /** @type {string | null} */
+  let file = null;
+  for (const line of diff.split('\n')) {
+    const f = /^\+\+\+ (?:b\/(.+)|\/dev\/null)$/.exec(line);
+    if (f) {
+      file = f[1] ?? null;
+      continue;
+    }
+    const h = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (!h || !file) continue;
+    const start = Number(h[1]);
+    const count = h[2] === undefined ? 1 : Number(h[2]);
+    if (count === 0) continue;
+    if (!out.has(file)) out.set(file, []);
+    out.get(file)?.push([start, start + count - 1]);
+  }
+  return out;
+}
+
+/**
+ * Where a review should look, file by file: the lines the change covers, the files that import a
+ * changed file (callers a change may break), and the doc sections that name it. A review reads these
+ * instead of whole files.
+ * @param {Graph} graph
+ * @param {string} diff
+ * @param {{ path: string, change: string }[]} changed
+ */
+export function reviewMap(graph, diff, changed) {
+  const ranges = changedRanges(diff);
+  const { importedBy, namedBy } = linksOf(graph);
+  return changed
+    .filter((f) => f.change !== 'D')
+    .map((f) => ({
+      path: f.path,
+      ranges: ranges.get(f.path) ?? [],
+      importedBy: [...(importedBy.get(f.path) ?? [])].sort(),
+      namedBy: [...(namedBy.get(f.path) ?? [])].sort(),
+    }));
 }
 
 /**

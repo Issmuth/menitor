@@ -45,6 +45,7 @@ const DELEGATED_TRAILER = /^Menitor-Delegated:\s*true\s*$/im;
  * @property {Problem[]} problems
  * @property {boolean} ok           no blocking problems
  * @property {boolean} ranCommands  false with --no-commands
+ * @property {{ path: string, ranges: [number, number][], importedBy: string[], namedBy: string[] }[]} [review] where to look, from the context graph
  */
 
 /**
@@ -553,6 +554,19 @@ export function renderCheck(r, options = {}) {
     lines.push(`  ${f.change} ${f.path}  ${n}`);
   }
   if (r.files.length > 60) lines.push(`  …and ${r.files.length - 60} more`);
+
+  if (r.review?.length) {
+    const few = (/** @type {string[]} */ items, /** @type {number} */ max) => (items.length > max ? `${items.slice(0, max).join(', ')} and ${items.length - max} more` : items.join(', '));
+    lines.push('', 'Review map: read these lines, not whole files');
+    for (const f of r.review.slice(0, 12)) {
+      const where = f.ranges.length ? `lines ${few(f.ranges.map(([a, b]) => (a === b ? `${a}` : `${a}-${b}`)), 4)}` : 'new file';
+      const parts = [where];
+      if (f.importedBy.length) parts.push(`imported by ${few(f.importedBy, 3)}`);
+      if (f.namedBy.length) parts.push(`named in ${few(f.namedBy, 2)}`);
+      lines.push(`  ${f.path}  ${parts.join(' · ')}`);
+    }
+    if (r.review.length > 12) lines.push(`  …and ${r.review.length - 12} more files`);
+  }
 
   lines.push('');
   const blocking = r.problems.filter((p) => p.severity === 'blocking');
