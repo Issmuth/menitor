@@ -120,7 +120,8 @@ export function collectChanges(root, base) {
       const n = counts.get(file) ?? { added: null, deleted: null };
       files.push({ path: file, change: /** @type {FileChange['change']} */ (code[0]), added: n.added, deleted: n.deleted });
     }
-    diff = gitRaw(root, ['diff', '--no-renames', '--no-color', base, '--', '.', ':(exclude).menitor', ...NO_LOCKFILES]) ?? '';
+    // Git's index lines (blob hashes and modes) say nothing to a reviewer, so they are left out.
+    diff = (gitRaw(root, ['diff', '--no-renames', '--no-color', base, '--', '.', ':(exclude).menitor', ...NO_LOCKFILES]) ?? '').replace(/^index [0-9a-f]+\.\.[0-9a-f]+.*\n/gm, '');
   }
 
   const untracked = (gitRaw(root, ['ls-files', '--others', '--exclude-standard', ...SCOPE]) ?? '').split('\n').filter(Boolean);

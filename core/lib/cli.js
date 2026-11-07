@@ -173,18 +173,19 @@ function formatWarnings(warnings) {
 
 /**
  * @param {ReturnType<typeof statusData>} s
+ * @param {{ milestones?: boolean, current?: boolean }} [options] leave out the milestone lines or the current task
  */
-export function renderStatus(s) {
+export function renderStatus(s, options = {}) {
   const lines = [];
   lines.push(`${s.project ?? 'No plan yet'} · ${s.approved ? 'plan approved' : 'plan not approved'} · mentor mode ${s.mentorMode}${s.typeAlong ? ' · type-along on' : ''}`);
   lines.push(`Level ${s.level ?? 'not set'} · focus: ${s.focusAreas.length ? s.focusAreas.join(', ') : 'none set'}`);
-  if (s.current) {
+  if (s.current && options.current !== false) {
     lines.push(`Current  Task ${s.current.number}/${s.current.total} · Milestone ${s.current.milestone.number}: ${s.current.milestone.title} · ${s.current.goal}${s.current.owner === 'delegated' ? ' (delegated)' : ''}`);
   } else if (s.approved && s.total && s.done === s.total) {
     lines.push('Current  none: every task is done');
   }
   const width = Math.max(0, ...s.milestones.map((m) => m.title.length));
-  for (const m of s.milestones) lines.push(`M${m.number} ${m.title.padEnd(width)}  ${m.done}/${m.total}`);
+  if (options.milestones !== false) for (const m of s.milestones) lines.push(`M${m.number} ${m.title.padEnd(width)}  ${m.done}/${m.total}`);
   if (s.total) {
     const skipped = s.written.skipped ? ` (${s.written.skipped} skipped)` : '';
     lines.push(`Done ${s.done}/${s.total} · ${s.written.learner} by the learner · ${s.written.delegated} delegated${skipped}`);
@@ -258,7 +259,8 @@ function renderBrief(b) {
   const where = doc.anchor ? `${doc.file}#${doc.anchor}` : doc.file;
   if (doc.found === 'missing-file') lines.push(`Docs: ${where} (the file does not exist yet)`);
   else if (doc.found === 'missing-section') lines.push(`Docs: ${where} (no heading matches; showing the whole file)`, doc.text);
-  else lines.push(`Docs: ${where}`, doc.text);
+  // Found: the card above already names the doc, so only its section follows.
+  else lines.push(doc.text);
   if (doc.truncated) lines.push('[cut at 4000 characters]');
   return lines.join('\n');
 }

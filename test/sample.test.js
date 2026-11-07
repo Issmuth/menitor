@@ -37,7 +37,7 @@ test('start: an approved plan on task 1, with nothing built yet', () => {
   assert.equal(r.ok, false);
   assert.ok(r.problems.some((/** @type {any} */ p) => p.text.startsWith('test failed')), 'the starter test fails until the learner builds task 1');
   assert.match(cli(root, ['task', 'hint']).out, /Hint 1\/4 for t1 \(concept\)/, 'milestone 1 hints are stored');
-  assert.match(cli(root, ['task', 'brief']).out, /Docs: docs\/flow\.md#home\n### Home/);
+  assert.match(cli(root, ['task', 'brief']).out, /Docs {7}docs\/flow\.md#home[\s\S]*\n\n### Home\n/);
   cleanup();
 });
 
