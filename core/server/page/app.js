@@ -10,6 +10,9 @@ const toast = $('toast');
 const announcer = $('announce');
 const popout = /** @type {HTMLButtonElement} */ ($('popout'));
 const away = $('away');
+// Held here: the header moves with the app into the pop-out, where getElementById can't see it.
+const projectName = $('project');
+const tabsNav = $('tabs');
 
 /** @type {any} */
 let state = null;
@@ -30,6 +33,22 @@ const editing = new Set();
 
 const RUNGS = /** @type {Record<string, string>} */ ({ concept: 'Concept', approach: 'Approach', pseudocode: 'Pseudocode', snippet: 'Snippet' });
 const CODE_RUNGS = new Set(['pseudocode', 'snippet']);
+
+/** The tab on screen: the main screen (the task, setup or the finish) or the to-do list. */
+let tab = /** @type {'main' | 'todos'} */ (location.hash === '#todos' ? 'todos' : 'main');
+/** Where each tab was scrolled to, so going back keeps the place. */
+const scrollByTab = { main: 0, todos: 0 };
+
+/** Which folded groups of the plan are open: the milestones done, and those still to come. */
+function readPlanOpen() {
+  try {
+    const v = JSON.parse(localStorage.getItem('menitor.plan-open') ?? '{}');
+    return { done: v.done === true, later: v.later === true };
+  } catch {
+    return { done: false, later: false };
+  }
+}
+let planOpen = readPlanOpen();
 
 /**
  * Make an element. Strings become text nodes; never HTML.
@@ -65,6 +84,9 @@ function docOf(/** @type {{ target: EventTarget | null } | undefined} */ e) {
   return t?.ownerDocument ?? document;
 }
 
+/** @type {ReturnType<typeof setTimeout> | undefined} */
+let toastLeave;
+
 /**
  * @param {string} text
  * @param {string} [code]
@@ -74,11 +96,150 @@ function showToast(text, code, doc = document) {
   const el = doc === document ? toast : /** @type {HTMLElement} */ (doc.getElementById('toast'));
   if (!el) return;
   el.replaceChildren(text, code ? ' ' : '', code ? h('code', null, code) : '');
+  el.classList.remove('leaving');
   el.hidden = false;
   clearTimeout(toastTimer);
+  clearTimeout(toastLeave);
   toastTimer = setTimeout(() => {
-    el.hidden = true;
+    // It fades out, a little faster than it came in, then leaves the page.
+    el.classList.add('leaving');
+    toastLeave = setTimeout(() => {
+      el.hidden = true;
+      el.classList.remove('leaving');
+    }, 180);
   }, 5000);
+}
+
+/*
+ * Motion is feedback: what just changed says so once, then holds still. The page redraws from
+ * state on every update, so a change is marked by its element's data-m key, and the element drawn
+ * next carries the motion on from where it was instead of starting it over.
+ */
+
+/** @type {Map<string, { cls: string, at: number, ms: number, delay: number }>} */
+const motionMarks = new Map();
+
+/**
+ * @param {string} key the element's data-m
+ * @param {string} cls the motion class
+ * @param {number} ms how long it runs
+ * @param {number} [delay] a stagger before it starts
+ */
+function mark(key, cls, ms, delay = 0) {
+  motionMarks.set(key, { cls, at: performance.now(), ms: ms + delay, delay });
+}
+
+/** @param {Element} root Put the motions still running on the elements just drawn. */
+function applyMotion(root) {
+  if (!motionMarks.size) return;
+  const now = performance.now();
+  for (const [key, m] of motionMarks) if (now - m.at > m.ms) motionMarks.delete(key);
+  for (const el of root.querySelectorAll('[data-m]')) {
+    const m = motionMarks.get(/** @type {HTMLElement} */ (el).dataset.m ?? '');
+    if (!m) continue;
+    el.classList.add(m.cls);
+    // A negative delay picks the motion up part way, so a redraw mid-motion doesn't restart it.
+    /** @type {HTMLElement} */ (el).style.setProperty('--m-delay', `${Math.round(m.delay - (now - m.at))}ms`);
+  }
+}
+
+/**
+ * What changed between two states, marked for motion: a tick, a fix or a hint arriving, a reply,
+ * a pass filling its cell, the next task's cell, a to-do added or done.
+ * @param {any} prev
+ * @param {any} s
+ */
+function markChanges(prev, s) {
+  if (!prev?.ok || !s?.ok || prev === s) return;
+  const a = prev.card;
+  const b = s.card;
+  if (a && b && a.task === b.task) {
+    const was = new Map(a.checklist.map((/** @type {any} */ i) => [i.id, i]));
+    for (const item of b.checklist) {
+      const old = /** @type {any} */ (was.get(item.id));
+      if (!old) mark(`item:${item.id}`, 'm-arrive', 360);
+      else if (item.ticked && !old.ticked) mark(`tick:${item.id}`, 'm-tick', 340);
+    }
+    for (let i = a.hints.revealed; i < b.hints.revealed; i++) {
+      mark(`rung:${i}`, 'm-rung', 520);
+      const rung = b.hints.rungs[i]?.rung;
+      if (rung) mark(`hint:${rung}`, 'm-arrive', 400, 120);
+    }
+    if (findingOf(prev).text !== findingOf(s).text) mark('finding', 'm-fade', 300);
+  }
+  if (pressLine(prev).text !== pressLine(s).text) mark('how-line', 'm-fade', 300);
+  const asked = new Map((prev.questions ?? []).map((/** @type {any} */ q) => [q.id, q]));
+  for (const q of s.questions ?? []) {
+    const old = /** @type {any} */ (asked.get(q.id));
+    if (!old) mark(`q:${q.id}`, 'm-arrive', 400);
+    else if (q.feedback && !old.feedback) mark(`fb:${q.id}`, 'm-arrive', 400);
+  }
+  if (s.waiting && s.waiting.text !== prev.waiting?.text) mark('waiting', 'm-arrive', 400);
+  const saved = new Set((prev.setup?.steps ?? []).filter((/** @type {any} */ x) => x.done).map((/** @type {any} */ x) => x.key));
+  for (const x of s.setup?.steps ?? []) {
+    if (!x.done || saved.has(x.key) || !prev.setup) continue;
+    mark(`setup:${x.key}`, 'm-fade', 360);
+    mark(`told:${x.key}`, 'm-arrive', 360);
+  }
+  const tasks = new Map((prev.milestones ?? []).flatMap((/** @type {any} */ m) => m.tasks ?? []).map((/** @type {any} */ t) => [t.id, t]));
+  for (const t of (s.milestones ?? []).flatMap((/** @type {any} */ m) => m.tasks ?? [])) {
+    const old = /** @type {any} */ (tasks.get(t.id));
+    if (!old) mark(`cell:${t.id}`, 'm-arrive', 400);
+    else if (t.done && !old.done) mark(`cell:${t.id}`, 'm-fill', 560);
+    else if (t.current && !old.current) mark(`cell:${t.id}`, 'm-now', 760, 240);
+  }
+  const todos = new Map((prev.todos ?? []).map((/** @type {any} */ t) => [t.id, t]));
+  for (const t of s.todos ?? []) {
+    const old = /** @type {any} */ (todos.get(t.id));
+    if (!old) mark(`todo:${t.id}`, 'm-arrive', 360);
+    else if (t.done && !old.done) mark(`todo:${t.id}`, 'm-done', 360);
+    else if (t.planned && !old.planned) mark(`planned:${t.id}`, 'm-arrive', 360);
+  }
+}
+
+/** @param {'done' | 'later'} which A group of milestones unfolding: each row drops in, a beat apart. */
+function markPlanGroup(which) {
+  const ms = /** @type {any[]} */ (state?.milestones ?? []);
+  const current = ms.findIndex((m) => m.current);
+  if (current < 0) return;
+  const group = which === 'done' ? ms.slice(0, current) : ms.slice(current + 1);
+  group.forEach((m, i) => mark(`ms:${m.id}`, 'm-drop', 280, Math.min(i, 4) * 40));
+}
+
+/** Transitions running, so the last one to finish takes the names away. */
+let transitions = 0;
+
+/**
+ * Change views with a short crossfade: the old view fades, the new one rises a few pixels, and the
+ * open tab's pill glides to its new tab. Reduced motion, and browsers without view transitions,
+ * change at once.
+ * @param {() => void} update
+ */
+function withTransition(update) {
+  const doc = /** @type {any} */ (content.ownerDocument);
+  const still = doc.defaultView?.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (typeof doc.startViewTransition !== 'function' || still || doc.visibilityState === 'hidden') {
+    update();
+    return;
+  }
+  transitions += 1;
+  doc.documentElement.classList.add('vt');
+  const t = doc.startViewTransition(update);
+  t.finished.finally(() => {
+    transitions -= 1;
+    if (!transitions) doc.documentElement.classList.remove('vt');
+  });
+}
+
+/**
+ * Which screen a state puts on screen; a change of screen fades through. A pass that lands while
+ * the to-dos or a finished task are open changes nothing on screen, so it doesn't.
+ * @param {any} s
+ */
+function viewKey(s) {
+  if (finished) return `finished|${finished.id}|${s?.ok}`;
+  if (tab === 'todos') return `todos|${s?.ok}`;
+  return ['main', s?.ok, s?.phase, s?.result?.task ?? '', s?.card?.task ?? ''].join('|');
 }
 
 /** Tell screen readers about a change worth hearing, once. */
@@ -252,7 +413,7 @@ function actions(s) {
   return h(
     'div',
     { class: `actions${line.busy ? ' pending' : ''}` },
-    h('p', { class: `how${line.busy ? ' working' : ''}` }, line.text),
+    h('p', { class: `how${line.busy ? ' working' : ''}`, 'data-m': 'how-line' }, line.text),
     s.typeAlong ? null : pressButton(s, 'hint', 'Hint', 'secondary'),
     pressButton(s, 'stuck', "I'm stuck", 'secondary'),
     pressButton(s, 'check', 'Check my work', openQuestion(s) ? 'secondary' : 'primary'),
@@ -329,7 +490,7 @@ function pastQuestion(q) {
     h('p', { class: 'past-q' }, q.text),
     q.answer ? h('p', { class: 'past-a' }, q.answer.text) : h('p', { class: 'empty' }, 'Answered in your session.'),
     h('p', { class: `finding ${q.outcome === 'good' ? 'good' : ''}` }, q.outcome === 'good' ? 'Good answer' : 'Not quite yet'),
-    q.feedback ? h('p', { class: 'feedback' }, q.feedback) : null,
+    q.feedback ? h('p', { class: 'feedback', 'data-m': `fb:${q.id}` }, q.feedback) : null,
   );
 }
 
@@ -340,7 +501,7 @@ function questionPanel(s) {
   /** @type {(Node | null)[]} */
   const main = [h('header', { class: 'panel-head' }, h('h2', { id: 'qa-title' }, 'Explain your code'), open ? h('span', { class: 'count' }, open.try === 1 ? 'One question' : 'One more question') : null)];
   if (open) {
-    main.push(h('p', { class: 'question' }, open.text));
+    main.push(h('p', { class: 'question', 'data-m': `q:${open.id}` }, open.text));
     if (open.answer && !editing.has(open.id)) {
       main.push(
         h('div', { class: 'answer' }, h('p', { class: 'answer-text' }, open.answer.text)),
@@ -377,7 +538,11 @@ function turnView(s) {
   const cmd = (/** @type {string} */ k, /** @type {string} */ fallback) => s.commands?.[k] ?? fallback;
   /** @type {Node[]} */
   const nodes = [];
-  if (s.waiting) nodes.push(callout('you', 'Menitor is waiting on you', s.waiting.text));
+  if (s.waiting) {
+    const waiting = callout('you', 'Menitor is waiting on you', s.waiting.text);
+    waiting.dataset.m = 'waiting';
+    nodes.push(waiting);
+  }
   if (c.owner === 'delegated') {
     const asked = s.goAskedAt;
     nodes.push(
@@ -512,8 +677,8 @@ function typeAlongPanel(c, s) {
     list.append(
       h(
         'li',
-        { class: `item step${item.ticked ? ' done' : ''}${locked ? ' locked' : ''}${expanded ? ' expanded' : ''}` },
-        h('div', { class: 'step-row' }, box, toggle),
+        { class: `item step${item.ticked ? ' done' : ''}${locked ? ' locked' : ''}${expanded ? ' expanded' : ''}`, 'data-m': `item:${item.id}` },
+        h('div', { class: 'step-row', 'data-m': `tick:${item.id}` }, box, toggle),
         h('div', { class: 'solution', id: panelId, hidden: !expanded }, ...body),
       ),
     );
@@ -544,8 +709,8 @@ function stepsPanel(c) {
     list.append(
       h(
         'li',
-        { class: `item${item.ticked ? ' done' : ''}${learner ? '' : ' readonly'}` },
-        h('label', null, box, h('span', { class: 'text' }, item.text, item.source === 'fix' ? h('span', { class: 'pill negative' }, 'Fix') : null)),
+        { class: `item${item.ticked ? ' done' : ''}${learner ? '' : ' readonly'}`, 'data-m': `item:${item.id}` },
+        h('label', { 'data-m': `tick:${item.id}` }, box, h('span', { class: 'text' }, item.text, item.source === 'fix' ? h('span', { class: 'pill negative' }, 'Fix') : null)),
       ),
     );
   }
@@ -569,12 +734,12 @@ function hintsPanel(c) {
     body.push(h('p', { class: 'empty' }, "This milestone's hints are written when you first ask for one."));
   } else {
     const ladder = h('ol', { class: 'ladder', 'aria-label': 'Hint ladder' });
-    for (const r of rungs) ladder.append(h('li', { class: `rung${r.open ? ' open' : ''}` }, RUNGS[r.rung] ?? r.rung, h('span', { class: 'sr-only' }, r.open ? ' (open)' : ' (locked)')));
+    rungs.forEach((/** @type {any} */ r, /** @type {number} */ i) => ladder.append(h('li', { class: `rung${r.open ? ' open' : ''}`, 'data-m': `rung:${i}` }, RUNGS[r.rung] ?? r.rung, h('span', { class: 'sr-only' }, r.open ? ' (open)' : ' (locked)'))));
     side.push(ladder);
     for (const r of rungs) {
       if (!r.open || !r.text) continue;
       const text = CODE_RUNGS.has(r.rung) ? h('pre', null, h('code', null, r.text)) : h('p', null, r.text);
-      body.push(h('div', { class: 'hint' }, h('h3', null, RUNGS[r.rung] ?? r.rung), text));
+      body.push(h('div', { class: 'hint', 'data-m': `hint:${r.rung}` }, h('h3', null, RUNGS[r.rung] ?? r.rung), text));
     }
     if (revealed === 0) body.push(h('p', { class: 'empty hint' }, 'None open yet. The first one is the idea, never the code.'));
     if (!body.length) body.push(h('p', { class: 'empty' }, 'None open yet.'));
@@ -583,8 +748,12 @@ function hintsPanel(c) {
   return h('section', { class: 'panel hints', 'aria-labelledby': 'hints-title' }, h('div', { class: 'hints-side' }, ...side), h('div', { class: 'hints-body' }, ...body));
 }
 
-/** @param {any} c What to read first, the doc section the task builds, and its branch. */
-function learnPanel(c) {
+/**
+ * What to read first, the doc section the task builds, and its branch.
+ * @param {any} c
+ * @param {string} [title]
+ */
+function learnPanel(c, title = 'Before you code') {
   const kv = h('dl', { class: 'kv' }, h('dt', null, 'Docs'), h('dd', null, h('code', null, c.docs)));
   if (c.branch) kv.append(h('dt', null, 'Branch'), h('dd', null, h('code', null, c.branch)));
   let learn = null;
@@ -599,7 +768,7 @@ function learnPanel(c) {
   } else if (c.learn) {
     learn = h('p', { class: 'learn-link' }, c.learn.label);
   }
-  return h('section', { class: 'panel learn', 'aria-labelledby': 'learn-title' }, h('header', { class: 'panel-head' }, h('h2', { id: 'learn-title' }, 'Before you code')), learn, kv);
+  return h('section', { class: 'panel learn', 'aria-labelledby': 'learn-title' }, h('header', { class: 'panel-head' }, h('h2', { id: 'learn-title' }, title)), learn, kv);
 }
 
 const KIND_WORDS = /** @type {Record<string, string>} */ ({
@@ -610,28 +779,102 @@ const KIND_WORDS = /** @type {Record<string, string>} */ ({
   todo: 'to do',
 });
 
-/** @param {any} s W-8, the signature element: every task in the plan as one cell, marked by who did it. */
-function planPanel(s) {
+/** @param {any} t A task in the ledger: who did it, or where it stands. */
+function kindOf(t) {
+  return t.current ? 'now' : !t.done ? 'todo' : t.skipped ? 'skipped' : t.by === 'learner' ? 'you' : 'menitor';
+}
+
+/** @param {any} m One milestone: its name, how far it is, and a cell per task. */
+function milestoneRow(m) {
+  const cells = h('ol', { class: 'cells' });
+  for (const t of m.tasks ?? []) {
+    const kind = kindOf(t);
+    const added = t.added ? ' (added later)' : '';
+    const label = `Task ${t.number}${added}, ${t.goal}: ${KIND_WORDS[kind]}`;
+    const viewing = finished?.id === t.id;
+    // A finished task opens to look back on; the others are only marks.
+    const mark = t.done
+      ? h('button', { type: 'button', class: 'cell-open', 'data-key': `cell:${t.id}`, 'aria-label': label, 'aria-current': viewing ? 'true' : undefined, onclick: (/** @type {Event} */ e) => openFinished(t.id, e) })
+      : h('span', { class: 'sr-only' }, label);
+    cells.append(h('li', { class: `cell ${kind}${t.added ? ' added' : ''}${viewing ? ' viewing' : ''}`, title: `Task ${t.number}${added}: ${t.goal}`, 'data-m': `cell:${t.id}` }, mark));
+  }
+  return h(
+    'li',
+    { class: `ms${m.current ? ' current' : ''}`, 'data-m': `ms:${m.id}` },
+    h('span', { class: 'ms-name', title: m.title }, m.title),
+    h('span', { class: 'ms-count', 'aria-label': `${m.done} of ${m.total} done` }, `${m.done}/${m.total}`),
+    cells,
+  );
+}
+
+/**
+ * Milestones folded into one row: the ones done, or the ones still to come. Every task still
+ * shows, as a small cell, and the row opens to the full milestones.
+ * @param {'done' | 'later'} which
+ * @param {any[]} ms
+ */
+function foldRow(which, ms) {
+  const open = planOpen[which];
+  const tasks = ms.flatMap((m) => m.tasks ?? []);
+  const done = tasks.filter((t) => t.done).length;
+  return h(
+    'li',
+    { class: `ms fold${open ? ' open' : ''}` },
+    h(
+      'button',
+      { type: 'button', class: 'fold-toggle', 'aria-expanded': String(open), 'data-key': `fold:${which}`, onclick: () => togglePlanGroup(which) },
+      h('span', { class: 'ms-name' }, which === 'done' ? `${ms.length} milestones done` : `${ms.length} more milestones`),
+      h('span', { class: 'ms-count num', 'aria-hidden': 'true' }, `${done}/${tasks.length}`),
+      h('span', { class: 'sr-only' }, `, ${done} of ${plural(tasks.length, 'task')} done`),
+      h('span', { class: 'chev', 'aria-hidden': 'true' }),
+      open ? null : h('span', { class: 'cells mini', 'aria-hidden': 'true' }, ...tasks.map((t) => h('span', { class: `cell ${kindOf(t)}` }))),
+    ),
+  );
+}
+
+/** @param {'done' | 'later'} which Open or fold a group of milestones, and remember it here. */
+function togglePlanGroup(which) {
+  planOpen = { ...planOpen, [which]: !planOpen[which] };
+  try {
+    localStorage.setItem('menitor.plan-open', JSON.stringify(planOpen));
+  } catch {
+    // Not kept between visits; it still works now.
+  }
+  if (planOpen[which]) markPlanGroup(which);
+  render(state);
+}
+
+/**
+ * W-8, the signature element: every task in the plan as one cell, marked by who did it. While a
+ * task is current, the milestones before and after its own fold into a row each, so the card keeps
+ * its size however long the plan grows.
+ * @param {any} s
+ * @param {{ full?: boolean }} [options] full: every milestone on its own row
+ */
+function planPanel(s, options = {}) {
   const counts = /** @type {Record<string, number>} */ ({ you: 0, menitor: 0, skipped: 0, now: 0, todo: 0, added: 0 });
-  const rows = h('ol', { class: 'ledger' });
   for (const m of s.milestones) {
-    const cells = h('ol', { class: 'cells' });
     for (const t of m.tasks ?? []) {
-      const kind = t.current ? 'now' : !t.done ? 'todo' : t.skipped ? 'skipped' : t.by === 'learner' ? 'you' : 'menitor';
-      counts[kind] += 1;
+      counts[kindOf(t)] += 1;
       if (t.added) counts.added += 1;
-      const added = t.added ? ' (added later)' : '';
-      cells.append(h('li', { class: `cell ${kind}${t.added ? ' added' : ''}`, title: `Task ${t.number}${added}: ${t.goal}` }, h('span', { class: 'sr-only' }, `Task ${t.number}${added}, ${t.goal}: ${KIND_WORDS[kind]}`)));
     }
-    rows.append(
-      h(
-        'li',
-        { class: `ms${m.current ? ' current' : ''}` },
-        h('span', { class: 'ms-name', title: m.title }, m.title),
-        h('span', { class: 'ms-count', 'aria-label': `${m.done} of ${m.total} done` }, `${m.done}/${m.total}`),
-        cells,
-      ),
-    );
+  }
+  const rows = h('ol', { class: 'ledger' });
+  const current = options.full ? -1 : s.milestones.findIndex((/** @type {any} */ m) => m.current);
+  // A group folds only when it holds two milestones or more: one folded row for one row saves nothing.
+  const groups = current < 0 ? [] : [{ which: /** @type {const} */ ('done'), from: 0, to: current }, { which: /** @type {const} */ ('later'), from: current + 1, to: s.milestones.length }].filter((g) => g.to - g.from >= 2);
+  let shownDone = 0;
+  for (let i = 0; i < s.milestones.length; i++) {
+    const g = groups.find((x) => x.from === i);
+    if (g) {
+      rows.append(foldRow(g.which, s.milestones.slice(g.from, g.to)));
+      if (!planOpen[g.which]) {
+        i = g.to - 1;
+        continue;
+      }
+    }
+    shownDone += s.milestones[i].tasks.filter((/** @type {any} */ t) => t.done).length;
+    rows.append(milestoneRow(s.milestones[i]));
   }
   const legend = h('ul', { class: 'legend', 'aria-label': 'Key' });
   /** @param {string} kind @param {string} label @param {boolean} [count] */
@@ -650,6 +893,7 @@ function planPanel(s) {
     h('header', { class: 'panel-head' }, h('h2', { id: 'plan-title' }, 'Plan'), h('span', { class: 'count num' }, `${s.done} of ${plural(s.total, 'task')} done`)),
     rows,
     legend,
+    shownDone ? h('p', { class: 'ledger-tip' }, 'Select a finished task to look back on it.') : null,
   );
 }
 
@@ -664,13 +908,13 @@ function taskView(s) {
     h(
       'div',
       { class: 'head-text' },
-      h('h1', { id: 'title' }, c.goal),
+      h('h1', { id: 'title', tabindex: '-1' }, c.goal),
       h(
         'p',
         { class: 'status' },
         h('span', { class: 'num' }, `Task ${c.number} of ${c.total} · ${c.milestone.title}`),
         c.added ? h('span', { class: 'tag', title: `Added to the plan on ${new Date(c.added).toLocaleDateString()}` }, 'Added') : null,
-        h('span', { class: `finding ${f.tone}` }, f.text),
+        h('span', { class: `finding ${f.tone}`, 'data-m': 'finding' }, f.text),
       ),
       h('p', { class: 'why' }, c.why),
     ),
@@ -680,14 +924,14 @@ function taskView(s) {
   const typeAlong = learner && s.typeAlong;
   // DOM order is the reading order on a phone: before you code, the steps, hints, then the plan.
   // On a desktop the grid puts before you code and the plan in the right-hand column.
+  // The to-dos have a tab of their own, so the board holds only the task and where it sits.
   const board = h(
     'div',
     { class: `board${typeAlong ? ' typealong' : ''}` },
-    learnPanel(c),
+    learnPanel(c, learner ? 'Before you code' : 'Read more'),
     typeAlong ? typeAlongPanel(c, s) : stepsPanel(c),
     learner && !typeAlong ? hintsPanel(c) : null,
     planPanel(s),
-    todosPanel(s),
   );
   return { nodes: [head, ...turnView(s), board], bar: learner };
 }
@@ -702,11 +946,175 @@ async function continueOn(r, e) {
   const btn = /** @type {HTMLButtonElement} */ (e.currentTarget);
   btn.disabled = true;
   try {
-    render(await post('/api/continue', { task: r.task }));
+    const next = await post('/api/continue', { task: r.task });
+    withTransition(() => render(next));
   } catch (err) {
     btn.disabled = false;
     showToast(`Couldn't move on: ${/** @type {Error} */ (err).message}`, undefined, docOf(e));
   }
+}
+
+/**
+ * The explain-back questions, each with the learner's answer and Menitor's reply (C-6).
+ * @param {any[]} questions
+ */
+function explainList(questions) {
+  return h(
+    'ol',
+    { class: 'result-list' },
+    ...questions.map((/** @type {any} */ q) =>
+      h(
+        'li',
+        { class: 'result-item' },
+        h('p', { class: 'past-q' }, q.text),
+        q.answer ? h('p', { class: 'past-a' }, q.answer.text) : h('p', { class: 'empty' }, 'Answered in your session.'),
+        h('p', { class: `finding ${q.outcome === 'good' ? 'good' : ''}` }, q.outcome === 'good' ? 'Good answer' : 'Not quite yet'),
+        q.feedback ? h('p', { class: 'result-feedback', 'data-m': `fb:${q.id}` }, q.feedback) : null,
+      ),
+    ),
+  );
+}
+
+/** The finished task the learner opened from the plan, as the server sent it. */
+let finished = /** @type {{ id: string, data: any } | null} */ (null);
+
+/** Keep the open view in the address (a finished task, or the to-dos), so a reload shows it again. */
+function syncHash() {
+  const want = finished ? `#task=${finished.id}` : tab === 'todos' ? '#todos' : '';
+  if (location.hash === want) return;
+  try {
+    history.replaceState(null, '', want || `${location.pathname}${location.search}`);
+  } catch {
+    // Nothing to keep it in.
+  }
+}
+
+/**
+ * Open a finished task to look back on. Done tasks never change, so the window asks for one only
+ * when the learner opens it.
+ * @param {string} id
+ * @param {Event} [e]
+ */
+async function openFinished(id, e) {
+  try {
+    const res = await fetch(`/api/task?id=${encodeURIComponent(id)}`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+    const stepping = Boolean(finished);
+    const data = await res.json();
+    if (!state) {
+      finished = { id, data };
+      syncHash();
+      return;
+    }
+    withTransition(() => {
+      finished = { id, data };
+      syncHash();
+      render(state);
+      // Opened from the plan, the keyboard moves to the task; Previous and Next keep it where it is.
+      // Opened from a link, nothing was pressed, so focus stays put.
+      const doc = content.ownerDocument;
+      if (!e) return;
+      if (!stepping || !content.contains(doc.activeElement) || /** @type {HTMLButtonElement} */ (doc.activeElement).disabled) {
+        /** @type {HTMLElement | null} */ (content.querySelector('#title'))?.focus();
+      }
+    });
+  } catch (err) {
+    if (!finished) syncHash();
+    showToast(`Couldn't open that task: ${/** @type {Error} */ (err).message}`, undefined, docOf(e));
+  }
+}
+
+/** Back to where the learner was, with the keyboard on the task they had open. */
+function closeFinished() {
+  const id = finished?.id ?? '';
+  if (!state) {
+    finished = null;
+    syncHash();
+    return;
+  }
+  withTransition(() => {
+    finished = null;
+    syncHash();
+    render(state);
+    // Back on the cell or the list row it was opened from; a cell in a folded group isn't there, so the title.
+    const from = content.querySelector(`[data-key="cell:${CSS.escape(id)}"], [data-key="built:${CSS.escape(id)}"]`) ?? content.querySelector('#title');
+    /** @type {HTMLElement | null} */ (from)?.focus();
+  });
+}
+
+/** @param {any} t Who did a task, in words. */
+function whoDid(t) {
+  if (t.owner === 'learner') return 'Written by you';
+  return t.skipped ? 'You skipped it, so Menitor did it' : 'Done by Menitor';
+}
+
+/**
+ * A finished task, opened from the plan to look back on: who did it, its steps and fixes, the
+ * notes, the explanation and the hints opened. Nothing here can be changed.
+ * @param {any} s
+ * @param {any} t
+ */
+function finishedView(s, t) {
+  const learner = t.owner === 'learner';
+  const nav = h(
+    'nav',
+    { class: 'history-nav', 'aria-label': 'Finished tasks' },
+    h('button', { type: 'button', class: 'btn secondary small', 'data-key': 'history:back', onclick: closeFinished }, s.card && !s.result ? `Back to task ${s.card.number}` : 'Back'),
+    h('button', { type: 'button', class: 'btn ghost small', 'data-key': 'history:prev', 'aria-label': 'Previous finished task', disabled: !t.prev, onclick: (/** @type {Event} */ e) => t.prev && openFinished(t.prev, e) }, 'Previous'),
+    h('button', { type: 'button', class: 'btn ghost small', 'data-key': 'history:next', 'aria-label': 'Next finished task', disabled: !t.next, onclick: (/** @type {Event} */ e) => t.next && openFinished(t.next, e) }, 'Next'),
+  );
+  const head = h(
+    'header',
+    { class: 'head history-head' },
+    h(
+      'div',
+      { class: 'head-text' },
+      h('h1', { id: 'title', tabindex: '-1' }, t.goal),
+      h(
+        'p',
+        { class: 'status' },
+        h('span', { class: 'num' }, `Task ${t.number} of ${t.total} · ${t.milestone.title}`),
+        t.added ? h('span', { class: 'tag' }, 'Added') : null,
+        h('span', { class: 'finding good' }, t.passedAt ? `Passed ${day(t.passedAt)}` : 'Passed'),
+        h('span', null, whoDid(t)),
+      ),
+      h('p', { class: 'why' }, t.why),
+    ),
+    nav,
+  );
+  const fixes = t.checklist.filter((/** @type {any} */ i) => i.source === 'fix').length;
+  const steps = h(
+    'section',
+    { class: 'panel history-steps', 'aria-labelledby': 'steps-title' },
+    h('header', { class: 'panel-head' }, h('h2', { id: 'steps-title' }, 'Steps'), h('span', { class: 'count num' }, fixes ? `${plural(t.checklist.length, 'step')}, ${plural(fixes, 'fix', 'fixes')} after a check` : plural(t.checklist.length, 'step'))),
+    h('ol', { class: 'history-list' }, ...t.checklist.map((/** @type {any} */ i) => h('li', null, h('span', null, i.text), i.source === 'fix' ? h('span', { class: 'pill negative' }, 'Fix') : null))),
+    h('div', { class: 'done-when' }, h('h3', null, 'Done when'), h('ul', null, ...t.doneWhen.map((/** @type {string} */ d) => h('li', null, d)))),
+    t.note ? h('div', { class: 'history-note' }, h('h3', null, 'Note'), h('p', null, t.note)) : null,
+  );
+  const explain = learner
+    ? h(
+        'section',
+        { class: 'panel result', 'aria-labelledby': 'explain-title' },
+        h('header', { class: 'panel-head' }, h('h2', { id: 'explain-title' }, 'Your explanation')),
+        t.questions.length ? explainList(t.questions) : h('p', { class: 'empty' }, 'No explain-back questions on this task.'),
+        t.revisit.length ? h('p', { class: 'note' }, `To revisit: ${t.revisit.join(', ')}`) : null,
+      )
+    : null;
+  const opened = t.hints.rungs.filter((/** @type {any} */ r) => r.open && r.text);
+  const hints =
+    learner && t.hints.stored
+      ? h(
+          'section',
+          { class: 'panel history-hints', 'aria-labelledby': 'hints-title' },
+          h('header', { class: 'panel-head' }, h('h2', { id: 'hints-title' }, 'Hints'), h('span', { class: 'count num' }, `${t.hints.revealed} of ${t.hints.rungs.length} opened`)),
+          ...(opened.length
+            ? opened.map((/** @type {any} */ r) => h('div', { class: 'hint' }, h('h3', null, RUNGS[r.rung] ?? r.rung), CODE_RUNGS.has(r.rung) ? h('pre', null, h('code', null, r.text)) : h('p', null, r.text)))
+            : [h('p', { class: 'empty' }, 'You opened no hints on this task.')]),
+        )
+      : null;
+  const main = h('div', { class: 'history-main' }, steps, explain, hints);
+  const side = h('div', { class: 'history-side' }, learnPanel(t, 'Read more'), planPanel(s, { full: true }));
+  return { nodes: [head, h('div', { class: 'history-body' }, main, side)], bar: false };
 }
 
 /**
@@ -722,7 +1130,7 @@ function resultView(s) {
     h(
       'div',
       { class: 'head-text' },
-      h('h1', { id: 'title' }, r.goal),
+      h('h1', { id: 'title', tabindex: '-1' }, r.goal),
       h('p', { class: 'status' }, h('span', { class: 'num' }, `Task ${r.number} of ${s.total}`), h('span', { class: 'finding good' }, 'Passed')),
     ),
   );
@@ -730,20 +1138,7 @@ function resultView(s) {
     'section',
     { class: 'panel result', 'aria-labelledby': 'result-title' },
     h('header', { class: 'panel-head' }, h('h2', { id: 'result-title' }, 'Your explanation')),
-    h(
-      'ol',
-      { class: 'result-list' },
-      ...r.questions.map((/** @type {any} */ q) =>
-        h(
-          'li',
-          { class: 'result-item' },
-          h('p', { class: 'past-q' }, q.text),
-          q.answer ? h('p', { class: 'past-a' }, q.answer.text) : h('p', { class: 'empty' }, 'Answered in your session.'),
-          h('p', { class: `finding ${q.outcome === 'good' ? 'good' : ''}` }, q.outcome === 'good' ? 'Good answer' : 'Not quite yet'),
-          q.feedback ? h('p', { class: 'result-feedback' }, q.feedback) : null,
-        ),
-      ),
-    ),
+    explainList(r.questions),
   );
   const nextText = r.next ? `Task ${r.next.number} of ${s.total}: ${r.next.goal}` : 'That was the last task in your plan.';
   const next = callout(
@@ -1077,7 +1472,7 @@ function setupView(s) {
     h(
       'div',
       { class: 'head-text' },
-      h('h1', { id: 'title' }, 'Setup'),
+      h('h1', { id: 'title', tabindex: '-1' }, 'Setup'),
       h('p', { class: 'status' }, h('span', { class: 'num' }, `${saved} of ${su.steps.length} answers saved`)),
       h('p', { class: 'why' }, 'Menitor is getting to know you and your idea. Each answer is saved as you give it, so nothing is lost if the session closes.'),
     ),
@@ -1095,6 +1490,15 @@ function setupView(s) {
             { class: 'panel', 'aria-labelledby': 'setup-wait-title' },
             h('header', { class: 'panel-head' }, h('h2', { id: 'setup-wait-title' }, 'In your session')),
             h('p', null, 'Menitor is asking its questions in your coding session. The warm-up shows up here when it starts.'),
+            // What they have said so far, in their own words: proof it was heard and saved.
+            su.told?.length
+              ? h(
+                  'div',
+                  { class: 'told' },
+                  h('h3', null, 'What you have told Menitor'),
+                  h('dl', null, ...su.told.flatMap((/** @type {any} */ x) => [h('dt', null, x.label), h('dd', { 'data-m': `told:${x.key}` }, x.value)])),
+                )
+              : null,
           ),
         ]),
   );
@@ -1102,7 +1506,7 @@ function setupView(s) {
     'section',
     { class: 'panel setup-steps', 'aria-labelledby': 'setup-steps-title' },
     h('header', { class: 'panel-head' }, h('h2', { id: 'setup-steps-title' }, 'Setup so far')),
-    h('ol', { class: 'setup-list' }, ...su.steps.map((/** @type {any} */ x) => h('li', { class: x.done ? 'done' : '' }, h('span', null, x.label), h('span', { class: 'setup-mark' }, x.done ? 'Saved' : 'Not yet')))),
+    h('ol', { class: 'setup-list' }, ...su.steps.map((/** @type {any} */ x) => h('li', { class: x.done ? 'done' : '', 'data-m': `setup:${x.key}` }, h('span', null, x.label), h('span', { class: 'setup-mark' }, x.done ? 'Saved' : 'Not yet')))),
   );
   return { nodes: [head, h('div', { class: 'setup-body' }, main, steps)], bar: false };
 }
@@ -1189,12 +1593,71 @@ function planTodoButton(s, t) {
   );
 }
 
+/** The to-do just deleted, kept for a few seconds so a slip can be undone where it happened. */
+let undoTodo = /** @type {{ text: string, done: boolean, index: number, timer: ReturnType<typeof setTimeout> } | null} */ (null);
+const UNDO_MS = 8000;
+
+/**
+ * Delete a to-do, and offer to bring it back in its place for a few seconds.
+ * @param {any} t
+ * @param {number} index its place in the list on screen
+ * @param {Event} e
+ */
+async function deleteTodo(t, index, e) {
+  try {
+    const next = await post('/api/todo', { action: 'delete', id: t.id });
+    if (undoTodo) clearTimeout(undoTodo.timer);
+    undoTodo = {
+      text: t.text,
+      done: t.done,
+      index,
+      timer: setTimeout(() => {
+        undoTodo = null;
+        if (state) render(state);
+      }, UNDO_MS),
+    };
+    mark('todo-undo', 'm-arrive', 320);
+    render(next);
+    /** @type {HTMLElement | null} */ (content.querySelector('[data-key="todo-undo"]'))?.focus();
+  } catch (err) {
+    showToast(`That didn't save: ${/** @type {Error} */ (err).message}`, undefined, docOf(e));
+  }
+}
+
+/** @param {Event} e Bring the deleted to-do back, ticked if it was. */
+async function undoDelete(e) {
+  const u = undoTodo;
+  if (!u) return;
+  clearTimeout(u.timer);
+  undoTodo = null;
+  try {
+    let next = await post('/api/todo', { action: 'add', text: u.text });
+    const back = next.todos?.at(-1);
+    if (u.done && back) next = await post('/api/todo', { action: 'tick', id: back.id, done: true });
+    render(next);
+    if (back) /** @type {HTMLElement | null} */ (content.querySelector(`[data-key="todo-tick:${CSS.escape(back.id)}"]`))?.focus();
+  } catch (err) {
+    showToast(`Couldn't bring it back: ${/** @type {Error} */ (err).message}`, undefined, docOf(e));
+  }
+}
+
+/** @param {{ text: string }} u Where a deleted to-do was, with Undo. */
+function undoRow(u) {
+  return h(
+    'li',
+    { class: 'todo undo', 'data-m': 'todo-undo' },
+    h('p', { class: 'todo-text' }, `Deleted “${u.text}”`),
+    h('div', { class: 'todo-actions' }, h('button', { type: 'button', class: 'btn ghost small', 'data-key': 'todo-undo', onclick: undoDelete }, 'Undo')),
+  );
+}
+
 /**
  * One to-do: a box to tick, its text, and Add to plan, Edit and Delete. Editing swaps the text for
  * a field. A to-do the plan took says where it went.
  * @param {any} t
+ * @param {number} index
  */
-function todoRow(t) {
+function todoRow(t, index) {
   if (editingTodo === t.id) {
     const field = /** @type {HTMLInputElement} */ (h('input', { type: 'text', id: `todo-edit-${t.id}`, maxlength: 500, 'data-key': `todo-edit:${t.id}` }));
     field.value = drafts.get(`todo-edit:${t.id}`) ?? t.text;
@@ -1211,7 +1674,13 @@ function todoRow(t) {
       editingTodo = null;
       drafts.delete(`todo-edit:${t.id}`);
       render(state);
+      /** @type {HTMLElement | null} */ (content.querySelector(`[data-key="todo-edit-btn:${CSS.escape(t.id)}"]`))?.focus();
     };
+    field.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      cancel();
+    });
     return h(
       'li',
       { class: 'todo editing' },
@@ -1227,21 +1696,21 @@ function todoRow(t) {
   }
   return h(
     'li',
-    { class: `todo${t.done ? ' done' : ''}` },
+    { class: `todo${t.done ? ' done' : ''}`, 'data-m': `todo:${t.id}` },
     h('input', { type: 'checkbox', id: `todo-${t.id}`, checked: t.done, 'data-key': `todo-tick:${t.id}`, onchange: (/** @type {Event} */ e) => todoAction({ action: 'tick', id: t.id, done: /** @type {HTMLInputElement} */ (e.target).checked }, e) }),
     h('label', { class: 'todo-text', for: `todo-${t.id}` }, t.text),
     h(
       'div',
       { class: 'todo-actions' },
-      t.planned ? h('span', { class: 'todo-planned' }, plannedAs(state, t.planned.to)) : t.done ? null : planTodoButton(state, t),
+      t.planned ? h('span', { class: 'todo-planned', 'data-m': `planned:${t.id}` }, plannedAs(state, t.planned.to)) : t.done ? null : planTodoButton(state, t),
       h('button', { type: 'button', class: 'btn ghost small', 'data-key': `todo-edit-btn:${t.id}`, 'aria-label': `Edit: ${t.text}`, onclick: () => ((editingTodo = t.id), render(state)) }, 'Edit'),
-      h('button', { type: 'button', class: 'btn ghost small', 'aria-label': `Delete: ${t.text}`, onclick: (/** @type {Event} */ e) => todoAction({ action: 'delete', id: t.id }, e) }, 'Delete'),
+      h('button', { type: 'button', class: 'btn ghost small', 'aria-label': `Delete: ${t.text}`, onclick: (/** @type {Event} */ e) => deleteTodo(t, index, e) }, 'Delete'),
     ),
   );
 }
 
 /**
- * The learner's to-dos: ideas, features and changes to come back to, saved in the window.
+ * The learner's to-do list: a field to add one, then the open to-dos and the done ones.
  * @param {any} s
  */
 function todosPanel(s) {
@@ -1257,15 +1726,36 @@ function todosPanel(s) {
     drafts.delete('todo:new');
     todoAction({ action: 'add', text }, e);
   };
+  const rows = [...open, ...todos.filter((t) => t.done)].map(todoRow);
+  if (undoTodo) rows.splice(Math.min(undoTodo.index, rows.length), 0, undoRow(undoTodo));
   return h(
     'section',
     { class: 'panel todos', 'aria-labelledby': 'todos-title' },
-    h('header', { class: 'panel-head' }, h('h2', { id: 'todos-title' }, 'To-dos'), h('span', { class: 'count num' }, todos.length ? `${open.length} open` : '')),
-    h('form', { class: 'todo-form', onsubmit: add }, h('label', { class: 'sr-only', for: 'todo-new' }, 'New to-do'), field, h('button', { type: 'submit', class: 'btn secondary small' }, 'Add')),
-    todos.length
-      ? h('ul', { class: 'todo-list' }, ...[...open, ...todos.filter((t) => t.done)].map(todoRow))
-      : h('p', { class: 'empty' }, 'Jot down ideas, features and changes to come back to. They stay here between sessions.'),
+    h('header', { class: 'panel-head' }, h('h2', { id: 'todos-title' }, 'Your list')),
+    h('form', { class: 'todo-form', onsubmit: add }, h('label', { class: 'field-label', for: 'todo-new' }, 'New to-do'), field, h('button', { type: 'submit', class: 'btn secondary small' }, 'Add')),
+    rows.length ? h('ul', { class: 'todo-list' }, ...rows) : h('p', { class: 'empty' }, 'Nothing here yet. Jot down an idea, a feature or a change, and send it to the plan when you are ready.'),
   );
+}
+
+/**
+ * The to-dos on a page of their own, beside the plan they can join.
+ * @param {any} s
+ */
+function todosView(s) {
+  const todos = /** @type {any[]} */ (s.todos ?? []);
+  const open = todos.filter((t) => !t.done).length;
+  const head = h(
+    'header',
+    { class: 'head' },
+    h(
+      'div',
+      { class: 'head-text' },
+      h('h1', { id: 'title', tabindex: '-1' }, 'To-dos'),
+      todos.length ? h('p', { class: 'status' }, h('span', { class: 'num' }, `${open} open · ${todos.length - open} done`)) : null,
+      h('p', { class: 'why' }, 'Ideas, features and changes to come back to. They stay here between sessions.'),
+    ),
+  );
+  return { nodes: [head, h('div', { class: 'todos-body' }, todosPanel(s), s.milestones?.length ? planPanel(s) : null)], bar: false };
 }
 
 /** @param {string} iso A short date, such as "Nov 6". */
@@ -1298,7 +1788,7 @@ function finishView(s) {
     h(
       'div',
       { class: 'head-text' },
-      h('h1', { id: 'title' }, `${s.project ?? 'Your project'} is done`),
+      h('h1', { id: 'title', tabindex: '-1' }, `${s.project ?? 'Your project'} is done`),
       h('p', { class: 'why' }, `Every task in your plan passed: ${plural(s.total, 'task')} in ${plural(s.milestones.length, 'milestone')}${span ? `, ${span}` : ''}.`),
     ),
   );
@@ -1335,12 +1825,12 @@ function finishView(s) {
         h(
           'ol',
           { class: 'built-list' },
-          ...m.tasks.map((/** @type {any} */ t) => h('li', null, h('span', null, t.goal), h('span', { class: 'built-by' }, t.by === 'learner' ? 'You' : t.skipped ? 'Menitor, skipped' : 'Menitor'))),
+          ...m.tasks.map((/** @type {any} */ t) => h('li', null, h('button', { type: 'button', class: 'built-open', 'data-key': `built:${t.id}`, onclick: (/** @type {Event} */ e) => openFinished(t.id, e) }, t.goal), h('span', { class: 'built-by' }, t.by === 'learner' ? 'You' : t.skipped ? 'Menitor, skipped' : 'Menitor'))),
         ),
       ),
     ),
   );
-  return { nodes: [head, field, h('div', { class: 'finish-body' }, built, planPanel(s), todosPanel(s))], bar: false };
+  return { nodes: [head, field, h('div', { class: 'finish-body' }, built, planPanel(s, { full: true }))], bar: false };
 }
 
 /** @param {any} s */
@@ -1423,10 +1913,80 @@ function announceChanges(prev, s) {
   else if (s.card.checklist.length > prev.card.checklist.length) announce(`${plural(s.card.checklist.length - prev.card.checklist.length, 'fix', 'fixes')} added to the steps`);
 }
 
+/**
+ * Something on the main screen the learner should see while they're on another tab: Menitor's
+ * feedback, a question, something Menitor waits on, or a press it has finished.
+ * @param {any} s
+ */
+function mainNeedsYou(s) {
+  if (!s?.ok) return false;
+  if (s.result || s.waiting || s.skipRequested || openQuestion(s)) return true;
+  const p = pressOf(s);
+  return Boolean(p && p.type !== 'add' && p.state === 'done' && p.doneAt && Date.now() - Date.parse(p.doneAt) < DONE_SHOWN_MS);
+}
+
+/** The tab bar as last drawn, so a live update that changes nothing in it leaves it alone. */
+let tabsKey = '';
+
+/**
+ * The tabs in the top bar: the main screen, named for what it shows, and the to-do list with how
+ * many are open.
+ * @param {any} s
+ */
+function renderTabs(s) {
+  if (!s?.ok) {
+    tabsNav.hidden = true;
+    tabsKey = '';
+    return;
+  }
+  const mainLabel = s.phase === 'task' ? 'Task' : s.phase === 'done' ? 'Summary' : 'Setup';
+  const open = (s.todos ?? []).filter((/** @type {any} */ t) => !t.done).length;
+  const dot = tab !== 'main' && mainNeedsYou(s);
+  const key = [mainLabel, open, dot, tab].join('|');
+  if (key === tabsKey && !tabsNav.hidden) return;
+  tabsKey = key;
+  /** @param {'main' | 'todos'} which @param {string} label @param {number} count @param {boolean} attention */
+  const button = (which, label, count, attention) =>
+    h(
+      'button',
+      { type: 'button', class: 'tab', 'data-key': `tab:${which}`, 'aria-current': tab === which ? 'page' : undefined, onclick: () => switchTab(which) },
+      tab === which ? h('span', { class: 'tab-pill', 'aria-hidden': 'true' }) : null,
+      // The words in one box over the pill, so the pill can glide beneath them.
+      h(
+        'span',
+        { class: 'tab-text' },
+        h('span', null, label),
+        count ? h('span', { class: 'tab-count num' }, String(count), h('span', { class: 'sr-only' }, ' open')) : null,
+        attention ? h('span', { class: 'tab-dot', 'aria-hidden': 'true' }) : null,
+        attention ? h('span', { class: 'sr-only' }, ', needs you') : null,
+      ),
+    );
+  tabsNav.replaceChildren(button('main', mainLabel, 0, dot), button('todos', 'To-dos', open, false));
+  tabsNav.hidden = false;
+}
+
+/**
+ * Go to the other tab. Each tab keeps its own scroll position, and leaving closes a finished task.
+ * @param {'main' | 'todos'} next
+ */
+function switchTab(next) {
+  if (tab === next && !finished) return;
+  const win = content.ownerDocument.defaultView ?? window;
+  scrollByTab[tab] = win.scrollY;
+  withTransition(() => {
+    tab = next;
+    finished = null;
+    syncHash();
+    if (state) render(state);
+    win.scrollTo(0, scrollByTab[next] ?? 0);
+  });
+}
+
 /** @param {any} s */
 function render(s) {
   const prev = state;
   state = s;
+  markChanges(prev, s);
   // Keep the keyboard where it was: a tick re-renders the card.
   const doc = app.ownerDocument;
   const active = /** @type {HTMLElement | null} */ (doc.activeElement);
@@ -1437,6 +1997,8 @@ function render(s) {
   if (!s.ok && s.stale) {
     view = problemView('This window is out of date', 'Menitor was updated after this window started, so it reads your plan with old rules. Ask your coding session to open the window again.');
   } else if (!s.ok) view = problemView("Menitor's state has a problem", `${s.error} Ask your coding session to validate Menitor's state and fix it.`);
+  else if (finished) view = finishedView(s, finished.data);
+  else if (tab === 'todos') view = todosView(s);
   else if (s.result) view = resultView(s);
   else if (s.phase === 'task' && s.card) view = taskView(s);
   else if (s.phase === 'done' && s.finish) view = finishView(s);
@@ -1445,12 +2007,25 @@ function render(s) {
 
   const notice = s.ok && s.mentorMode === 'off' ? h('p', { class: 'notice', role: 'status' }, 'Mentor mode is off, so the agent may write code anywhere.') : null;
   content.replaceChildren(...(notice ? [notice] : []), ...view.nodes);
+  applyMotion(content);
   sheet.classList.toggle('has-bar', view.bar);
 
-  $('project').textContent = s.project ?? 'Your project';
-  doc.title = s.result ? `Passed · ${s.result.goal}` : s.card ? `${s.card.number}/${s.card.total} · ${s.card.goal}` : s.finish ? `${s.project ?? 'Your project'} is done` : 'Menitor';
+  projectName.textContent = s.project ?? 'Your project';
+  renderTabs(s);
+  doc.title =
+    finished && s.ok
+      ? `Task ${finished.data.number} · ${finished.data.goal}`
+      : tab === 'todos' && s.ok
+        ? `To-dos · ${s.project ?? 'Menitor'}`
+        : s.result
+          ? `Passed · ${s.result.goal}`
+          : s.card
+            ? `${s.card.number}/${s.card.total} · ${s.card.goal}`
+            : s.finish
+              ? `${s.project ?? 'Your project'} is done`
+              : 'Menitor';
   if (focusKey) {
-    const again = /** @type {HTMLElement | null} */ (content.querySelector(`[data-key="${CSS.escape(focusKey)}"]`));
+    const again = /** @type {HTMLElement | null} */ (app.querySelector(`[data-key="${CSS.escape(focusKey)}"]`));
     again?.focus({ preventScroll: true });
     if (caret && again && 'setSelectionRange' in again) /** @type {HTMLTextAreaElement} */ (again).setSelectionRange(caret[0], caret[1]);
   }
@@ -1473,7 +2048,9 @@ function connect() {
   const events = new EventSource('/api/events');
   events.addEventListener('state', (e) => {
     setLive('live');
-    render(JSON.parse(/** @type {MessageEvent} */ (e).data));
+    const next = JSON.parse(/** @type {MessageEvent} */ (e).data);
+    if (state && viewKey(next) !== viewKey(state)) withTransition(() => render(next));
+    else render(next);
   });
   events.addEventListener('error', async () => {
     setLive('lost');
@@ -1534,9 +2111,16 @@ function setupPopout() {
 
 guardDocumentCopy(document);
 setupPopout();
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && finished && !e.defaultPrevented) closeFinished();
+});
+const finishedInLink = /^#task=([a-z][a-z0-9-]{0,31})$/.exec(location.hash)?.[1];
+if (finishedInLink) openFinished(finishedInLink);
 // A press's words change with time alone: "done" fades back to the usual line, and a press this
 // page sent stops showing if the server never saw it. Re-render only when the line would change.
 setInterval(() => {
+  // The dot on the Task tab fades with the press it marks; the tabs redraw only if it changed.
+  if (state?.ok) renderTabs(state);
   if (!state?.ok || !state.card || state.result) return;
   const shown = content.querySelector('.actions .how')?.textContent;
   if (shown !== undefined && shown !== pressLine(state).text) render(state);

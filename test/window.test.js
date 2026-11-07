@@ -216,14 +216,66 @@ test('a finished plan gets its summary from real figures, and an added task brin
   }
 });
 
+test('a finished task opens with its card, who did it, its notes, fixes and answers', async () => {
+  const { root, paths, cleanup } = approvedProject();
+  const { win, port, auth, post } = await serve(root);
+  /** @param {string} p */
+  const get = (p) => request(port, { path: p, headers: auth });
+  try {
+    assert.equal((await get('/api/task?id=t1')).status, 404, 'not finished yet');
+    cli(root, ['task', 'fix', 'Escape the page title']);
+    cli(root, ['question', 'ask', 'Why does the page need its own route?']);
+    const q = windowState(paths, { commands: {} }).questions[0].id;
+    assert.equal((await post('/api/answer', { question: q, text: 'So the home page has one place to grow.' })).status, 200);
+    cli(root, ['question', 'judge', 'good', '--feedback', 'Right: one route per page keeps them apart.']);
+    assert.equal(cli(root, ['task', 'pass', '--override', 'no build in tests', '--revisit', 'Routing']).code, 0);
+    assert.equal(cli(root, ['task', 'pass', '--override', 'no host in tests', '--note', 'Deployed to the host.']).code, 0);
+
+    const r = await get('/api/task?id=t1');
+    assert.equal(r.status, 200, r.body);
+    const t1 = JSON.parse(r.body);
+    assert.equal(t1.goal, 'Show a hello page');
+    assert.equal(t1.number, 1);
+    assert.equal(t1.owner, 'learner');
+    assert.ok(t1.passedAt);
+    assert.deepEqual(
+      t1.checklist.filter((/** @type {any} */ i) => i.source === 'fix').map((/** @type {any} */ i) => i.text),
+      ['Escape the page title'],
+    );
+    assert.deepEqual(
+      t1.questions.map((/** @type {any} */ x) => [x.text, x.answer?.text, x.outcome, x.feedback]),
+      [['Why does the page need its own route?', 'So the home page has one place to grow.', 'good', 'Right: one route per page keeps them apart.']],
+    );
+    assert.deepEqual(t1.revisit, ['Routing']);
+    assert.match(t1.note, /Passed without a clean check: no build in tests/);
+    assert.deepEqual([t1.prev, t1.next], [null, 't2'], 'steps through the finished tasks in plan order');
+
+    const t2 = JSON.parse((await get('/api/task?id=t2')).body);
+    assert.equal(t2.owner, 'delegated');
+    assert.match(t2.note, /Deployed to the host\./);
+    assert.deepEqual(t2.questions, []);
+    assert.deepEqual([t2.prev, t2.next], ['t1', null]);
+
+    assert.equal((await get('/api/task?id=t3')).status, 404, 'the current task is on its own card');
+    assert.equal((await get('/api/task?id=nope')).status, 404);
+    assert.equal((await get('/api/task')).status, 400);
+    assert.equal((await request(port, { path: '/api/task?id=t1' })).status, 401, 'needs the token like the rest');
+  } finally {
+    await win.close();
+    cleanup();
+  }
+});
+
 test('the page has a view for every screen the server sends', () => {
   // Merges have dropped a branch of render() before; the server tests can't see that.
   const app = fs.readFileSync(new URL('../core/server/page/app.js', import.meta.url), 'utf8');
   const chain = /function render\(s\) \{[\s\S]*?content\.replaceChildren/.exec(app)?.[0] ?? '';
-  for (const view of ['problemView', 'resultView', 'taskView', 'finishView', 'setupView', 'messageView']) {
+  for (const view of ['problemView', 'finishedView', 'todosView', 'resultView', 'taskView', 'finishView', 'setupView', 'messageView']) {
     assert.match(chain, new RegExp(`view = ${view}\\(`), `render() shows ${view}`);
   }
   assert.ok(chain.indexOf('resultView(') < chain.indexOf('taskView('), 'a passed result shows before the next card');
+  assert.ok(chain.indexOf('finishedView(') < chain.indexOf('resultView('), 'a finished task the learner opened shows over the rest');
+  assert.ok(chain.indexOf('todosView(') < chain.indexOf('resultView('), 'the to-dos tab shows whatever the main screen holds');
 });
 
 test('a press shows as sent, then working, then done; a second press meanwhile sends nothing', async () => {
@@ -285,6 +337,7 @@ test('setup runs the warm-up in the window, and the answer reaches setup show as
     assert.equal(s.phase, 'no-plan');
     assert.deepEqual(s.setup.steps.slice(0, 2), [{ key: 'idea', label: 'Idea', done: true }, { key: 'goal', label: 'Goal', done: false }]);
     assert.equal(s.setup.warmup, null, 'no warm-up yet');
+    assert.deepEqual(s.setup.told, [{ key: 'idea', label: 'Idea', value: 'A recipe box' }], 'the interview answers so far, shown back in the window');
 
     // The agent writes the exercise; the window shows it as text blocks.
     fs.mkdirSync(path.join(paths.dir, 'warmup'), { recursive: true });

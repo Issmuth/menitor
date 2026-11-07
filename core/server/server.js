@@ -9,7 +9,7 @@ import { statePaths } from '../lib/paths.js';
 import { setupStatus, statusData, todoList } from '../lib/ops.js';
 import { PRD_SECTIONS, SETUP_STEPS } from '../lib/setup.js';
 import { cardData } from '../lib/card.js';
-import { findTask } from '../lib/plan.js';
+import { allTasks, findTask } from '../lib/plan.js';
 import { loadAnswers, loadGuard, loadPlan, loadProgress, loadSession, loadSolutions, loadTodos, saveAnswers, saveProgress, saveTodos } from '../lib/state.js';
 import { deliverToListener, liveListener, pressState, readInbox } from '../lib/inbox.js';
 import { codeFingerprint } from '../lib/fingerprint.js';
@@ -40,6 +40,8 @@ const SETUP_WINDOW_KEYS = {
   ...Object.fromEntries(PRD_SECTIONS.map((p) => [`prd-${p.key}`, (/** @type {string} */ _text, /** @type {import('../lib/setup.js').SetupStatus} */ s) => (s.options.prd ? null : [409, 'The PRD draft is not open yet.'])])),
 };
 const MAX_WARMUP = 12000;
+/** The interview answers the window shows back while Menitor asks the rest: the learner's own words. */
+const TOLD = ['idea', 'goal', 'time', 'experience', 'stack'];
 const MAX_TODO = 500;
 const MAX_TODOS = 200;
 const COMMAND_KEYS = ['start', 'go', 'check', 'hint', 'stuck', 'skip', 'add'];
@@ -207,6 +209,7 @@ export function setupWindow(paths) {
   return {
     prd,
     steps: SETUP_STEPS.map((s) => ({ key: s.key, label: s.label, done: Boolean(answer(s.key)) })),
+    told: SETUP_STEPS.filter((s) => TOLD.includes(s.key) && answer(s.key)).map((s) => ({ key: s.key, label: s.label, value: /** @type {{ value: string }} */ (answer(s.key)).value })),
     warmup: exercise || question ? { exercise, question: question?.value ?? null, answer: reply ? { text: reply.value, at: reply.at } : null } : null,
     choices:
       stack || focus
@@ -234,6 +237,33 @@ export function finishOf(paths, plan) {
     hints: events.filter((e) => e.event === 'hint').length,
     explained: stats.explainBack.detail,
     deployUrl: plan.project.deployUrl ?? null,
+  };
+}
+
+/**
+ * A finished task to look back on: its card, who did it, its notes and fixes, the hints opened, the
+ * concepts to revisit and the explain-back with the learner's answers. Done tasks never change, so
+ * the window asks for one when the learner opens it instead of sending them all with every update.
+ * Null when there is no such finished task.
+ * @param {StatePaths} paths
+ * @param {string} id
+ */
+export function finishedTask(paths, id) {
+  const plan = loadPlan(paths);
+  if (!plan) return null;
+  const done = allTasks(plan).filter((e) => e.task.status === 'done');
+  const at = done.findIndex((e) => e.task.id === id);
+  if (at < 0) return null;
+  const card = cardData(plan, id, loadProgress(paths));
+  const answers = loadAnswers(paths).answers;
+  const events = parseLog(fs.existsSync(paths.log) ? fs.readFileSync(paths.log, 'utf8') : '').filter((e) => e.fields.task === id);
+  return {
+    ...card,
+    passedAt: done[at].task.passedAt ?? null,
+    questions: (loadSession(paths).tasks[id]?.questions ?? []).map((q) => ({ ...q, answer: answers[q.id] ?? null })),
+    revisit: events.filter((e) => e.event === 'revisit').map((e) => e.fields.concept),
+    prev: done[at - 1]?.task.id ?? null,
+    next: done[at + 1]?.task.id ?? null,
   };
 }
 
@@ -482,6 +512,17 @@ export function createWindowServer(root, options = {}) {
         return send(res, 200, /** @type {Buffer} */ (files.get(asset.file)), headers);
       }
       if (url.pathname === '/api/state') return send(res, 200, stateJson(), { 'Content-Type': 'application/json; charset=utf-8' });
+      if (url.pathname === '/api/task') {
+        const id = url.searchParams.get('id');
+        if (!id) return send(res, 400, 'Say which task.');
+        let found = null;
+        try {
+          found = finishedTask(paths, id);
+        } catch (err) {
+          return send(res, 500, /** @type {Error} */ (err).message);
+        }
+        return found ? sendJson(res, 200, found) : send(res, 404, 'Only a finished task opens here.');
+      }
       if (url.pathname === '/api/ping') return sendJson(res, 200, { ok: true, root, pid: process.pid, code });
       if (url.pathname === '/api/events') {
         res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'text/event-stream; charset=utf-8', Connection: 'keep-alive' });

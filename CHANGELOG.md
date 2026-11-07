@@ -7,6 +7,11 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
 ### Added
 
 - **What each command costs in context.** `npm run context-cost` measures the skill text, hook context and first CLI output of every command, the same way for all, and what every session loads. The baseline is in [docs/context-cost.md](docs/context-cost.md).
+- **Setup shows your answers back.** While Menitor asks its questions, the window shows what you've told it so far, in your own words.
+- **Quiet motion for each action.** A tick settles in and draws its check, a new hint fills its rung, fixes, replies and to-dos rise into place, a pass fills its cell in the plan and rings the next one, and folded milestones drop in as they open. Changing tabs or screens fades through, with the open tab's pill gliding across. Everything is still with reduced motion.
+- **To-dos have a tab of their own,** beside **Task** in the top bar, so the task screen holds only the task. A dot on the Task tab says when something there needs you. A deleted to-do can be brought back with **Undo** for a few seconds.
+- **The plan card keeps its size.** Finished milestones fold into one row and the ones still to come into another, each still showing every task as a small cell. Select a folded row to open it.
+- **A new mark.** Menitor's egg-and-petals logo replaces the M in the window's top bar, the browser tab and the plugin icon, in three colourways (`logo/`). The window's accent moves to the mark's teal.
 - **Type-along mode** (`/menitor:typealong`, learner-only):
   - each step in the window opens to plain instructions and the full code for that step, with line numbers;
   - the code can't be selected or copied there, so the learner types it by hand;
@@ -16,6 +21,7 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
 - A `typealong` scenario in the sample project.
 - **The window opens with the session.** When a session starts on a task, the window opens by itself, and the session already has its link. Set `MENITOR_WINDOW_AUTOSTART=0` to turn it off.
 - **A to-do list in the window.** Jot down ideas, features and changes to come back to, and add, edit, tick or delete them. They're saved in `.menitor/todos.json` and stay between sessions. On a desktop the hints and the to-dos share the last row.
+- **Look back on any finished task.** Select a finished task in the plan, or in the finish screen's list, to open it. It shows who did it, its steps and fixes, Menitor's note, your explanation with Menitor's replies, and the hints you opened. **Previous** and **Next** step through the finished tasks, and **Back** or Escape returns to where you were.
 - **Send a to-do into the plan with one button.** **Add to plan** on an open to-do starts `/menitor:add` on it. Only the to-do's ID reaches the session, which reads the text with `menitor todos show`. Once it lands, the to-do says where it went, such as "In the plan as task 6". With no session listening, the button copies `/menitor:add` with the to-do's text.
 - **Draft the core of your PRD in the window.** A box each for the problem, the users and the must-have features, saved as you type. **Send for feedback** wakes your session, and Menitor's feedback appears under each section, marked once you revise after it.
 - **Choose your stack and focus areas in the window.** Menitor offers one to three stacks side by side, each with its reasons and hosting, and the focus areas as checkboxes. Each pick is saved the moment you make it, and **Confirm choices** tells your session.
