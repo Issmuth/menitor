@@ -1,0 +1,90 @@
+# What each command costs in context
+
+This is the baseline for milestone 8. Later changes are measured against it the same way.
+
+## How it is measured
+
+`npm run context-cost` runs `adapters/claude-code/context-cost.js`. For each command, it builds a fresh sample project with `examples/sample/create.js`. Then it adds up the text the agent receives on a typical run:
+
+- **Skill:** the skill body that loads when the command runs, without its frontmatter.
+- **Hook:** the context a hook adds when the learner types the command (on, off, skip and type-along).
+- **CLI output:** what the skill's first CLI calls print, before the real work starts. For example, `go` reads `status` and `task brief`.
+
+Text that loads in every session is counted once, on its own: the session-start context, the description of every skill, and the wait tool with its instructions.
+
+Tokens are estimated as characters divided by 4, rounded up. The estimate is the same for every row, so rows compare fairly. `--json` prints the same numbers as data.
+
+Two rows are lower bounds. `start` counts only its opening reads; the interview then runs over many turns. `check` includes the diff of the sample task, so it grows with the learner's change.
+
+## Baseline (November 2026, v1 at 0.1.0)
+
+| Command | Skill | Hook | CLI output | Total |
+| --- | ---: | ---: | ---: | ---: |
+| /menitor:start | 3110 | 0 | 65 | 3175 |
+| /menitor:go | 1051 | 0 | 344 | 1395 |
+| /menitor:hint | 340 | 0 | 42 | 382 |
+| /menitor:stuck | 413 | 0 | 45 | 458 |
+| /menitor:check | 1537 | 0 | 623 | 2160 |
+| /menitor:skip | 403 | 99 | 31 | 533 |
+| /menitor:on | 171 | 9 | 244 | 424 |
+| /menitor:off | 264 | 108 | 72 | 444 |
+| /menitor:typealong | 697 | 124 | 295 | 1116 |
+| /menitor:add | 1066 | 0 | 378 | 1444 |
+
+| Every session | Tokens |
+| --- | ---: |
+| Session-start context | 883 |
+| Skill descriptions | 430 |
+| Wait tool and its instructions | 300 |
+| Total | 1613 |
+
+## What it shows
+
+- **The skill text is most of every command.** Only `on` reads more from the CLI than from its skill.
+- **`start` and `check` cost the most per run,** at about 3,200 and 2,200 tokens.
+- **`go` is the command run most, at about 1,400 tokens.** Most of that is the skill, which covers cases a typical run never meets.
+- **Every session starts at about 1,600 tokens,** over half of it the session-start context with the current card.
+
+Task t29 makes on, off and go nearly free. Task t30 trims the session-start context and the CLI output read most.
+
+## After t29: on, off and go
+
+| Command | Baseline | Now | Share of baseline |
+| --- | ---: | ---: | ---: |
+| /menitor:go | 1395 | 666 | 48% |
+| /menitor:on | 424 | 138 | 33% |
+| /menitor:off | 444 | 186 | 42% |
+
+- **go** is one CLI call, `menitor go`. It opens the window and prints the brief and the git changes since the task started. Then it prints only the next steps that apply: hints for a new milestone, type-along code, Menitor's own task, or the learner's card. The skill shrank from 1,051 to 239 tokens. The old run also made window and git calls the baseline did not count, so the real saving is larger.
+- **on** and **off** no longer run the CLI. The hook already records the change, so its note says what to tell the learner, and each skill is one short paragraph.
+
+## After t30: the session start and the busiest output
+
+| What | Baseline | Now | Cut |
+| --- | ---: | ---: | ---: |
+| Session-start context | 883 | 705 | 20% |
+| Every session, in all | 1613 | 1435 | 11% |
+| CLI output of /menitor:check | 623 | 610 | 2% |
+| CLI output of /menitor:go | 427 | 421 | 1% |
+
+- **The session start** names the CLI once, as `menitor`, instead of printing its full path four times. The two rules that repeated the wait tool's own instructions are one line now. The status leaves out the milestone list and the current task, since the card below names the task and `plan show` lists the milestones. The sample plan has two milestones, so a longer plan saves more: one line per milestone.
+- **The brief** no longer names the doc twice: the card's Docs line names it, and only its section follows. Every skill that reads the brief, including `go`, gets this.
+- **The diff** in `check run` leaves out git's index lines, which hold only blob hashes and file modes.
+
+No rule, step or fact was dropped: each cut is a repeat or a line that says nothing to the agent.
+
+## After t33: briefs and checks read through the graph
+
+Measured with `task brief` for every task and `check run --no-commands` on the task in progress, v1's CLI against this branch's, on the same projects. A check is counted as its output plus what the review reads beyond it. Before, that is each changed file whole; now, only the lines the review map lists.
+
+| What | Baseline | Now | Change |
+| --- | ---: | ---: | ---: |
+| This repo: briefs for all 35 tasks | 27,231 | 20,189 | 26% less (778 to 577 per task) |
+| This repo: a check, with its review reads (8 changed files) | 45,137 | 8,851 | 80% less |
+| Sample project: briefs for all 5 tasks | 1,186 | 1,186 | the same |
+| Sample project: a check, with its review reads (1 small file) | 468 | 489 | 4% more |
+
+- **The brief** folds a doc section over 1,500 characters: it keeps the opening, up to the first subsection or about 1,200 characters, and lists the rest with line numbers and sizes. `menitor graph section <link>` prints a part when the task needs it. Short sections come whole, as before.
+- **The check** adds a review map: the lines each change covers, the files that import a changed file, and the doc sections naming it. The check skill reads there instead of whole files. The diff itself is unchanged, so the review sees every change it saw before.
+- **Where it costs more:** on the sample's single 30-line file, reading the whole file was already cheap, so the map's 39 tokens and the skill's new line outweigh the saving. The map still names the file's importer and its doc section, which is what a review needs to catch a broken caller.
+- **What the model assumes:** the baseline review opens every changed file in full. A reviewer who read only the diff before saved nothing on reads, and pays the map's small cost for the importers and docs it now sees.

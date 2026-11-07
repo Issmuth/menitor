@@ -45,6 +45,7 @@ const DELEGATED_TRAILER = /^Menitor-Delegated:\s*true\s*$/im;
  * @property {Problem[]} problems
  * @property {boolean} ok           no blocking problems
  * @property {boolean} ranCommands  false with --no-commands
+ * @property {{ path: string, ranges: [number, number][], importedBy: string[], namedBy: string[] }[]} [review] where to look, from the context graph
  */
 
 /**
@@ -120,7 +121,8 @@ export function collectChanges(root, base) {
       const n = counts.get(file) ?? { added: null, deleted: null };
       files.push({ path: file, change: /** @type {FileChange['change']} */ (code[0]), added: n.added, deleted: n.deleted });
     }
-    diff = gitRaw(root, ['diff', '--no-renames', '--no-color', base, '--', '.', ':(exclude).menitor', ...NO_LOCKFILES]) ?? '';
+    // Git's index lines (blob hashes and modes) say nothing to a reviewer, so they are left out.
+    diff = (gitRaw(root, ['diff', '--no-renames', '--no-color', base, '--', '.', ':(exclude).menitor', ...NO_LOCKFILES]) ?? '').replace(/^index [0-9a-f]+\.\.[0-9a-f]+.*\n/gm, '');
   }
 
   const untracked = (gitRaw(root, ['ls-files', '--others', '--exclude-standard', ...SCOPE]) ?? '').split('\n').filter(Boolean);
@@ -145,6 +147,36 @@ export function collectChanges(root, base) {
 
   const diffTruncated = diff.length > MAX_DIFF_CHARS;
   return { files, diff: diffTruncated ? `${diff.slice(0, MAX_DIFF_CHARS)}\n[diff cut at ${MAX_DIFF_CHARS} characters]` : diff, diffTruncated };
+}
+
+/**
+ * @param {string} root
+ * @param {string} a
+ * @param {string} b
+ */
+function isAncestor(root, a, b) {
+  return git(root, ['merge-base', '--is-ancestor', a, b]) !== null;
+}
+
+/**
+ * Where this task's own work begins. Usually that's the start commit recorded when the task began.
+ * With a branch per task, the start can be the previous task's tip on another branch: a sibling of
+ * this one, or merged in later along with other tasks' work. Then the task's work begins where its
+ * own branch forked: the parent of the oldest commit that no other branch has.
+ * @param {string} root
+ * @param {string | null} startCommit
+ * @param {string | null} branch the current branch; null when HEAD is detached
+ * @returns {string | null}
+ */
+export function taskBase(root, startCommit, branch) {
+  if (!startCommit || !branch) return startCommit;
+  const linear = isAncestor(root, startCommit, 'HEAD') && !git(root, ['rev-list', '--merges', '-n', '1', `${startCommit}..HEAD`]);
+  if (linear) return startCommit;
+  const own = git(root, ['rev-list', '--reverse', 'HEAD', '--not', `--exclude=${branch}`, '--branches', `--exclude=*/${branch}`, '--remotes']);
+  if (own === null) return startCommit;
+  const oldest = own.split('\n').find(Boolean);
+  const fork = oldest ? git(root, ['rev-parse', '--verify', '--quiet', `${oldest}^`]) : git(root, ['rev-parse', 'HEAD']);
+  return fork || git(root, ['merge-base', startCommit, 'HEAD']) || startCommit;
 }
 
 /**
@@ -390,7 +422,10 @@ export function runCheck(input, options = {}) {
 
   const repo = git(root, ['rev-parse', '--is-inside-work-tree']) === 'true';
   const head = repo ? headCommit(root) : null;
-  const base = startCommit ?? (head ? EMPTY_TREE : null);
+  const currentBranch = repo ? git(root, ['symbolic-ref', '--short', '-q', 'HEAD']) : null;
+  // The task's own work, even when the start sits on another task's branch.
+  const ownStart = repo ? taskBase(root, startCommit, currentBranch) : startCommit;
+  const base = ownStart ?? (head ? EMPTY_TREE : null);
 
   // C-2: project checks first, then the task's own verify steps.
   /** @type {CommandResult[]} */
@@ -420,9 +455,8 @@ export function runCheck(input, options = {}) {
   }
 
   // G-6, G-7, H-8: commits, branch and honest trailers.
-  const commits = repo ? collectCommits(root, startCommit, head) : [];
+  const commits = repo ? collectCommits(root, ownStart, head) : [];
   const expectedBranch = task.branch ?? milestone.branch ?? null;
-  const currentBranch = repo ? git(root, ['symbolic-ref', '--short', '-q', 'HEAD']) : null;
   /** @type {string[]} */
   let uncommitted = [];
   if (!repo) {
@@ -520,6 +554,19 @@ export function renderCheck(r, options = {}) {
     lines.push(`  ${f.change} ${f.path}  ${n}`);
   }
   if (r.files.length > 60) lines.push(`  …and ${r.files.length - 60} more`);
+
+  if (r.review?.length) {
+    const few = (/** @type {string[]} */ items, /** @type {number} */ max) => (items.length > max ? `${items.slice(0, max).join(', ')} and ${items.length - max} more` : items.join(', '));
+    lines.push('', 'Review map: read these lines, not whole files');
+    for (const f of r.review.slice(0, 12)) {
+      const where = f.ranges.length ? `lines ${few(f.ranges.map(([a, b]) => (a === b ? `${a}` : `${a}-${b}`)), 4)}` : 'new file';
+      const parts = [where];
+      if (f.importedBy.length) parts.push(`imported by ${few(f.importedBy, 3)}`);
+      if (f.namedBy.length) parts.push(`named in ${few(f.namedBy, 2)}`);
+      lines.push(`  ${f.path}  ${parts.join(' · ')}`);
+    }
+    if (r.review.length > 12) lines.push(`  …and ${r.review.length - 12} more files`);
+  }
 
   lines.push('');
   const blocking = r.problems.filter((p) => p.severity === 'blocking');

@@ -7,18 +7,21 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { approvedProject, makeProject } from './helpers.js';
 import { deliverToListener, liveListener, readInbox } from '../core/lib/inbox.js';
+import { isAlive, readWindowInfo, stopWindow } from '../core/lib/window.js';
+import { statePaths } from '../core/lib/paths.js';
 
 const SERVER = path.resolve(import.meta.dirname, '..', 'adapters', 'claude-code', 'mcp.js');
 const MONITOR = path.resolve(import.meta.dirname, '..', 'adapters', 'claude-code', 'monitor.js');
 const MANIFEST = path.resolve(import.meta.dirname, '..', '.claude-plugin', 'plugin.json');
 
 /**
- * Start the server and talk JSON-RPC to it.
+ * Start the server and talk JSON-RPC to it. Stopping it also stops any window a wait opened.
  * @param {string} root
+ * @param {Record<string, string>} [env]
  */
-function startServer(root) {
+function startServer(root, env = {}) {
   const child = spawn(process.execPath, [SERVER], {
-    env: { ...process.env, CLAUDE_PROJECT_DIR: root, MENITOR_WAIT_MINUTE_MS: '400', MENITOR_WAIT_PROGRESS_MS: '100' },
+    env: { ...process.env, CLAUDE_PROJECT_DIR: root, MENITOR_WAIT_MINUTE_MS: '400', MENITOR_WAIT_PROGRESS_MS: '100', MENITOR_NO_BROWSER: '1', ...env },
     cwd: root,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -58,6 +61,8 @@ function startServer(root) {
       if (child.exitCode !== null) return resolve(undefined);
       child.once('exit', () => resolve(undefined));
       child.stdin.end();
+    }).then(() => {
+      stopWindow(statePaths(root));
     });
   return { child, messages, request, notify, waitFor, stop };
 }
@@ -132,6 +137,41 @@ test('a press in the window ends the wait with a fixed instruction, and is handl
     fs.rmSync(paths.listener);
     const queued = s.request('tools/call', { name: 'wait_for_learner', arguments: {} });
     assert.match(textOf(await s.waitFor((m) => m.id === queued)), /pressed "Hint"/, 'a queued press returns at once');
+  } finally {
+    await s.stop();
+    cleanup();
+  }
+});
+
+test('with no window running, the wait opens one before it listens', async () => {
+  const { root, paths, cleanup } = approvedProject();
+  const s = startServer(root);
+  try {
+    assert.equal(readWindowInfo(paths), null, 'no window before the wait');
+    const call = s.request('tools/call', { name: 'wait_for_learner', arguments: {} });
+    await until(() => fs.existsSync(paths.waiter));
+    const info = readWindowInfo(paths);
+    assert.ok(info && isAlive(paths, info), 'the window is running while the tool listens');
+    assert.equal(info.commands.check, '/menitor:check', 'it has the same button commands as /menitor:go');
+
+    deliverToListener(paths, { type: 'check', task: 't1' });
+    assert.match(textOf(await s.waitFor((m) => m.id === call)), /pressed "Check my work"/);
+  } finally {
+    await s.stop();
+    cleanup();
+  }
+});
+
+test('when the window cannot start, the wait returns at once and says why', async () => {
+  const { root, paths, cleanup } = approvedProject();
+  const s = startServer(root, { MENITOR_WINDOW_PORT: '-1' });
+  try {
+    const call = s.request('tools/call', { name: 'wait_for_learner', arguments: {} });
+    const r = await s.waitFor((m) => m.id === call, 20000);
+    assert.equal(r.result.isError, true);
+    assert.match(textOf(r), /The task window isn't running, and Menitor couldn't start it/);
+    assert.match(textOf(r), /\/menitor:go/);
+    assert.equal(fs.existsSync(paths.waiter), false, 'it never listened');
   } finally {
     await s.stop();
     cleanup();

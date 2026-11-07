@@ -1,6 +1,8 @@
 // Start, find and stop the task window server from the CLI (W-1).
 
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { fetchSync } from './check.js';
@@ -72,26 +74,99 @@ export function windowUrl(info) {
 }
 
 /**
- * Open the page in the default browser. Returns false when there's no desktop to open it on.
- * @param {string} url
- * @param {NodeJS.ProcessEnv} [env]
+ * An environment variable by name in any case: a copied Windows environment keeps names such as
+ * "ProgramFiles" as they were.
+ * @param {NodeJS.ProcessEnv} env
+ * @param {string} name
  */
-export function openBrowser(url, env = process.env) {
-  if (env.MENITOR_NO_BROWSER) return false;
-  /** @type {[string, string[]] | null} */
-  let cmd = null;
-  if (process.platform === 'darwin') cmd = ['open', [url]];
-  else if (process.platform === 'win32') cmd = ['cmd', ['/c', 'start', '', url]];
-  else if (env.DISPLAY || env.WAYLAND_DISPLAY) cmd = ['xdg-open', [url]];
-  if (!cmd) return false;
+function envOf(env, name) {
+  const key = Object.keys(env).find((k) => k.toLowerCase() === name.toLowerCase());
+  return key ? env[key] : undefined;
+}
+
+/**
+ * The Chromium browser to open the window in as an app, with no tabs or address bar: Chrome, Edge,
+ * Chromium or Brave, from the usual install places. Null when there's none, no desktop, or
+ * MENITOR_WINDOW_APP=0, and the window opens in a tab instead.
+ * @param {NodeJS.Platform} platform
+ * @param {NodeJS.ProcessEnv} env
+ * @param {(file: string) => boolean} [exists]
+ * @returns {string | null}
+ */
+export function appBrowser(platform, env, exists = isFile) {
+  if (envOf(env, 'MENITOR_WINDOW_APP') === '0') return null;
+  /** @type {string[]} */
+  let candidates = [];
+  if (platform === 'win32') {
+    const roots = ['LOCALAPPDATA', 'ProgramFiles', 'ProgramFiles(x86)'].map((n) => envOf(env, n)).filter((r) => typeof r === 'string' && r);
+    const apps = ['Google\\Chrome\\Application\\chrome.exe', 'Microsoft\\Edge\\Application\\msedge.exe', 'Chromium\\Application\\chrome.exe', 'BraveSoftware\\Brave-Browser\\Application\\brave.exe'];
+    candidates = apps.flatMap((app) => roots.map((root) => path.win32.join(/** @type {string} */ (root), app)));
+  } else if (platform === 'darwin') {
+    candidates = ['Google Chrome', 'Microsoft Edge', 'Chromium', 'Brave Browser'].map((n) => `/Applications/${n}.app/Contents/MacOS/${n}`);
+  } else if (envOf(env, 'DISPLAY') || envOf(env, 'WAYLAND_DISPLAY')) {
+    const dirs = (envOf(env, 'PATH') ?? '').split(':').filter(Boolean);
+    const names = ['google-chrome', 'google-chrome-stable', 'microsoft-edge', 'chromium', 'chromium-browser', 'brave-browser'];
+    candidates = names.flatMap((n) => dirs.map((d) => path.posix.join(d, n)));
+  }
+  return candidates.find((c) => exists(c)) ?? null;
+}
+
+/**
+ * How to start the app window: maximized, in a browser profile of its own. A browser that is
+ * already running ignores start-up flags such as --start-maximized, so the window gets its own
+ * profile, and with it a browser that starts fresh. MENITOR_WINDOW_MAXIMIZED=0 opens a normal-size
+ * app window in the usual profile instead.
+ * @param {string} url
+ * @param {NodeJS.ProcessEnv} env
+ * @returns {string[]}
+ */
+export function appArgs(url, env) {
+  if (envOf(env, 'MENITOR_WINDOW_MAXIMIZED') === '0') return [`--app=${url}`];
+  return [`--app=${url}`, '--start-maximized', `--user-data-dir=${path.join(os.tmpdir(), 'menitor-browser')}`, '--no-first-run', '--no-default-browser-check'];
+}
+
+/** @param {string} file */
+function isFile(file) {
   try {
-    const child = spawn(cmd[0], cmd[1], { detached: true, stdio: 'ignore', windowsHide: true });
+    return fs.statSync(file).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Start a program detached, so it outlives the CLI.
+ * @param {string} command
+ * @param {string[]} args
+ */
+function launch(command, args) {
+  try {
+    const child = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true });
     child.on('error', () => {});
     child.unref();
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * Open the page as its own app window when a Chromium browser is installed, or else in the default
+ * browser. Returns false when there's no desktop to open it on.
+ * @param {string} url
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+export function openBrowser(url, env = process.env) {
+  if (env.MENITOR_NO_BROWSER) return false;
+  const app = appBrowser(process.platform, env);
+  if (app && launch(app, appArgs(url, env))) return true;
+  /** @type {[string, string[]] | null} */
+  let cmd = null;
+  if (process.platform === 'darwin') cmd = ['open', [url]];
+  else if (process.platform === 'win32') cmd = ['cmd', ['/c', 'start', '', url]];
+  else if (env.DISPLAY || env.WAYLAND_DISPLAY) cmd = ['xdg-open', [url]];
+  if (!cmd) return false;
+  return launch(cmd[0], cmd[1]);
 }
 
 /**

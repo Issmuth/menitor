@@ -9,7 +9,9 @@
 import fs from 'node:fs';
 import { findRoot, statePaths } from '../../core/lib/paths.js';
 import { waitForEvent } from '../../core/lib/inbox.js';
-import { windowEventText } from './messages.js';
+import { openBrowser, openWindow } from '../../core/lib/window.js';
+import { COMMANDS, windowEventText } from './messages.js';
+import { WINDOW_COMMANDS } from './skills.js';
 
 /** Protocol revisions this server speaks; it answers with the newest one the client asked for. */
 const SUPPORTED = ['2025-06-18', '2025-03-26', '2024-11-05'];
@@ -24,7 +26,7 @@ export const TOOL = {
   name: 'wait_for_learner',
   title: 'Wait for the learner',
   description:
-    "Wait for the learner's next move in the Menitor task window: Check my work, Hint, I'm stuck, Start it, or a sent answer. Call it last in a turn whose next move is the learner's, in their editor or the window. It returns the press as soon as it happens. After two minutes Claude Code moves it to the background, so the learner can still type to you, and the press wakes you when it comes.",
+    "Wait for the learner's next move in the Menitor task window: Check my work, Hint, I'm stuck, Start it, Add to plan on a to-do, or a sent answer. Call it last in a turn whose next move is the learner's, in their editor or the window. It returns the press as soon as it happens. After two minutes Claude Code moves it to the background, so the learner can still type to you, and the press wakes you when it comes.",
   inputSchema: {
     type: 'object',
     properties: {
@@ -36,7 +38,7 @@ export const TOOL = {
 };
 
 const INSTRUCTIONS = [
-  "Menitor's task window has buttons: Check my work, Hint, I'm stuck, Start it, and an answer box.",
+  "Menitor's task window has buttons: Check my work, Hint, I'm stuck, Start it, Add to plan on a to-do, and an answer box.",
   "When the learner's next move is in their editor or the window, end your turn by calling wait_for_learner.",
   'It returns their press, or moves to the background after two minutes and wakes you when they press.',
   'Then do what the press asks, as its text says. If they type to you instead, answer them as usual.',
@@ -62,6 +64,22 @@ function text(text) {
   return { content: [{ type: 'text', text }] };
 }
 
+/**
+ * A press can only come from an open window, so make sure one runs before waiting on it. The
+ * browser opens only when the server had to start, so a running window never gets a second tab.
+ * @param {import('../../core/lib/paths.js').StatePaths} paths
+ * @returns {string | null} why the window could not start, or null when it runs
+ */
+function ensureWindow(paths) {
+  try {
+    const r = openWindow(paths, { commands: WINDOW_COMMANDS, browser: false });
+    if (r.started) openBrowser(r.url);
+    return null;
+  } catch (err) {
+    return /** @type {Error} */ (err).message;
+  }
+}
+
 /** Pending waits by request ID. A newer wait replaces older ones, so each press is handled once. */
 const waits = /** @type {Map<string | number, { ac: AbortController, cancelled: boolean, superseded: boolean }>} */ (new Map());
 
@@ -79,6 +97,10 @@ function callTool(id, params) {
   // The project Claude Code names, and only that one: a fallback could listen on another project's window.
   const root = findRoot(process.env.CLAUDE_PROJECT_DIR || process.cwd());
   if (!root) return reply(id, text('Menitor is not set up in this project, so there is no task window to wait on.'));
+  const why = ensureWindow(statePaths(root));
+  if (why) {
+    return reply(id, { ...text(`The task window isn't running, and Menitor couldn't start it: ${why.replace(/\.?\s*$/, '.')} Ask the learner to type ${COMMANDS.go}, or go on in chat.`), isError: true });
+  }
 
   for (const w of waits.values()) {
     w.superseded = true;
@@ -98,7 +120,7 @@ function callTool(id, params) {
       waits.delete(id);
       if (wait.cancelled) return; // The client cancelled: it expects no answer.
       if (wait.superseded) return reply(id, text('A newer wait_for_learner call took over listening.'));
-      if (event) return reply(id, text(windowEventText(event.type, event.task ?? 'the current task')));
+      if (event) return reply(id, text(windowEventText(event.type, event.task ?? 'the current task', event.todo)));
       return reply(id, text(`No button press in ${minutes} minute${minutes === 1 ? '' : 's'}. If the learner's next move is still in the window, call wait_for_learner again; otherwise end your turn.`));
     })
     .catch((err) => {

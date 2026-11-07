@@ -28,6 +28,11 @@ export const COMMAND_NAMES = {
   add: '/menitor:add',
 };
 
+/** The commands the window shows on its buttons, or copies when no session listens. */
+export const WINDOW_COMMANDS = Object.fromEntries(
+  /** @type {const} */ (['check', 'hint', 'stuck', 'go', 'start', 'skip', 'add']).map((k) => [k, COMMAND_NAMES[k]]),
+);
+
 /**
  * @typedef {object} SkillSpec
  * @property {string} description       what it does and when to use it
@@ -42,7 +47,7 @@ export const SKILLS = {
     description: 'Set up a Menitor project: interview the learner, calibrate their level, set focus areas, write lean docs and an ordered task plan, and get the plan approved.',
     learnerOnly: true,
     argumentHint: '[idea, or paths to existing docs]',
-    allowedTools: [CLI_RULE, ...GIT_READ_RULES],
+    allowedTools: [CLI_RULE, ...GIT_READ_RULES, WAIT_TOOL],
   },
   go: {
     description: "Show the current Menitor task card and pick up where the learner left off, even in a fresh session. Use when the learner wants to continue, asks what's next, or comes back to the project.",
@@ -109,9 +114,9 @@ export function renderInstructions(text, vars) {
     }
     if (key === 'cli') return vars.cli;
     if (key === 'wait') return '`wait_for_learner` (the menitor MCP tool)';
-    if (key === 'window') {
-      const pairs = ['check', 'hint', 'stuck', 'go', 'start', 'skip'].map((k) => `--command ${k}=${/** @type {Record<string, string>} */ (COMMAND_NAMES)[k]}`);
-      return `${vars.cli} window open ${pairs.join(' ')}`;
+    if (key === 'window' || key === 'go') {
+      const pairs = Object.entries(WINDOW_COMMANDS).map(([k, v]) => `--command ${k}=${v}`);
+      return `${vars.cli} ${key === 'go' ? 'go' : 'window open'} ${pairs.join(' ')}`;
     }
     if (key === 'templates') return vars.templates;
     if (key === 'args') return vars.args;

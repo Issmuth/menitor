@@ -8,6 +8,7 @@ allowed-tools:
   - Bash(git status *)
   - Bash(git diff *)
   - Bash(git log *)
+  - mcp__plugin_menitor_menitor__wait_for_learner
 ---
 
 <!-- Generated from core/instructions/start.md by adapters/claude-code/build-skills.js. Edit the source, then run "npm run build:skills". -->
@@ -22,15 +23,17 @@ Turn the learner's idea into lean docs and an ordered plan. Setup ends with thre
 
 Work through the steps in order. Ask one question at a time and wait for the answer. Keep every message short and plain.
 
+Save each answer the moment it's given, with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" setup set <key> "<answer>"`. Then a session that closes mid-setup loses nothing. For long text, such as the PRD draft, pass `-` and send the text on stdin with a heredoc. The key for each answer is named below.
+
 Anything the learner added after the command: $ARGUMENTS
 
 ## 0. Check where things stand
 
-Run `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" status`.
+Run `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" status`, and `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" setup show` once .menitor/ exists.
 
 - It says there is no .menitor/ folder: this is a fresh start. Go to step 1.
 - The plan is approved: setup is already done. Say so, point to /menitor:go, and stop.
-- A draft plan or a partial profile exists: resume at the first step that isn't done, and say where you're resuming.
+- Setup answers, a profile or a draft plan exist: resume at the first step that isn't done, and say where. Never ask again for an answer that `setup show` lists.
 
 ## 1. Set up
 
@@ -41,11 +44,11 @@ Run `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" status`.
 
 Ask these one at a time. Use the AskUserQuestion tool for the choices. Ask for the idea in free text.
 
-1. The idea: what they want to build, in a sentence or two.
-2. The goal: a portfolio piece, a job hunt, learning a skill, or something real people will use.
-3. Time per week: under 3 hours, 3 to 6, 6 to 10, or more than 10.
-4. Experience: what they've built before, and in which languages.
-5. Stack: a stack they want to use, or "recommend one".
+1. The idea (`idea`): what they want to build, in a sentence or two.
+2. The goal (`goal`): a portfolio piece, a job hunt, learning a skill, or something real people will use.
+3. Time per week (`time`): under 3 hours, 3 to 6, 6 to 10, or more than 10.
+4. Experience (`experience`): what they've built before, and in which languages.
+5. Stack (`stack`): a stack they want to use, or "recommend one".
 
 If they attached docs, or docs/ already has some, read them first. Then ask only about what's missing. In an existing repo, read the README, the package files and the folder layout before you ask anything.
 
@@ -56,9 +59,11 @@ The learner never rates themselves. Pick the level from evidence.
 - In an existing repo they wrote, read a few files and their git history.
 - Otherwise, give a warm-up of 10 minutes or less:
   1. Write the exercise to .menitor/warmup/README.md. Make it one small function in the language they'll use, with two or three example inputs and outputs.
-  2. The learner writes their answer in .menitor/warmup/. Wait until they say they're done.
-  3. Read it, and ask one open question about their own code.
-  4. Delete .menitor/warmup/ afterwards.
+  2. Open the window with node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" window open --command check=/menitor:check --command hint=/menitor:hint --command stuck=/menitor:stuck --command go=/menitor:go --command start=/menitor:start --command skip=/menitor:skip --command add=/menitor:add. It shows the exercise, and an "I'm done" button.
+  3. The learner writes their answer in .menitor/warmup/. Call `wait_for_learner` (the menitor MCP tool): their press, or a message in chat, says they're done.
+  4. Read their code. Save one open question about it as `warmup-question`, and the window shows it with an answer box. Call `wait_for_learner` (the menitor MCP tool) again.
+  5. Their answer arrives as `warmup-answer` in `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" setup show`. If they answer in chat instead, save it as `warmup-answer` yourself.
+  6. Delete .menitor/warmup/ once the level is set.
 
 Pick the level:
 
@@ -70,7 +75,10 @@ Record it with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" learner set lev
 
 ## 4. Focus areas
 
-Ask what they want to learn, with the AskUserQuestion tool as a multi-select: frontend, backend and APIs, database, auth, testing, deployment, git and workflow. Let them add their own.
+Ask what they want to learn: frontend, backend and APIs, database, auth, testing, deployment, git and workflow. Let them add their own.
+
+- Offer them in the window with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" setup options focus "<area>,<area>"`, and call `wait_for_learner` (the menitor MCP tool). Their pick arrives as `focus` in `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" setup show`.
+- If they answer in chat instead, save it as `focus` yourself.
 
 Record them with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" learner set focusAreas "<area>,<area>"`. Explain in one sentence that tasks outside these are delegated: you do them and leave a short note.
 
@@ -79,19 +87,26 @@ Then ask how they want help when they don't know the next line, with the AskUser
 - Hints: each one shows a little more, from the idea to a partial snippet. Best for working things out.
 - Type-along: the window shows each step's full code, and they type it in by hand. Best when they want to see working code first.
 
-Only they can turn type-along on, by typing /menitor:typealong. If they choose it, ask them to type it now.
+Save their choice as `help`: "hints" or "type-along". Only they can turn type-along on, by typing /menitor:typealong. If they choose it, ask them to type it now.
 
 ## 5. Stack
 
 - If they named a stack, check that it fits their goal, level and time. If it's too complex for the project, push back once, kindly, with a simpler option.
 - If they didn't, recommend one stack with two or three reasons tied to their goal and level. Prefer well-documented tools with free hosting.
 - Free hosting: Vercel or Netlify for front-end and full-stack JavaScript, Render's free tier for a separate backend, and Neon or Supabase for Postgres.
+- Offer one to three stacks in the window, the recommended one first, with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" setup options stack -`. Send JSON on stdin with a heredoc: `[{"name": "...", "reasons": ["..."], "hosting": "..."}]`. Then call `wait_for_learner` (the menitor MCP tool).
+- Their pick arrives as `stack-choice` in `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" setup show`. If they agree in chat instead, save the stack and its hosting as `stack-choice` yourself.
 
 ## 6. The core of the PRD
 
-The learner drafts the core of the PRD in their own words: the problem, the users, and three to five must-have features. They can type it in chat or write it in docs/prd.md.
+The learner drafts the core of the PRD in their own words: the problem, the users, and three to five must-have features.
+
+- Open a box for each section in the window with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" setup options prd`. Drafts save as they type. Call `wait_for_learner` (the menitor MCP tool): "Send for feedback" wakes you.
+- Read the draft with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" setup show`; it arrives as `prd`. If they write it in chat or docs/prd.md instead, save it as `prd` yourself.
 
 Critique it like a senior developer. Is the problem real? Are the users specific? Is each feature small and testable? Name the one or two biggest gaps, with the reason, and let them revise. One or two rounds is enough.
+
+Post your feedback on each section with `node "${CLAUDE_PLUGIN_ROOT}/core/bin/menitor.js" setup critique <problem|users|features> "<text>"`. The window shows it under that section. Then call `wait_for_learner` (the menitor MCP tool) for their revision.
 
 ## 7. Lean docs
 

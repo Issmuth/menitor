@@ -6,16 +6,45 @@ import fs from 'node:fs';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { statePaths } from '../lib/paths.js';
-import { statusData } from '../lib/ops.js';
+import { setupStatus, statusData, todoList } from '../lib/ops.js';
+import { PRD_SECTIONS, SETUP_STEPS } from '../lib/setup.js';
 import { cardData } from '../lib/card.js';
-import { findTask } from '../lib/plan.js';
-import { loadAnswers, loadGuard, loadPlan, loadProgress, loadSession, loadSolutions, saveAnswers, saveProgress } from '../lib/state.js';
-import { deliverToListener, liveListener, readInbox } from '../lib/inbox.js';
+import { allTasks, findTask } from '../lib/plan.js';
+import { loadAnswers, loadGuard, loadPlan, loadProgress, loadSession, loadSolutions, loadTodos, saveAnswers, saveProgress, saveTodos } from '../lib/state.js';
+import { deliverToListener, liveListener, pressState, readInbox } from '../lib/inbox.js';
 import { codeFingerprint } from '../lib/fingerprint.js';
+import { parseLog } from '../lib/log.js';
+import { computeStats } from '../lib/stats.js';
 
 /** The only events a button can send (W-7). */
-export const EVENTS = /** @type {const} */ (['check', 'hint', 'stuck', 'go']);
-const COMMAND_KEYS = ['start', 'go', 'check', 'hint', 'stuck', 'skip'];
+export const EVENTS = /** @type {const} */ (['check', 'hint', 'stuck', 'go', 'warmup-done', 'add']);
+/** @param {string} text */
+const listOf = (text) => text.split(',').map((s) => s.trim()).filter(Boolean);
+
+/**
+ * Setup answers the window may take, each with what must hold first: its question asked, or its
+ * options offered and the answer among them. Each returns a refusal, or null.
+ * @type {Record<string, (text: string, status: import('../lib/setup.js').SetupStatus) => [number, string] | null>}
+ */
+const SETUP_WINDOW_KEYS = {
+  'warmup-answer': (_text, s) => (s.answers.some((a) => a.key === 'warmup-question') ? null : [409, 'That question has not been asked yet.']),
+  'stack-choice': (text, s) => {
+    if (!s.options.stack) return [409, 'No stacks are offered yet.'];
+    return s.options.stack.some((o) => o.name === text) ? null : [400, 'Choose one of the stacks offered.'];
+  },
+  focus: (text, s) => {
+    if (!s.options.focus) return [409, 'No focus areas are offered yet.'];
+    const offered = s.options.focus;
+    return listOf(text).every((area) => offered.includes(area)) ? null : [400, 'Choose from the focus areas offered.'];
+  },
+  ...Object.fromEntries(PRD_SECTIONS.map((p) => [`prd-${p.key}`, (/** @type {string} */ _text, /** @type {import('../lib/setup.js').SetupStatus} */ s) => (s.options.prd ? null : [409, 'The PRD draft is not open yet.'])])),
+};
+const MAX_WARMUP = 12000;
+/** The interview answers the window shows back while Menitor asks the rest: the learner's own words. */
+const TOLD = ['idea', 'goal', 'time', 'experience', 'stack'];
+const MAX_TODO = 500;
+const MAX_TODOS = 200;
+const COMMAND_KEYS = ['start', 'go', 'check', 'hint', 'stuck', 'skip', 'add'];
 const MAX_BODY = 16384;
 const MAX_ANSWER = 4000;
 const HEARTBEAT_MS = 20000;
@@ -88,16 +117,188 @@ export function windowState(paths, options) {
       level: status.level,
       card,
       lastCheck: record?.lastCheck ?? null,
+      result: lastResult(paths, plan, session, card),
+      setup: phase === 'no-plan' || phase === 'draft' ? setupWindow(paths) : undefined,
+      finish: phase === 'done' && plan ? finishOf(paths, plan) : null,
       milestones: status.milestones.map((m, i) => ({ ...m, current: current?.milestone.id === m.id, tasks: tasksOf(i) })),
       done: status.done,
       total: status.total,
       written: status.written,
       commands: options.commands,
       listening: Boolean(liveListener(paths)),
+      todos: todoList(paths),
+      press: pressState(paths),
     };
   } catch (err) {
     return { ok: false, error: /** @type {Error} */ (err).message, commands: options.commands };
   }
+}
+
+/**
+ * A warm-up exercise as blocks of text, so the page never renders it as markup: headings, plain
+ * paragraphs, list items and code. Markdown inside a line stays as typed.
+ * @param {string} text
+ * @returns {{ kind: 'heading' | 'text' | 'item' | 'code', text: string }[]}
+ */
+export function warmupBlocks(text) {
+  /** @type {{ kind: 'heading' | 'text' | 'item' | 'code', text: string }[]} */
+  const blocks = [];
+  /** @type {string[]} */
+  let para = [];
+  /** @type {string[] | null} */
+  let code = null;
+  const flush = () => {
+    if (para.length) blocks.push({ kind: 'text', text: para.join(' ') });
+    para = [];
+  };
+  for (const line of text.split(/\r?\n/)) {
+    if (code !== null) {
+      if (/^\s*```/.test(line)) {
+        blocks.push({ kind: 'code', text: code.join('\n') });
+        code = null;
+      } else code.push(line);
+      continue;
+    }
+    if (/^\s*```/.test(line)) {
+      flush();
+      code = [];
+      continue;
+    }
+    const heading = /^#{1,6}\s+(.*)$/.exec(line);
+    const item = /^\s*(?:[-*]|\d+\.)\s+(.*)$/.exec(line);
+    if (heading || item) {
+      flush();
+      blocks.push(heading ? { kind: 'heading', text: heading[1].trim() } : { kind: 'item', text: /** @type {RegExpExecArray} */ (item)[1].trim() });
+    } else if (!line.trim()) flush();
+    else para.push(line.trim());
+  }
+  if (code !== null) blocks.push({ kind: 'code', text: code.join('\n') });
+  flush();
+  return blocks;
+}
+
+/**
+ * What the window shows during setup: which answers are saved, and the warm-up with its question
+ * and the learner's answer.
+ * @param {StatePaths} paths
+ */
+export function setupWindow(paths) {
+  const status = setupStatus(paths);
+  const answer = (/** @type {string} */ key) => status.answers.find((a) => a.key === key) ?? null;
+  let exercise = null;
+  try {
+    const text = fs.readFileSync(`${paths.dir}/warmup/README.md`, 'utf8').slice(0, MAX_WARMUP);
+    exercise = warmupBlocks(text);
+  } catch {
+    exercise = null;
+  }
+  const question = answer('warmup-question');
+  const reply = answer('warmup-answer');
+  const { stack, focus } = status.options;
+  // The PRD drafts are the window's own answers, read straight from its file.
+  const typed = /** @type {Record<string, { text: string, at: string } | undefined>} */ (loadAnswers(paths).answers);
+  const prd = status.options.prd
+    ? {
+        sections: PRD_SECTIONS.map((p) => {
+          const draft = typed[`prd-${p.key}`];
+          const critique = status.critique[p.key] ?? null;
+          return { key: p.key, label: p.label, help: p.help, text: draft?.text ?? null, at: draft?.at ?? null, critique, revised: Boolean(draft && critique && draft.at > critique.at) };
+        }),
+      }
+    : null;
+  return {
+    prd,
+    steps: SETUP_STEPS.map((s) => ({ key: s.key, label: s.label, done: Boolean(answer(s.key)) })),
+    told: SETUP_STEPS.filter((s) => TOLD.includes(s.key) && answer(s.key)).map((s) => ({ key: s.key, label: s.label, value: /** @type {{ value: string }} */ (answer(s.key)).value })),
+    warmup: exercise || question ? { exercise, question: question?.value ?? null, answer: reply ? { text: reply.value, at: reply.at } : null } : null,
+    choices:
+      stack || focus
+        ? {
+            stack: stack ? { options: stack, chosen: answer('stack-choice')?.value ?? null } : null,
+            focus: focus ? { options: focus, chosen: listOf(answer('focus')?.value ?? '') } : null,
+          }
+        : null,
+  };
+}
+
+/**
+ * The finish line: how the whole plan was built, from the plan and the log. Only computed once
+ * every task is done.
+ * @param {StatePaths} paths
+ * @param {import('../lib/plan.js').Plan} plan
+ */
+export function finishOf(paths, plan) {
+  const events = parseLog(fs.existsSync(paths.log) ? fs.readFileSync(paths.log, 'utf8') : '');
+  const stats = computeStats(plan, events);
+  const passed = plan.milestones.flatMap((m) => m.tasks.map((t) => t.passedAt ?? '')).filter(Boolean).sort();
+  return {
+    started: plan.approvedAt,
+    finished: passed.at(-1) ?? null,
+    hints: events.filter((e) => e.event === 'hint').length,
+    explained: stats.explainBack.detail,
+    deployUrl: plan.project.deployUrl ?? null,
+  };
+}
+
+/**
+ * A finished task to look back on: its card, who did it, its notes and fixes, the hints opened, the
+ * concepts to revisit and the explain-back with the learner's answers. Done tasks never change, so
+ * the window asks for one when the learner opens it instead of sending them all with every update.
+ * Null when there is no such finished task.
+ * @param {StatePaths} paths
+ * @param {string} id
+ */
+export function finishedTask(paths, id) {
+  const plan = loadPlan(paths);
+  if (!plan) return null;
+  const done = allTasks(plan).filter((e) => e.task.status === 'done');
+  const at = done.findIndex((e) => e.task.id === id);
+  if (at < 0) return null;
+  const card = cardData(plan, id, loadProgress(paths));
+  const answers = loadAnswers(paths).answers;
+  const events = parseLog(fs.existsSync(paths.log) ? fs.readFileSync(paths.log, 'utf8') : '').filter((e) => e.fields.task === id);
+  return {
+    ...card,
+    passedAt: done[at].task.passedAt ?? null,
+    questions: (loadSession(paths).tasks[id]?.questions ?? []).map((q) => ({ ...q, answer: answers[q.id] ?? null })),
+    revisit: events.filter((e) => e.event === 'revisit').map((e) => e.fields.concept),
+    prev: done[at - 1]?.task.id ?? null,
+    next: done[at + 1]?.task.id ?? null,
+  };
+}
+
+/**
+ * C-6: the explain-back of the task that passed last, with the answers and Menitor's feedback, so
+ * the learner can read it before the next card. It stays until they press Continue. A pass with
+ * no questions, such as a delegated task, has nothing to read.
+ * @param {StatePaths} paths
+ * @param {import('../lib/plan.js').Plan | null} plan
+ * @param {import('../lib/state.js').Session} session
+ * @param {{ number: number, goal: string } | null} card the next card, if there is one
+ */
+export function lastResult(paths, plan, session, card) {
+  if (!plan) return null;
+  /** @type {{ task: import('../lib/plan.js').Task, number: number } | null} */
+  let last = null;
+  let number = 0;
+  for (const m of plan.milestones) {
+    for (const t of m.tasks) {
+      number += 1;
+      if (t.status === 'done' && t.passedAt && (!last || t.passedAt > (last.task.passedAt ?? ''))) last = { task: t, number };
+    }
+  }
+  if (!last || loadProgress(paths).seen?.[last.task.id]) return null;
+  const questions = session.tasks[last.task.id]?.questions ?? [];
+  if (!questions.length) return null;
+  const answers = loadAnswers(paths).answers;
+  return {
+    task: last.task.id,
+    number: last.number,
+    goal: last.task.goal,
+    passedAt: last.task.passedAt,
+    questions: questions.map((q) => ({ ...q, answer: answers[q.id] ?? null })),
+    next: card ? { number: card.number, goal: card.goal } : null,
+  };
 }
 
 /**
@@ -211,7 +412,7 @@ export function cleanCommands(raw) {
 /**
  * Create the server. Call listen() to start it.
  * @param {string} root
- * @param {{ token?: string, code?: string, commands?: Record<string, unknown>, deliver?: (event: { type: import('../lib/inbox.js').InboxType, task: string | null }) => boolean }} [options]
+ * @param {{ token?: string, code?: string, commands?: Record<string, unknown>, deliver?: (event: { type: import('../lib/inbox.js').InboxType, task: string | null, todo?: string }) => boolean }} [options]
  *   code: the fingerprint of the code this server runs; tests pass an old one
  */
 export function createWindowServer(root, options = {}) {
@@ -311,6 +512,17 @@ export function createWindowServer(root, options = {}) {
         return send(res, 200, /** @type {Buffer} */ (files.get(asset.file)), headers);
       }
       if (url.pathname === '/api/state') return send(res, 200, stateJson(), { 'Content-Type': 'application/json; charset=utf-8' });
+      if (url.pathname === '/api/task') {
+        const id = url.searchParams.get('id');
+        if (!id) return send(res, 400, 'Say which task.');
+        let found = null;
+        try {
+          found = finishedTask(paths, id);
+        } catch (err) {
+          return send(res, 500, /** @type {Error} */ (err).message);
+        }
+        return found ? sendJson(res, 200, found) : send(res, 404, 'Only a finished task opens here.');
+      }
       if (url.pathname === '/api/ping') return sendJson(res, 200, { ok: true, root, pid: process.pid, code });
       if (url.pathname === '/api/events') {
         res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'text/event-stream; charset=utf-8', Connection: 'keep-alive' });
@@ -339,16 +551,33 @@ export function createWindowServer(root, options = {}) {
 
       if (url.pathname === '/api/tick') return tick(res, body);
       if (url.pathname === '/api/answer') return answer(res, body);
+      if (url.pathname === '/api/setup-answer') return setupAnswer(res, body);
+      if (url.pathname === '/api/todo') return todo(res, body);
+      if (url.pathname === '/api/continue') return dismiss(res, body);
       if (url.pathname === '/api/event') {
         const type = body.type;
         if (typeof type !== 'string' || !(/** @type {readonly string[]} */ (EVENTS)).includes(type)) return send(res, 400, 'Unknown event.');
-        let task = null;
+        /** @type {import('../lib/state.js').Session | null} */
+        let session = null;
         try {
-          task = loadSession(paths).currentTask;
+          session = loadSession(paths);
         } catch {
-          task = null;
+          session = null;
         }
-        const event = { type: /** @type {'check' | 'hint' | 'stuck' | 'go'} */ (type), task };
+        const task = session?.currentTask ?? null;
+        // Add to plan names a to-do by its ID only; the agent reads the text through the CLI (W-7).
+        /** @type {string | undefined} */
+        let todoId;
+        if (type === 'add') {
+          if (typeof body.todo !== 'string') return send(res, 400, 'Say which to-do to add.');
+          todoId = body.todo;
+          if (!loadTodos(paths).todos.some((t) => t.id === todoId)) return send(res, 404, 'That to-do is gone.');
+          if (session?.todosPlanned?.[todoId]) return send(res, 409, 'That to-do is already in the plan.');
+        }
+        // One press at a time: while the last one is still on its way or being worked on, send nothing.
+        const pending = pressState(paths);
+        if (pending && pending.state !== 'done') return sendJson(res, 200, { delivered: true, busy: true, command: /** @type {Record<string, string>} */ (commands)[type] });
+        const event = { type: /** @type {typeof EVENTS[number]} */ (type), task, ...(todoId ? { todo: todoId } : {}) };
         const delivered = options.deliver ? options.deliver(event) : deliverToListener(paths, event).delivered;
         return sendJson(res, 200, { delivered, command: /** @type {Record<string, string>} */ (commands)[type] });
       }
@@ -382,6 +611,97 @@ export function createWindowServer(root, options = {}) {
       saveProgress(paths, progress);
       refresh();
       return send(res, 200, lastJson, { 'Content-Type': 'application/json; charset=utf-8' });
+    } catch (err) {
+      return send(res, 500, /** @type {Error} */ (err).message);
+    }
+  }
+
+  /**
+   * C-6: Continue on a passed task's result. It's remembered in progress.json, so a reload or the
+   * pop-out shows the next card too. Only the result on screen can be dismissed.
+   * @param {http.ServerResponse} res
+   * @param {Record<string, unknown>} body
+   */
+  function dismiss(res, body) {
+    const { task } = body;
+    if (typeof task !== 'string') return send(res, 400, 'Send { task }.');
+    try {
+      const plan = loadPlan(paths);
+      const session = loadSession(paths);
+      const result = lastResult(paths, plan, session, null);
+      if (result?.task !== task) return send(res, 409, 'That result is not on screen.');
+      const progress = loadProgress(paths);
+      progress.seen = { ...progress.seen, [task]: new Date().toISOString() };
+      saveProgress(paths, progress);
+      refresh();
+      return send(res, 200, lastJson, { 'Content-Type': 'application/json; charset=utf-8' });
+    } catch (err) {
+      return send(res, 500, /** @type {Error} */ (err).message);
+    }
+  }
+
+  /**
+   * The learner's to-dos: add, edit, tick or delete one. Their own notes, kept as data in
+   * todos.json; nothing reaches the session.
+   * @param {http.ServerResponse} res
+   * @param {Record<string, unknown>} body
+   */
+  function todo(res, body) {
+    const { action, id, text, done } = body;
+    if (!['add', 'edit', 'tick', 'delete'].includes(String(action))) return send(res, 400, 'Send an action: add, edit, tick or delete.');
+    const clean = typeof text === 'string' ? text.trim() : '';
+    if ((action === 'add' || action === 'edit') && (!clean || clean.length > MAX_TODO)) return send(res, 400, `A to-do is 1 to ${MAX_TODO} characters.`);
+    if (action === 'tick' && typeof done !== 'boolean') return send(res, 400, 'Send { action: "tick", id, done }.');
+    try {
+      const todos = loadTodos(paths);
+      const now = new Date().toISOString();
+      if (action === 'add') {
+        if (todos.todos.length >= MAX_TODOS) return send(res, 409, `The list holds ${MAX_TODOS} to-dos. Delete some done ones first.`);
+        todos.todos.push({ id: crypto.randomBytes(9).toString('base64url'), text: clean, done: false, at: now });
+      } else {
+        const item = todos.todos.find((t) => t.id === id);
+        if (!item) return send(res, 404, 'There is no such to-do.');
+        if (action === 'edit') item.text = clean;
+        else if (action === 'tick') {
+          item.done = /** @type {boolean} */ (done);
+          item.doneAt = done ? now : null;
+        } else todos.todos = todos.todos.filter((t) => t !== item);
+      }
+      saveTodos(paths, todos);
+      refresh();
+      return send(res, 200, lastJson, { 'Content-Type': 'application/json; charset=utf-8' });
+    } catch (err) {
+      return send(res, 500, /** @type {Error} */ (err).message);
+    }
+  }
+
+  /**
+   * Setup: save an answer to a setup question the window shows, as data in answers.json. The
+   * session gets only a fixed event, and reads the answer with "setup show".
+   * @param {http.ServerResponse} res
+   * @param {Record<string, unknown>} body
+   */
+  function setupAnswer(res, body) {
+    const { key, text } = body;
+    if (typeof key !== 'string' || typeof text !== 'string') return send(res, 400, 'Send { key, text }.');
+    if (!(key in SETUP_WINDOW_KEYS)) return send(res, 400, 'The window takes answers only to the setup questions it shows.');
+    const clean = text.trim();
+    if (!clean || clean.length > MAX_ANSWER) return send(res, 400, `An answer is 1 to ${MAX_ANSWER} characters.`);
+    try {
+      if (loadPlan(paths)?.approvedAt) return send(res, 409, 'Setup is over: the plan is approved.');
+      const refusal = SETUP_WINDOW_KEYS[key](clean, setupStatus(paths));
+      if (refusal) return send(res, refusal[0], refusal[1]);
+      const answers = loadAnswers(paths);
+      answers.answers[key] = { text: clean, at: new Date().toISOString() };
+      saveAnswers(paths, answers);
+      // A pick is saved at once; only a confirm or a sent answer wakes the session.
+      let delivered = false;
+      if (body.notify !== false) {
+        const event = { type: /** @type {const} */ ('setup'), task: null };
+        delivered = options.deliver ? options.deliver(event) : deliverToListener(paths, event).delivered;
+      }
+      refresh();
+      return sendJson(res, 200, { delivered, state: JSON.parse(lastJson) });
     } catch (err) {
       return send(res, 500, /** @type {Error} */ (err).message);
     }

@@ -5,15 +5,21 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { EXIT, MenitorError } from './errors.js';
 import { requireRoot, statePaths } from './paths.js';
-import { repoRoot } from './git.js';
+import { git, repoRoot } from './git.js';
 import { parseJsonInput } from './fsx.js';
 import { appendAgentEvent, parseFieldArgs, parseLog } from './log.js';
 import { cardData, renderCard } from './card.js';
+import { renderSetup } from './setup.js';
 import { computeStats, renderStats } from './stats.js';
 import { renderCheck } from './check.js';
 import { openWindow, readWindowInfo, isAlive, stopWindow, windowUrl } from './window.js';
-import { allTasks } from './plan.js';
-import { loadLearner, loadProgress, loadSession, requirePlan } from './state.js';
+import { allTasks, findTask } from './plan.js';
+import { fileLinks, taskTouches } from './graph.js';
+import { readDocLink } from './docs.js';
+import { loadLearner, loadPlan, loadProgress, loadSession, loadSolutions, requirePlan, saveSession } from './state.js';
+
+/** The buttons whose commands the window shows or copies. */
+const WINDOW_COMMAND_KEYS = ['start', 'go', 'check', 'hint', 'stuck', 'skip', 'add'];
 import {
   addToPlan,
   approvePlan,
@@ -24,9 +30,15 @@ import {
   importPlan,
   importSteps,
   askQuestion,
+  contextGraph,
   judgeQuestion,
   questionState,
   setWaiting,
+  setSetupAnswer,
+  ignoreWindowFiles,
+  setSetupCritique,
+  setSetupOptions,
+  setupStatus,
   initProject,
   learnerAdd,
   learnerNote,
@@ -39,6 +51,7 @@ import {
   setDeployUrl,
   skipTask,
   statusData,
+  todoList,
   validateAll,
 } from './ops.js';
 
@@ -54,6 +67,15 @@ Setup
   menitor learner note <text>           Add a dated note
 
 Plan
+  menitor setup set <key> <text|->      Save one setup answer the moment it's given (- reads stdin):
+                                        idea, goal, time, experience, stack, warmup-question,
+                                        warmup-answer, help, stack-choice, prd
+  menitor setup options focus <a,b>     Offer focus areas to pick from in the window
+  menitor setup options stack <file|->  Offer 1 to 3 stacks in the window, recommended first:
+                                        [{"name": "...", "reasons": ["..."], "hosting": "..."}]
+  menitor setup options prd             Show a box for each PRD core section in the window
+  menitor setup critique <section> <text|->  Feedback on the problem, users or features draft
+  menitor setup show                    The setup answers saved so far, and what's still to ask
   menitor plan lint <file|->            Check a draft plan without saving it
   menitor plan import <file|->          Save the plan (only before approval)
   menitor plan add <file|-> [--dry-run] Add to the approved plan, never before the current task:
@@ -90,6 +112,7 @@ Explain-back and waiting
         --feedback "<text>"             A short reply or explanation, shown under their answer
   menitor waiting "<text>"              Show the learner what you need before work can go on
   menitor waiting --done                Clear it
+  menitor todos show [id]               The learner's to-dos from the window, or one to-do's text
 
 Checks
   menitor check run [id]                Run the deterministic checks: build, lint, test, verify
@@ -100,12 +123,25 @@ Checks
         --timeout <seconds>             Per command (default 180)
 
 Window
+  menitor go                            Pick up where the learner left off, in one call: open the
+                                        window, print the brief and what changed in git since the
+                                        task started, then what to do next. Takes --command and
+                                        --no-browser like "window open"
+  menitor open                          Open the task window: the short form of "window open"
   menitor window open                   Start the task window if it isn't running, and open it
         --command <name>=<text>         What the learner types for check, hint, stuck, go or start
                                         (repeatable); buttons copy it when they can't reach the session
         --no-browser                    Print the link without opening a browser
   menitor window status                 Whether the window is running, and its link
   menitor window stop                   Stop the window server
+
+Context
+  menitor graph                         Bring the context graph of docs, tasks and files up to date
+  menitor graph task [id]               What a task touches: its doc section, the files it names and
+                                        changed, the files one import away, and their sizes
+  menitor graph file <path>             What imports a file and what it imports, the sections that
+                                        name it, and the tasks that changed it
+  menitor graph section <file#anchor>   Print one doc section, such as a part a brief folded
 
 History
   menitor log <event> key=value...      Log check, explain, stuck, dispute, deploy or note
@@ -148,18 +184,19 @@ function formatWarnings(warnings) {
 
 /**
  * @param {ReturnType<typeof statusData>} s
+ * @param {{ milestones?: boolean, current?: boolean }} [options] leave out the milestone lines or the current task
  */
-export function renderStatus(s) {
+export function renderStatus(s, options = {}) {
   const lines = [];
   lines.push(`${s.project ?? 'No plan yet'} · ${s.approved ? 'plan approved' : 'plan not approved'} · mentor mode ${s.mentorMode}${s.typeAlong ? ' · type-along on' : ''}`);
   lines.push(`Level ${s.level ?? 'not set'} · focus: ${s.focusAreas.length ? s.focusAreas.join(', ') : 'none set'}`);
-  if (s.current) {
+  if (s.current && options.current !== false) {
     lines.push(`Current  Task ${s.current.number}/${s.current.total} · Milestone ${s.current.milestone.number}: ${s.current.milestone.title} · ${s.current.goal}${s.current.owner === 'delegated' ? ' (delegated)' : ''}`);
   } else if (s.approved && s.total && s.done === s.total) {
     lines.push('Current  none: every task is done');
   }
   const width = Math.max(0, ...s.milestones.map((m) => m.title.length));
-  for (const m of s.milestones) lines.push(`M${m.number} ${m.title.padEnd(width)}  ${m.done}/${m.total}`);
+  if (options.milestones !== false) for (const m of s.milestones) lines.push(`M${m.number} ${m.title.padEnd(width)}  ${m.done}/${m.total}`);
   if (s.total) {
     const skipped = s.written.skipped ? ` (${s.written.skipped} skipped)` : '';
     lines.push(`Done ${s.done}/${s.total} · ${s.written.learner} by the learner · ${s.written.delegated} delegated${skipped}`);
@@ -233,8 +270,140 @@ function renderBrief(b) {
   const where = doc.anchor ? `${doc.file}#${doc.anchor}` : doc.file;
   if (doc.found === 'missing-file') lines.push(`Docs: ${where} (the file does not exist yet)`);
   else if (doc.found === 'missing-section') lines.push(`Docs: ${where} (no heading matches; showing the whole file)`, doc.text);
-  else lines.push(`Docs: ${where}`, doc.text);
+  // Found: the card above already names the doc, so only its section follows.
+  else lines.push(doc.text);
   if (doc.truncated) lines.push('[cut at 4000 characters]');
+  if (doc.more?.length) {
+    lines.push('', 'More, folded to keep the brief short. "graph section <link>" prints one:');
+    for (const m of doc.more) lines.push(`  ${m.heading} · ${m.link} · lines ${m.lines[0]}-${m.lines[1]} · ${m.chars} chars`);
+  }
+  return lines.join('\n');
+}
+
+/** @param {number} bytes A size in the units a reader weighs: bytes, or KB with one decimal. */
+function sizeOf(bytes) {
+  return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+/** @param {number} read How many files a query had to read, which is none when the graph was fresh. */
+function readNote(read) {
+  return read ? `Read ${read === 1 ? '1 changed file' : `${read} changed files`} to bring the graph up to date.` : 'Read no files: the graph was up to date.';
+}
+
+/**
+ * @param {NonNullable<ReturnType<typeof taskTouches>>} t
+ * @param {number} read
+ */
+function renderTouches(t, read) {
+  const MAX = 12;
+  const list = (/** @type {{ path: string, size: number, via?: string }[]} */ items) =>
+    items.length ? [...items.slice(0, MAX).map((f) => `${f.path} (${sizeOf(f.size)})${f.via ? ` · ${f.via}` : ''}`), ...(items.length > MAX ? [`and ${items.length - MAX} more (--json lists them)`] : [])].join('\n           ') : 'none';
+  const lines = [`Task ${t.task} touches`];
+  if (!t.section) lines.push('Section    none on the card');
+  else if ('missing' in t.section) lines.push(`Section    ${t.section.link} (not found in the docs)`);
+  else lines.push(`Section    ${t.section.link}${t.section.heading ? ` "${t.section.heading}"` : ''} · lines ${t.section.lines[0]}-${t.section.lines[1]} · ${t.section.chars} chars`);
+  lines.push(`Named      ${list(t.named)}`, `Changed    ${list(t.touched)}`, `Near       ${list(t.near)}`);
+  const few = (/** @type {string[]} */ files) => (files.length > 4 ? `${files.slice(0, 4).join(', ')} and ${files.length - 4} more` : files.join(', '));
+  if (t.earlier.length) lines.push(`Earlier    ${t.earlier.slice(0, MAX).map((e) => `${e.task} changed ${few(e.files)}`).join('\n           ')}${t.earlier.length > MAX ? `\n           and ${t.earlier.length - MAX} more tasks` : ''}`);
+  lines.push('', readNote(read));
+  return lines.join('\n');
+}
+
+/**
+ * @param {NonNullable<ReturnType<typeof fileLinks>>} f
+ * @param {number} read
+ */
+function renderFileLinks(f, read) {
+  const list = (/** @type {string[]} */ items) => (items.length ? items.join(', ') : 'none');
+  return [`${f.path} (${sizeOf(f.size)})`, `Imports    ${list(f.imports)}`, `Imported by ${list(f.importedBy)}`, `Named in   ${list(f.namedBy)}`, `Changed by ${list(f.tasks)}`, '', readNote(read)].join('\n');
+}
+
+/**
+ * The commands the learner types, as the adapter named them with --command, or as last remembered.
+ * @param {import('./paths.js').StatePaths} p
+ * @param {Record<string, any>} values
+ * @returns {Record<string, string>}
+ */
+function startCommands(p, values) {
+  /** @type {Record<string, string>} */
+  const given = {};
+  for (const pair of values.command ?? []) {
+    const eq = String(pair).indexOf('=');
+    if (eq > 0) given[String(pair).slice(0, eq)] = String(pair).slice(eq + 1);
+  }
+  if (Object.keys(given).length) return given;
+  try {
+    return loadSession(p).windowCommands ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * What changed in git since the task started, so a fresh session can say where the learner left off.
+ * @param {string} root
+ * @param {string | null} start the task's start commit
+ * @param {string | null} branch the card's branch
+ */
+function renderGitState(root, start, branch) {
+  const changes = git(root, ['status', '--short']);
+  if (changes === null) return 'Git        not a repo yet';
+  const current = git(root, ['rev-parse', '--abbrev-ref', 'HEAD']) ?? 'no commits yet';
+  const log = start ? (git(root, ['log', '--oneline', `${start}..HEAD`]) ?? '') : '';
+  const commits = log ? log.split('\n') : [];
+  const files = changes ? changes.split('\n') : [];
+  const list = (/** @type {string[]} */ items, /** @type {number} */ max) => [...items.slice(0, max).map((x) => `  ${x}`), ...(items.length > max ? [`  and ${items.length - max} more`] : [])];
+  return [
+    'Since the task started',
+    `Branch     ${current}${branch && branch !== current ? ` (the card's branch is ${branch})` : ''}`,
+    `Commits    ${commits.length || 'none yet'}`,
+    ...list(commits, 8),
+    `Changes    ${files.length ? `${files.length} not committed` : 'none uncommitted'}`,
+    ...list(files, 12),
+  ].join('\n');
+}
+
+/**
+ * What to do next on the current task. Only the cases that apply are printed, so the instructions
+ * for a new milestone or type-along cost nothing on the runs that don't need them.
+ * @param {import('./paths.js').StatePaths} p
+ * @param {ReturnType<typeof briefData>} brief
+ * @param {Record<string, string>} cmd the commands the learner types
+ */
+function renderNext(p, brief, cmd) {
+  const plan = requirePlan(p);
+  const { milestone } = findTask(plan, brief.card.task);
+  const open = milestone.tasks.filter((t) => t.status !== 'done' && t.owner === 'learner');
+  const lines = ['Next'];
+  const noHints = open.filter((t) => !t.hints);
+  if (noHints.length) {
+    lines.push(
+      `- This milestone has just started, so write the hints for ${noHints.map((t) => t.id).join(', ')}. Four rungs each: concept, approach, pseudocode, and a partial snippet with gaps, never the full solution. Store them with "hints import -", as JSON keyed by task ID.`,
+    );
+  }
+  if (brief.typeAlong) {
+    const steps = loadSolutions(p).steps;
+    const missing = open.flatMap((t) => t.checklist.filter((i) => !steps[i.id]).map((i) => i.id));
+    if (missing.length) {
+      lines.push(
+        `- Type-along is on and ${missing.length} steps have no code yet: ${missing.join(', ')}. For each, write "say" (what to do and where, in plain words) and "code" blocks, each with a "where" (a file path, or "Terminal"). Store them with "steps import -": {"t1.c2": {"say": "...", "code": [{"where": "src/app.js", "text": "..."}]}}. Never paste step code into chat; the window shows it.`,
+      );
+    }
+  }
+  if (brief.card.owner === 'delegated') {
+    lines.push(
+      '- This task is yours: do it now. Keep it small and match the docs.',
+      '- Commit on the task\'s branch with the trailer "Menitor-Delegated: true". Run "check run" and fix anything marked MUST FIX, then "task pass --note" with two lines on what you did and where. Then run "go" again for the next task.',
+      '- Steps that need the learner\'s own accounts are theirs: ask in chat, and post the same request with "waiting" so the window shows it.',
+    );
+  } else {
+    const typed = cmd.check && cmd.hint ? ` Typing ${cmd.check} or ${cmd.hint} works too.` : '';
+    lines.push(
+      '- Show the learner the card above without the IDs, and say in a sentence or two where they left off, from the changes above.',
+      `- Point them to the window: Check my work when they're done, and Hint if they're stuck.${typed} Don't explain the solution.`,
+      '- Then wait for their press.',
+    );
+  }
   return lines.join('\n');
 }
 
@@ -322,6 +491,56 @@ export function run(argv, ioOverrides = {}) {
     const json = (value) => io.out(JSON.stringify(value, null, 2));
     const paths = () => statePaths(requireRoot({ root: values.root, cwd: io.cwd, env: io.env }));
 
+    /**
+     * Open the task window. Button commands given with --command are remembered in session.json,
+     * so a window opened later from a terminal, with none given, keeps them.
+     * @param {import('./paths.js').StatePaths} p
+     * @param {Record<string, any>} v
+     */
+    /**
+     * Start the window if it isn't running and open it, keeping any --command names in the session.
+     * @param {import('./paths.js').StatePaths} p
+     * @param {Record<string, any>} v
+     */
+    const startWindow = (p, v) => {
+      /** @type {Record<string, string>} */
+      const given = {};
+      for (const pair of v.command ?? []) {
+        const eq = pair.indexOf('=');
+        if (eq <= 0) throw new MenitorError(`--command takes name=text, got "${pair}"`);
+        const key = pair.slice(0, eq);
+        const text = pair.slice(eq + 1);
+        if (WINDOW_COMMAND_KEYS.includes(key) && text && text.length <= 100) given[key] = text;
+      }
+      ignoreWindowFiles(p);
+      const session = loadSession(p);
+      const named = Object.keys(given).length > 0;
+      if (named && JSON.stringify(given) !== JSON.stringify(session.windowCommands ?? {})) {
+        session.windowCommands = given;
+        saveSession(p, session);
+      }
+      const commands = named ? given : (session.windowCommands ?? {});
+      try {
+        return { commands, r: openWindow(p, { commands, browser: !v['no-browser'], env: io.env }) };
+      } catch (err) {
+        throw new MenitorError(/** @type {Error} */ (err).message);
+      }
+    };
+
+    /**
+     * @param {import('./paths.js').StatePaths} p
+     * @param {Record<string, any>} v
+     */
+    const windowOpen = (p, v) => {
+      const { r } = startWindow(p, v);
+      if (v.json) json({ url: r.url, started: r.started, restarted: r.restarted, opened: r.opened });
+      else {
+        const what = r.restarted ? "Restarted the task window, which was older than Menitor's code" : r.started ? 'Started the task window' : 'The task window is already running';
+        io.out(`${what}: ${r.url}\n${r.opened ? 'Opened it in the browser.' : 'Open that link in a browser on this machine.'}`);
+      }
+      return EXIT.ok;
+    };
+
     switch (command) {
       case 'init': {
         const root = path.resolve(values.root ?? repoRoot(io.cwd) ?? io.cwd);
@@ -385,11 +604,69 @@ export function run(argv, ioOverrides = {}) {
         throw new MenitorError('Usage: menitor question <ask|show|judge>');
       }
 
+      case 'setup': {
+        const p = paths();
+        if (sub === 'set') {
+          const [key, ...words] = rest;
+          if (!key) throw new MenitorError('Usage: menitor setup set <key> <text...> | menitor setup set <key> -');
+          const text = words.length === 1 && words[0] === '-' ? io.readStdin() : words.join(' ');
+          const saved = setSetupAnswer(p, key, text);
+          if (values.json) json({ key, ...saved });
+          else io.out(`Saved the ${key} answer.`);
+          return EXIT.ok;
+        }
+        if (sub === 'options') {
+          const [kind, ...words] = rest;
+          if (!kind) throw new MenitorError('Usage: menitor setup options focus "<area>,<area>" | menitor setup options stack -');
+          const text = words.length === 1 && words[0] === '-' ? io.readStdin() : words.join(' ');
+          const options = setSetupOptions(p, kind, text);
+          if (kind === 'prd' && !values.json) {
+            io.out('The window now shows a box for each PRD core section.');
+            return EXIT.ok;
+          }
+          if (values.json) json(options);
+          else io.out(`The window now offers the ${kind} options.`);
+          return EXIT.ok;
+        }
+        if (sub === 'critique') {
+          const [section, ...words] = rest;
+          if (!section) throw new MenitorError('Usage: menitor setup critique <problem|users|features> <text...|->');
+          const text = words.length === 1 && words[0] === '-' ? io.readStdin() : words.join(' ');
+          const critique = setSetupCritique(p, section, text);
+          if (values.json) json(critique);
+          else io.out(`The window shows your feedback under ${section}.`);
+          return EXIT.ok;
+        }
+        if (sub === 'show') {
+          const s = setupStatus(p);
+          if (values.json) json(s);
+          else io.out(renderSetup(s));
+          return EXIT.ok;
+        }
+        throw new MenitorError('Usage: menitor setup set <key> <text...> | menitor setup show');
+      }
+
       case 'waiting': {
         if (!values.done && !sub) throw new MenitorError('Usage: menitor waiting "<text>" | menitor waiting --done');
         const w = setWaiting(paths(), values.done ? null : [sub, ...rest].join(' '));
         if (values.json) json({ waiting: w });
         else io.out(w ? 'The window now shows what you are waiting on. Clear it with "menitor waiting --done".' : 'Cleared.');
+        return EXIT.ok;
+      }
+
+      case 'todos': {
+        if (sub !== 'show') throw new MenitorError('Usage: menitor todos show [id]');
+        const todos = todoList(paths());
+        if (rest[0]) {
+          const one = todos.find((t) => t.id === rest[0]);
+          if (!one) throw new MenitorError(`No to-do "${rest[0]}". See them all with "menitor todos show".`);
+          if (values.json) json(one);
+          else io.out(one.text);
+          return EXIT.ok;
+        }
+        if (values.json) json({ todos });
+        else if (!todos.length) io.out('No to-dos yet. The learner adds them in the window.');
+        else io.out(todos.map((t) => `${t.id}  ${t.text}${t.done ? '  (done)' : ''}${t.planned ? `  (in the plan as ${t.planned.to})` : ''}`).join('\n'));
         return EXIT.ok;
       }
 
@@ -401,29 +678,77 @@ export function run(argv, ioOverrides = {}) {
         return EXIT.ok;
       }
 
-      case 'window': {
+      case 'graph': {
         const p = paths();
-        if (sub === 'open') {
-          /** @type {Record<string, string>} */
-          const commands = {};
-          for (const pair of values.command ?? []) {
-            const eq = pair.indexOf('=');
-            if (eq <= 0) throw new MenitorError(`--command takes name=text, got "${pair}"`);
-            commands[pair.slice(0, eq)] = pair.slice(eq + 1);
-          }
-          let r;
-          try {
-            r = openWindow(p, { commands, browser: !values['no-browser'], env: io.env });
-          } catch (err) {
-            throw new MenitorError(/** @type {Error} */ (err).message);
-          }
-          if (values.json) json({ url: r.url, started: r.started, restarted: r.restarted, opened: r.opened });
-          else {
-            const what = r.restarted ? "Restarted the task window, which was older than Menitor's code" : r.started ? 'Started the task window' : 'The task window is already running';
-            io.out(`${what}: ${r.url}\n${r.opened ? 'Opened it in the browser.' : 'Open that link in a browser on this machine.'}`);
-          }
+        const { graph, read } = contextGraph(p);
+        if (!sub) {
+          const files = Object.values(graph.files);
+          const summary = { files: files.length, docs: files.filter((f) => f.sections).length, sections: files.reduce((n, f) => n + (f.sections?.length ?? 0), 0), code: files.filter((f) => f.imports).length, tasks: Object.keys(graph.tasks).length, read };
+          if (values.json) json(summary);
+          else io.out(`Context graph: ${summary.files} files, ${summary.sections} sections in ${summary.docs} docs, imports in ${summary.code} code files, ${summary.tasks} tasks.\n${readNote(read)}`);
           return EXIT.ok;
         }
+        if (sub === 'task') {
+          const plan = requirePlan(p);
+          const id = rest[0] ?? loadSession(p).currentTask;
+          if (!id || !allTasks(plan).some((e) => e.task.id === id)) throw new MenitorError(id ? `No task "${id}" in the plan.` : 'There is no current task. Name one: menitor graph task <id>');
+          const t = /** @type {NonNullable<ReturnType<typeof taskTouches>>} */ (taskTouches(graph, id));
+          if (values.json) json({ ...t, read });
+          else io.out(renderTouches(t, read));
+          return EXIT.ok;
+        }
+        if (sub === 'section') {
+          if (!rest[0]) throw new MenitorError('Usage: menitor graph section <file#anchor>');
+          const section = readDocLink(p.root, rest[0]);
+          if (section.found === 'missing-file' || section.found === 'missing-section') throw new MenitorError(`No section "${rest[0]}". The brief's outline lists the links.`);
+          if (values.json) json(section);
+          else io.out(`${section.text}${section.truncated ? '\n[cut at 4000 characters]' : ''}`);
+          return EXIT.ok;
+        }
+        if (sub === 'file') {
+          if (!rest[0]) throw new MenitorError('Usage: menitor graph file <path>');
+          const file = rest[0].replaceAll('\\', '/').replace(/^\.\//, '');
+          const f = fileLinks(graph, file);
+          if (!f) throw new MenitorError(`"${file}" isn't a project file the graph knows. Paths are from the project root.`);
+          if (values.json) json({ ...f, read });
+          else io.out(renderFileLinks(f, read));
+          return EXIT.ok;
+        }
+        throw new MenitorError('Usage: menitor graph [task [id] | file <path> | section <file#anchor>]');
+      }
+
+      case 'go': {
+        const p = paths();
+        const s = statusData(p);
+        const cmd = startCommands(p, values);
+        if (!s.approved) {
+          io.out(`Setup isn't done: there is no approved plan yet. Point the learner to ${cmd.start ?? 'the start command'} and stop.`);
+          return EXIT.ok;
+        }
+        if (!s.current) {
+          const plan = requirePlan(p);
+          const events = parseLog(fs.existsSync(p.log) ? fs.readFileSync(p.log, 'utf8') : '');
+          io.out(`${renderStats(computeStats(plan, events))}\n\nEvery task is done. Congratulate the learner in one line, then suggest what's next, such as polishing the README and sharing the deployed link.`);
+          return EXIT.ok;
+        }
+        /** @type {string} */
+        let windowLine;
+        try {
+          const { r } = startWindow(p, values);
+          windowLine = `Window     ${r.url} (${r.opened ? 'opened in the browser' : r.started || r.restarted ? 'started; give the learner the link, which works only on this machine' : 'already running'})`;
+        } catch (err) {
+          windowLine = `Window     couldn't start: ${/** @type {Error} */ (err).message}`;
+        }
+        const brief = briefData(p, undefined);
+        io.out([windowLine, '', renderBrief(brief), '', renderGitState(p.root, brief.startCommit, brief.card.branch), '', renderNext(p, brief, cmd)].join('\n'));
+        return EXIT.ok;
+      }
+
+      case 'open':
+        return windowOpen(paths(), values);
+      case 'window': {
+        const p = paths();
+        if (sub === 'open') return windowOpen(p, values);
         if (sub === 'status') {
           const info = readWindowInfo(p);
           const alive = info ? isAlive(p, info) : false;

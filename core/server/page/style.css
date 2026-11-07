@@ -40,7 +40,7 @@
   --control: #c9cec8;
   --text: #1f201d;
   --muted: #5b605b;
-  --accent: #2f6f5e; /* Menitor green: your ticks, your tasks, open hints, links */
+  --accent: #1b6e66; /* Menitor teal, from the mark: your ticks, your tasks, open hints, links */
   --on-accent: #ffffff;
   --menitor: #8a8e89; /* tasks Menitor did */
   --primary: #1f201d;
@@ -61,6 +61,10 @@
   --focus: #1f5fbf;
   --toast-bg: #1f201d;
   --toast-ink: #ffffff;
+  --mark-tile: #1b6e66; /* the mark: mint on teal in light, teal on mint in dark */
+  --mark-glyph: #dcfae5;
+  --track: #e6e9e5; /* the tabs: a track one step off the top bar, the open tab lifted out of it */
+  --track-active: #ffffff;
 
   --font: "Instrument Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, "Liberation Mono", monospace; /* taste-skill-ignore: literal code only (doc paths, branches, hint snippets) */
@@ -78,6 +82,10 @@
   --panel-pad: 16px;
   --control-height: 40px;
   --edge: 16px; /* the page's outer margin, matched by the top bar */
+
+  /* Motion: feedback only, quick and once. Strong ease-outs; a short accelerating curve only for leaving. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-exit: cubic-bezier(0.55, 0.055, 0.675, 0.19);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -113,6 +121,10 @@
     --focus: #8ab4ff;
     --toast-bg: #f1f2f1;
     --toast-ink: #141514;
+    --mark-tile: #dcfae5;
+    --mark-glyph: #1b6e66;
+    --track: #1c1e1c;
+    --track-active: #2e312e;
   }
 }
 
@@ -161,6 +173,11 @@ ol {
 :focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
+}
+
+/* A heading the keyboard is moved to is a place, not a control: no ring around it. */
+h1[tabindex="-1"]:focus {
+  outline: none;
 }
 
 a {
@@ -249,6 +266,43 @@ pre {
   opacity: 0.55;
 }
 
+/* A press on its way or being worked on: the button says what it's doing, with a slow pulse. */
+.btn.busy {
+  cursor: progress;
+}
+
+.btn.busy::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: press-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes press-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* While a press is pending, its line shows at every width, on a row of its own, even where the
+ * line about how buttons work is hidden. */
+.actions.pending {
+  flex-wrap: wrap;
+}
+
+.actions .how.working {
+  display: block;
+  flex-basis: 100%;
+  margin-right: 0;
+  color: var(--text);
+}
+
 /* The shell: a tinted top bar, then the white sheet */
 
 .app {
@@ -275,8 +329,72 @@ pre {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   font-size: 15px;
+}
+
+/* The tabs: the main screen and the to-do list, in a quiet track beside the project's name. */
+.tabs {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  margin-left: 16px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--track);
+}
+
+.tab {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font: 500 14px/1 var(--font);
+  cursor: pointer;
+  transition: color 0.18s ease;
+}
+
+.tab:hover,
+.tab[aria-current="page"] {
+  color: var(--text);
+}
+
+.tab:active {
+  transform: scale(0.98);
+}
+
+.tab-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The open tab's pill sits behind its label, so it can glide from tab to tab. */
+.tab-pill {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--track-active);
+}
+
+.tab-count {
+  color: var(--muted);
+}
+
+.tab-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
 }
 
 .mark {
@@ -284,15 +402,11 @@ pre {
 }
 
 .mark rect {
-  fill: var(--accent);
+  fill: var(--mark-tile);
 }
 
 .mark path {
-  fill: none;
-  stroke: var(--on-accent);
-  stroke-width: 3;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  fill: var(--mark-glyph);
 }
 
 .brand-name {
@@ -316,6 +430,7 @@ pre {
   align-items: center;
   gap: 6px;
   flex: none;
+  margin-left: auto;
   font-size: 13px;
   color: var(--muted);
 }
@@ -907,6 +1022,558 @@ h1 {
   background: var(--accent);
 }
 
+/* A passed task's result: what Menitor said about the explanation, then Continue (C-6) */
+
+.result-body,
+.result-main {
+  display: grid;
+  gap: var(--gap);
+  align-content: start;
+}
+
+.result-list {
+  display: grid;
+  gap: 24px;
+}
+
+.result-item {
+  display: grid;
+  gap: 8px;
+}
+
+/* The learner's own words keep a reading measure, even in a wide panel. */
+.result-item .past-a {
+  justify-self: start;
+  max-width: 68ch;
+}
+
+/* Menitor's reply is what this screen is for, so it reads at the question's size. */
+.result-feedback {
+  font-size: 18px;
+  line-height: 1.45;
+  max-width: 64ch;
+  text-wrap: pretty;
+}
+
+/* The finish line, when every task is done: one field in Menitor's green with the figures as
+ * type, then what was built beside the plan. */
+
+.finish {
+  display: grid;
+  gap: 24px;
+  margin-bottom: var(--gap);
+  padding: 24px;
+  border-radius: var(--radius-panel);
+  background: var(--callout-bg);
+}
+
+.finish-figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.finish-figures > div {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+
+.finish-figures dt {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+.finish-figures dd {
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.1;
+}
+
+/* The lead figure answers the screen's question: how much of it did you write? */
+.finish-figures .lead dd {
+  font-size: 40px;
+  letter-spacing: -0.02em;
+}
+
+.finish-unit {
+  font-size: var(--fs-body);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
+.finish-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}
+
+.finish-foot p {
+  max-width: 64ch;
+  margin-right: auto;
+  text-wrap: pretty;
+}
+
+.finish-url {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.finish-body {
+  display: grid;
+  gap: var(--gap);
+}
+
+.built-milestone + .built-milestone {
+  margin-top: 20px;
+}
+
+/* Milestones are a level below the panel title, as in the plan ledger. */
+.built-milestone h3 {
+  margin-bottom: 4px;
+  font-size: var(--fs-meta);
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.built-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-top: 1px solid var(--rule);
+}
+
+/* Each finished task in the list opens it, like its cell in the plan. */
+.built-open {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--control);
+  text-underline-offset: 3px;
+}
+
+.built-open:hover {
+  text-decoration-color: currentColor;
+}
+
+.built-by {
+  flex: none;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+/* A finished task, opened from the plan: the work and the explanation on the left, its docs and
+ * the plan on the right. Each column stacks at its own height. */
+
+.history-body,
+.history-main,
+.history-side {
+  display: grid;
+  gap: var(--gap);
+  align-content: start;
+}
+
+.history-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.history-note {
+  margin-top: 18px;
+}
+
+.history-note h3 {
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.history-note p {
+  max-width: 68ch;
+  text-wrap: pretty;
+}
+
+/* Setup, before the warm-up: the learner's own answers so far, shown back to them. */
+.told {
+  margin-top: 20px;
+}
+
+.told h3 {
+  margin-bottom: 8px;
+  font-size: var(--fs-meta);
+  font-weight: 600;
+}
+
+.told dl {
+  display: grid;
+  gap: 4px;
+}
+
+.told dt {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+.told dt:not(:first-child) {
+  margin-top: 10px;
+}
+
+.told dd {
+  max-width: 68ch;
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+
+/* Setup: the warm-up and its question on the left, the answers saved so far on the right. */
+
+.setup-body {
+  display: grid;
+  gap: var(--gap);
+  align-items: start;
+}
+
+.warmup {
+  display: grid;
+  gap: 16px;
+}
+
+.warmup-text {
+  display: grid;
+  gap: 10px;
+  max-width: 68ch;
+}
+
+.warmup-text h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.warmup-text :not(pre) > code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--raised);
+  font-size: 0.9em;
+}
+
+/* A label, its help line and the box read as one field. */
+.warmup .field {
+  display: grid;
+  gap: 6px;
+}
+
+.warmup-text p,
+.warmup-list li {
+  text-wrap: pretty;
+}
+
+.warmup-list {
+  display: grid;
+  gap: 4px;
+  padding-left: 18px;
+  list-style: disc;
+}
+
+.warmup-text pre {
+  padding: 12px 14px;
+  border-radius: var(--radius-inner);
+  background: var(--raised);
+  overflow-x: auto;
+  white-space: pre;
+  line-height: 1.55;
+}
+
+.setup-main {
+  display: grid;
+  gap: var(--gap);
+}
+
+/* Setup's choices: stacks side by side as cards, focus areas as checkbox chips. */
+.choices {
+  display: grid;
+  gap: 20px;
+}
+
+.choices fieldset {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choices legend {
+  margin-bottom: 2px;
+  padding: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.choices input {
+  accent-color: var(--accent);
+}
+
+.stack-options {
+  display: grid;
+  gap: 12px;
+}
+
+.stack-option {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-inner);
+  background: var(--raised);
+  cursor: pointer;
+}
+
+/* A 2px edge marks the pick; the padding gives back the extra pixel, so nothing moves. */
+.stack-option.selected {
+  padding: 13px 15px;
+  border: 2px solid var(--text);
+}
+
+.stack-option:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.stack-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.stack-name {
+  font-weight: 600;
+}
+
+.stack-hosting {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+.stack-reasons {
+  display: grid;
+  gap: 2px;
+  padding-left: 18px;
+  font-size: var(--fs-meta);
+  list-style: disc;
+}
+
+.focus-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.focus-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--control);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.focus-option.selected {
+  border-color: var(--text);
+}
+
+.focus-option:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.setup-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 0;
+  border-top: 1px solid var(--rule);
+  color: var(--muted);
+}
+
+.setup-list li.done {
+  color: var(--text);
+}
+
+.setup-mark {
+  flex: none;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+/* To-dos: the learner's own notes, beside the plan. */
+
+.todos {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.todos .panel-head {
+  margin-bottom: 0;
+}
+
+.todo-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.todo-form .field-label {
+  flex: 1 0 100%;
+  margin: 0;
+}
+
+.todo-form input {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-inner);
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+}
+
+.todo-form input:hover {
+  border-color: var(--muted);
+}
+
+.todo-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 2px 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.todo-list li.editing {
+  display: block;
+}
+
+.todo input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.todo-text {
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+.todo.done .todo-text {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+/* Under the text, so the text keeps the width: Add to plan or where it went on the left, Edit and Delete on the right. */
+.todo-actions {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+.todo-actions .btn {
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 13px;
+}
+
+.todo-actions .plan-todo {
+  margin-right: auto;
+  margin-left: -8px;
+  color: var(--accent);
+}
+
+.todo-actions .plan-todo:disabled {
+  color: var(--muted);
+}
+
+/* Where a deleted to-do was, for a few seconds, with Undo. */
+.todo-list li.undo {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.todo.undo .todo-text {
+  color: var(--muted);
+}
+
+.todo.undo .todo-actions {
+  grid-column: 2;
+}
+
+.todos-body {
+  display: grid;
+  gap: var(--gap);
+  align-items: start;
+}
+
+.todo-list {
+  container-type: inline-size;
+}
+
+@container (min-width: 520px) {
+  .todo-list li {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .todo-list .todo-actions {
+    grid-column: 3;
+    flex-wrap: nowrap;
+  }
+
+  .todo-list .todo-actions .plan-todo {
+    margin: 0 4px 0 0;
+  }
+
+  .todo-list .todo-planned {
+    margin-right: 8px;
+  }
+}
+
+/* Where a to-do went once the plan took it. */
+.todo-planned {
+  margin-right: auto;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
 /* Explain your code: the agent's question, answered here */
 
 .qa {
@@ -935,7 +1602,9 @@ h1 {
   color: var(--muted);
 }
 
-.qa textarea {
+.qa textarea,
+.warmup textarea,
+.prd textarea {
   display: block;
   width: 100%;
   min-height: 112px;
@@ -949,8 +1618,52 @@ h1 {
   resize: vertical;
 }
 
-.qa textarea:hover {
+.qa textarea:hover,
+.warmup textarea:hover,
+.prd textarea:hover {
   border-color: var(--muted);
+}
+
+/* Setup's PRD core: a box per section, Menitor's feedback under each. */
+.prd {
+  display: grid;
+  gap: 16px;
+}
+
+.prd .field {
+  display: grid;
+  gap: 6px;
+}
+
+.prd .field-label,
+.warmup .field-label {
+  margin-top: 0;
+}
+
+.prd .field-help,
+.warmup .field-help {
+  margin: 0;
+}
+
+/* Each box grows with its draft, so nothing hides behind a scroll bar. */
+.prd textarea {
+  field-sizing: content;
+  min-height: 5.5em;
+  max-height: 24em;
+}
+
+.prd-feedback {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius-inner);
+  background: var(--callout-bg);
+  max-width: 68ch;
+}
+
+.prd-feedback-head {
+  font-size: var(--fs-meta);
+  font-weight: 600;
 }
 
 .answer {
@@ -1120,6 +1833,7 @@ h1 {
 .cell.added::after,
 .swatch.added::after {
   content: "";
+  pointer-events: none;
   position: absolute;
   inset: 0;
   margin: auto;
@@ -1137,6 +1851,94 @@ h1 {
 .legend .swatch.added::after {
   width: 4px;
   height: 4px;
+}
+
+/* A finished task's cell is a button over the mark, opening it to look back on. */
+.cell {
+  position: relative;
+}
+
+.cell-open {
+  position: absolute;
+  inset: -1px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.cell-open:hover {
+  outline: 2px solid var(--muted);
+  outline-offset: 2px;
+}
+
+.cell.viewing {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+/* Milestones folded into one row: done, or still to come. The whole row is the button. */
+.fold-toggle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px 10px;
+  width: 100%;
+  min-height: 32px;
+  margin: -4px 0;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ms.fold {
+  display: block;
+}
+
+.fold-toggle:hover .ms-name {
+  color: var(--text);
+}
+
+.fold-toggle .chev {
+  width: 7px;
+  height: 7px;
+  margin: 0 3px 3px 0;
+  border-width: 0 1.5px 1.5px 0;
+  border-style: solid;
+  border-color: var(--muted);
+  transform: rotate(45deg);
+}
+
+.ms.fold.open .chev {
+  margin: 3px 3px 0 0;
+  transform: rotate(-135deg);
+}
+
+.fold-toggle:hover .chev {
+  border-color: var(--text);
+}
+
+.cells.mini {
+  grid-column: 1 / -1;
+  gap: 3px;
+}
+
+.cells.mini .cell {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.ledger-tip {
+  margin-top: 10px;
+  font-size: var(--fs-small);
+  color: var(--muted);
 }
 
 .legend {
@@ -1334,18 +2136,17 @@ h1 {
     text-align: right;
   }
 
-  /* The steps take 8 columns and span two rows. Before you code (row 1) and the plan (row 2) take
-   * the other 4. The plan's row is flexible, so it absorbs any difference and the columns end
-   * level. The hints run all 12 columns below. */
+  /* Two stacks that never stretch a card: the steps (rows 1-2) and the hints (row 3) on the left,
+   * before you code (row 1) and the plan (rows 2-3) on the right. The spans interleave, so each
+   * column runs on at its own height, with no blank band inside a card. */
   .board {
     grid-template-columns: repeat(12, minmax(0, 1fr));
-    grid-template-rows: auto 1fr auto;
+    align-items: start;
   }
 
   .board > .learn {
     grid-column: 9 / span 4;
     grid-row: 1;
-    align-self: start;
   }
 
   .board > .steps {
@@ -1355,7 +2156,90 @@ h1 {
 
   .board > .plan {
     grid-column: 9 / span 4;
-    grid-row: 2;
+    grid-row: 2 / span 2;
+  }
+
+  /* The to-dos page: the list on the left, the plan it can join in reach on the right. */
+  .todos-body {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .todos-body > .todos {
+    grid-column: 1 / span 8;
+  }
+
+  .todos-body > .plan {
+    grid-column: 9 / span 4;
+    position: sticky;
+    top: 16px;
+  }
+
+  /* A passed task's result: the explanation and Up next on the left, the plan on the right. */
+  .result-body {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .result-main {
+    grid-column: 1 / span 8;
+  }
+
+  .result-body > .plan {
+    grid-column: 9 / span 4;
+    align-self: start;
+  }
+
+  .history-body {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .history-main {
+    grid-column: 1 / span 8;
+  }
+
+  /* The plan stays in reach while the work and the explanation scroll past. */
+  .history-side {
+    grid-column: 9 / span 4;
+    align-self: start;
+    position: sticky;
+    top: 16px;
+  }
+
+  .history-head .history-nav {
+    justify-content: flex-end;
+    align-self: start;
+  }
+
+  /* Setup: the warm-up on the left, the answers saved so far on the right. */
+  .setup-body {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .setup-body > :first-child {
+    grid-column: 1 / span 8;
+  }
+
+  .stack-options {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+
+  .setup-body > .setup-steps {
+    grid-column: 9 / span 4;
+  }
+
+  /* The finish line: what you built on the left, the plan on the right. */
+  .finish-body {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .finish-body > .built {
+    grid-column: 1 / span 8;
+  }
+
+  .finish-body > .plan {
+    grid-column: 9 / span 4;
+    align-self: start;
+    position: sticky;
+    top: 16px;
   }
 
   /* Type-along steps grow as code opens: the plan stays in view beside them instead of stretching. */
@@ -1388,20 +2272,23 @@ h1 {
     grid-column: 9 / span 4;
   }
 
+  /* The hints sit under the steps, at their own height. In 8 columns the ladder takes half, so its
+   * four labels have room. */
   .board > .hints {
-    grid-column: 1 / -1;
+    grid-column: 1 / span 8;
     display: grid;
     grid-template-columns: repeat(12, minmax(0, 1fr));
     column-gap: var(--gap);
     align-items: start;
+    align-self: start;
   }
 
   .hints-side {
-    grid-column: 1 / span 4;
+    grid-column: 1 / span 6;
   }
 
   .hints-body {
-    grid-column: 5 / span 8;
+    grid-column: 7 / span 6;
   }
 
   .hints-body > :first-child {
@@ -1421,8 +2308,41 @@ h1 {
 /* The narrowest phones: tighter buttons, and the mark stands in for the wordmark */
 
 @media (max-width: 640px) {
+  .bar-inner {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 52px;
+    padding-top: 8px;
+    padding-bottom: 10px;
+    row-gap: 8px;
+  }
+
+  .tabs {
+    order: 5;
+    flex: 1 0 100%;
+    margin-left: 0;
+  }
+
+  .tab {
+    flex: 1 1 0;
+    min-height: 36px;
+  }
+
   .solution {
     padding-left: 14px;
+  }
+
+  /* The finish figures: the lead across the top, the other two side by side under it. */
+  .finish {
+    padding: 20px;
+  }
+
+  .finish-figures {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .finish-figures .lead {
+    grid-column: 1 / -1;
   }
 }
 
@@ -1445,7 +2365,209 @@ h1 {
 /* A narrow pop-out keeps the phone layout; trim its padding */
 
 .pip .bar-inner {
-  height: 44px;
+  min-height: 44px;
+}
+
+/* Motion. Each change says so once, then holds still; the page is finished without any of it. */
+
+@media (prefers-reduced-motion: no-preference) {
+  .toast:not([hidden]) {
+    animation: toast-in 240ms var(--ease-out) both;
+  }
+
+  .toast.leaving {
+    animation: toast-out 180ms var(--ease-exit) both;
+  }
+
+  /* Something that just arrived (a fix, a hint, a reply, a to-do) rises into place. */
+  .m-arrive {
+    animation: m-arrive 360ms var(--ease-out) var(--m-delay, 0ms) both;
+  }
+
+  /* A line whose words changed (a press's progress, the last check) fades to the new words. */
+  .m-fade {
+    animation: m-fade 300ms ease var(--m-delay, 0ms) both;
+  }
+
+  /* Milestones unfolding drop in from just above, a beat apart. */
+  .m-drop {
+    animation: m-drop 280ms var(--ease-out) var(--m-delay, 0ms) both;
+  }
+
+  /* A tick: the box settles in, then its check draws. */
+  .m-tick input {
+    animation: m-press 300ms var(--ease-out) var(--m-delay, 0ms) both;
+  }
+
+  .m-tick input::before {
+    animation: m-check 260ms var(--ease-out) calc(var(--m-delay, 0ms) + 60ms) both;
+  }
+
+  /* A hint opening fills its rung from the left. */
+  .m-rung::before {
+    transform-origin: left center;
+    animation: m-fill-x 520ms var(--ease-out) var(--m-delay, 0ms) both;
+  }
+
+  /* A task passing fills its cell; the next task's cell gets one soft ring, closing onto it. */
+  .m-fill {
+    animation: m-fill 560ms var(--ease-out) var(--m-delay, 0ms) both;
+  }
+
+  .m-now::before {
+    content: "";
+    position: absolute;
+    inset: -5px;
+    border: 2px solid var(--text);
+    border-radius: 9px;
+    pointer-events: none;
+    animation: m-ring 760ms var(--ease-out) var(--m-delay, 0ms) both;
+  }
+
+  /* A to-do ticked done greys out rather than snapping. */
+  .m-done .todo-text {
+    animation: m-mute 360ms ease var(--m-delay, 0ms) both;
+  }
+
+  /* Changing screens: the old view fades, the new one rises a few pixels, and the open tab's pill
+   * glides to its tab. The names are set only while a transition runs. */
+  .vt .bar {
+    view-transition-name: menitor-bar;
+  }
+
+  .vt .tab-pill {
+    view-transition-name: menitor-tab-pill;
+  }
+
+  .vt .tab[data-key="tab:main"] .tab-text {
+    view-transition-name: menitor-tab-main;
+  }
+
+  .vt .tab[data-key="tab:todos"] .tab-text {
+    view-transition-name: menitor-tab-todos;
+  }
+
+  .vt .content {
+    view-transition-name: menitor-content;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root),
+  ::view-transition-old(menitor-bar),
+  ::view-transition-new(menitor-bar),
+  ::view-transition-group(menitor-content) {
+    animation: none;
+  }
+
+  ::view-transition-group(menitor-tab-pill) {
+    animation-duration: 320ms;
+    animation-timing-function: var(--ease-out);
+  }
+
+  ::view-transition-group(menitor-tab-main),
+  ::view-transition-group(menitor-tab-todos) {
+    animation-duration: 200ms;
+  }
+
+  /* A fade through, not a crossfade: the old screen is gone before the new one rises, so two
+   * layouts never show at once. */
+  ::view-transition-old(menitor-content) {
+    animation: vt-leave 110ms var(--ease-exit) both;
+  }
+
+  ::view-transition-new(menitor-content) {
+    animation: vt-arrive 260ms var(--ease-out) 90ms both;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+}
+
+@keyframes m-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes m-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes m-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes m-press {
+  from {
+    transform: scale(0.82);
+  }
+}
+
+@keyframes m-check {
+  from {
+    opacity: 0;
+    transform: translateY(-1px) rotate(-45deg) scale(0.4);
+  }
+}
+
+@keyframes m-fill-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes m-fill {
+  from {
+    opacity: 0.3;
+    transform: scale(0.5);
+  }
+}
+
+@keyframes m-ring {
+  from {
+    opacity: 0.55;
+    transform: scale(1.5);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+@keyframes m-mute {
+  from {
+    color: var(--text);
+  }
+}
+
+@keyframes vt-leave {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes vt-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -9,20 +9,24 @@ import { approvedProject, makeProject, cli } from './helpers.js';
 import { changedFiles, parseLearnerPrompt, onHandlerError } from '../adapters/claude-code/handlers.js';
 import { loadGuard } from '../core/lib/state.js';
 import { parseLog } from '../core/lib/log.js';
+import { readWindowInfo } from '../core/lib/window.js';
+import { windowEventText } from '../adapters/claude-code/messages.js';
 
 const HOOK = path.resolve(import.meta.dirname, '..', 'adapters', 'claude-code', 'hook.js');
 const PLUGIN_ROOT = path.resolve(import.meta.dirname, '..');
 
 /**
- * Run the hook script the way Claude Code does.
+ * Run the hook script the way Claude Code does. Session starts don't open a window unless a test
+ * asks, and never open a browser.
  * @param {string} event
  * @param {Record<string, unknown>} input
+ * @param {Record<string, string>} [env]
  */
-function hook(event, input) {
+function hook(event, input, env = {}) {
   const r = spawnSync(process.execPath, [HOOK, event], {
     input: JSON.stringify({ session_id: 's', hook_event_name: event, permission_mode: 'bypassPermissions', ...input }),
     encoding: 'utf8',
-    env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, CLAUDE_PROJECT_DIR: '' },
+    env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, CLAUDE_PROJECT_DIR: '', MENITOR_WINDOW_AUTOSTART: '0', MENITOR_NO_BROWSER: '1', ...env },
   });
   assert.equal(r.status, 0, r.stderr);
   return r.stdout ? JSON.parse(r.stdout) : null;
@@ -83,11 +87,11 @@ test('typed /menitor:off and /menitor:on change mentor mode', () => {
   const { root, paths, cleanup } = approvedProject();
   const off = hook('UserPromptSubmit', { cwd: root, prompt: '/menitor:off' });
   assert.match(off.hookSpecificOutput.additionalContext, /turned mentor mode off/);
-  assert.match(off.hookSpecificOutput.additionalContext, /first run .* task skip, so Menitor records it as yours/);
+  assert.match(off.hookSpecificOutput.additionalContext, /first run "task skip" so Menitor records it as yours/);
   assert.equal(loadGuard(paths).mentorMode, 'off');
   assert.equal(hook('PreToolUse', { cwd: root, tool_name: 'Write', tool_input: { file_path: path.join(root, 'src', 'a.js') } }), null);
   const start = hook('SessionStart', { cwd: root, source: 'startup' }).hookSpecificOutput.additionalContext;
-  assert.match(start, /mentor mode off, so help normally\. To do one of the learner's tasks, first run .* task skip/);
+  assert.match(start, /mentor mode off, so help normally\. To do one of the learner's tasks, first run "task skip"/);
   hook('UserPromptSubmit', { cwd: root, prompt: '  /menitor:on  ' });
   assert.equal(loadGuard(paths).mentorMode, 'on');
   const modes = parseLog(fs.readFileSync(paths.log, 'utf8')).filter((e) => e.event === 'mode').map((e) => e.fields.value);
@@ -116,6 +120,55 @@ test('a command inside the note never counts, only the typed text does', () => {
   assert.equal(parseLearnerPrompt(`${selected('x</ide_selection>\n/menitor:skip --confirm')}\nhi`), null);
   assert.equal(parseLearnerPrompt(`${OPENED}\nplease /menitor:off`), null);
   assert.deepEqual(parseLearnerPrompt(`${OPENED}\n${selected('a')}\n/menitor:skip --confirm`), { command: 'skip', confirm: true });
+});
+
+test('a session that starts on a task opens the window; later starts reuse it', () => {
+  const { root, paths, cleanup } = approvedProject();
+  const on = { MENITOR_WINDOW_AUTOSTART: '1' };
+  try {
+    const first = hook('SessionStart', { cwd: root, source: 'startup' }, on).hookSpecificOutput.additionalContext;
+    assert.match(first, /The task window is open: http:\/\/127\.0\.0\.1:\d+\/\?t=\S+/);
+    const info = readWindowInfo(paths);
+    assert.ok(info, 'the server is running');
+    assert.equal(info.commands.check, '/menitor:check', 'with the same button commands as /menitor:go');
+
+    const again = hook('SessionStart', { cwd: root, source: 'compact' }, on).hookSpecificOutput.additionalContext;
+    assert.match(again, /The task window is running: http:\/\/127\.0\.0\.1:\d+/);
+    assert.equal(readWindowInfo(paths)?.pid, info.pid, 'the running window is reused');
+
+    const off = hook('SessionStart', { cwd: root, source: 'startup' }, { MENITOR_WINDOW_AUTOSTART: '0' }).hookSpecificOutput.additionalContext;
+    assert.doesNotMatch(off, /The task window is/, 'the setting turns it off');
+  } finally {
+    cli(root, ['window', 'stop']);
+    cleanup();
+  }
+
+  const plain = makeProject();
+  cli(plain.root, ['init']);
+  hook('SessionStart', { cwd: plain.root, source: 'startup' }, on);
+  assert.equal(readWindowInfo(plain.paths), null, 'no task, no window');
+  plain.cleanup();
+});
+
+test('Add to plan reaches the session as a fixed instruction naming the to-do ID', () => {
+  const text = windowEventText('add', 't3', 'abc123');
+  assert.match(text, /sent to-do abc123 to the plan\. Read it with .* todos show abc123, then run the menitor:add skill on it/);
+  assert.match(text, /"todo": "abc123"/);
+});
+
+test('setup presses in the window reach the session as fixed instructions', () => {
+  assert.match(windowEventText('warmup-done', 'the current task'), /the learner says they're done with the warm-up\. Read their code in \.menitor\/warmup\//);
+  assert.match(windowEventText('warmup-done', 'x'), /setup set warmup-question/);
+  assert.match(windowEventText('setup', 'x'), /answered in the setup window\. Read it with .* setup show/);
+});
+
+test('Stop records the end of the agent turn, so the window knows a press was answered', () => {
+  const { root, paths, cleanup } = approvedProject();
+  assert.equal(hook('Stop', { cwd: root, stop_hook_active: false }), null, 'it says nothing to the session');
+  const last = JSON.parse(fs.readFileSync(paths.activity, 'utf8').trim().split('\n').at(-1) ?? '{}');
+  assert.equal(last.tool, 'turn-end');
+  assert.equal(last.task, 't1');
+  cleanup();
 });
 
 test('PostToolUse logs agent activity and warns when a command changed learner files', () => {
@@ -177,7 +230,7 @@ test('helpers: prompts, changed files and crash handling', () => {
 
 test('the hooks file points at the entry script and the manifest loads it', () => {
   const hooks = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, 'adapters', 'claude-code', 'hooks.json'), 'utf8'));
-  for (const event of ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse']) {
+  for (const event of ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop']) {
     const command = hooks.hooks[event][0].hooks[0].command;
     assert.equal(command, `node "\${CLAUDE_PLUGIN_ROOT}/adapters/claude-code/hook.js" ${event}`);
   }

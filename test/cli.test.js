@@ -125,6 +125,103 @@ test('tasks pass in order and record the next start commit', () => {
   cleanup();
 });
 
+test('setup answers are saved as they are given, and show what is left to ask', () => {
+  const { root, paths, cleanup } = makeProject();
+  try {
+    cli(root, ['init']);
+    const show = () => JSON.parse(cli(root, ['setup', 'show', '--json']).out);
+    assert.deepEqual(show().answers, []);
+    assert.deepEqual(
+      show().missing.map((/** @type {any} */ m) => m.key),
+      ['idea', 'goal', 'time', 'experience', 'stack', 'warmup-question', 'warmup-answer', 'focus', 'help', 'stack-choice', 'prd'],
+      'every setup answer, in the order setup asks',
+    );
+
+    assert.equal(cli(root, ['setup', 'set', 'idea', 'A recipe box', 'for my family']).code, 0);
+    const prd = 'Problem: recipes get lost.\nUsers: my family.\nMust-haves: add, list, search.';
+    assert.equal(cli(root, ['setup', 'set', 'prd', '-'], { stdin: `${prd}\n` }).code, 0);
+    const s = show();
+    assert.deepEqual(s.answers.map((/** @type {any} */ a) => [a.key, a.value]), [['idea', 'A recipe box for my family'], ['prd', prd]]);
+    assert.ok(!s.missing.some((/** @type {any} */ m) => m.key === 'idea'));
+    assert.match(cli(root, ['setup', 'show']).out, /Idea\s+A recipe box for my family/);
+    assert.match(cli(root, ['setup', 'show']).out, /Still to ask: Goal, Time per week/);
+
+    // Answering again replaces the answer.
+    cli(root, ['setup', 'set', 'idea', 'A recipe box for friends']);
+    assert.equal(show().answers[0].value, 'A recipe box for friends');
+
+    const bad = cli(root, ['setup', 'set', 'colour', 'blue']);
+    assert.notEqual(bad.code, 0);
+    assert.match(bad.err, /Unknown setup answer "colour"/);
+    assert.notEqual(cli(root, ['setup', 'set', 'goal']).code, 0, 'an answer needs text');
+
+    // Personal, so it stays out of git; and validate checks it.
+    assert.match(fs.readFileSync(paths.gitignore, 'utf8'), /^setup\.json$/m);
+    assert.equal(cli(root, ['validate']).code, 0);
+  } finally {
+    cleanup();
+  }
+});
+
+test('setup options for the stack and focus areas are posted through the CLI', () => {
+  const { root, cleanup } = makeProject();
+  try {
+    cli(root, ['init']);
+    assert.equal(cli(root, ['setup', 'options', 'focus', 'frontend, backend and APIs,database']).code, 0);
+    const stacks = [
+      { name: 'Next.js and Postgres', reasons: ['One language front to back', 'Free hosting on Vercel'], hosting: 'Vercel and Neon' },
+      { name: 'Express and SQLite', reasons: ['Fewer moving parts'] },
+    ];
+    assert.equal(cli(root, ['setup', 'options', 'stack', '-'], { stdin: JSON.stringify(stacks) }).code, 0);
+    const shown = JSON.parse(cli(root, ['setup', 'show', '--json']).out);
+    assert.deepEqual(shown.options.focus, ['frontend', 'backend and APIs', 'database']);
+    assert.deepEqual(shown.options.stack, stacks);
+
+    assert.notEqual(cli(root, ['setup', 'options', 'stack', '-'], { stdin: '[]' }).code, 0, 'one to three stacks');
+    assert.notEqual(cli(root, ['setup', 'options', 'stack', '-'], { stdin: '[{"name":"x"}]' }).code, 0, 'each with its reasons');
+    assert.notEqual(cli(root, ['setup', 'options', 'colour', 'red']).code, 0);
+    assert.match(cli(root, ['setup', 'options', 'stack', '-'], { stdin: 'not json' }).err, /JSON/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('the PRD draft opens in the window, and feedback is posted per section', () => {
+  const { root, cleanup } = makeProject();
+  try {
+    cli(root, ['init']);
+    assert.equal(cli(root, ['setup', 'options', 'prd']).code, 0);
+    assert.equal(cli(root, ['setup', 'critique', 'users', 'Who exactly?', 'Name one family member.']).code, 0);
+    assert.equal(cli(root, ['setup', 'critique', 'problem', '-'], { stdin: 'Is it a real problem?\n' }).code, 0);
+    const shown = JSON.parse(cli(root, ['setup', 'show', '--json']).out);
+    assert.equal(shown.options.prd, true);
+    assert.equal(shown.critique.users.text, 'Who exactly? Name one family member.');
+    assert.equal(shown.critique.problem.text, 'Is it a real problem?');
+    assert.notEqual(cli(root, ['setup', 'critique', 'pricing', 'x']).code, 0, 'only the three PRD core sections');
+    assert.notEqual(cli(root, ['setup', 'critique', 'users']).code, 0, 'feedback needs text');
+  } finally {
+    cleanup();
+  }
+});
+
+test('todos show reads the learner to-dos as data', () => {
+  const { root, paths, cleanup } = approvedProject();
+  try {
+    assert.match(cli(root, ['todos', 'show']).out, /No to-dos yet/);
+    fs.writeFileSync(paths.todos, JSON.stringify({ version: 1, todos: [{ id: 'abc123', text: 'Let recipes have a photo', done: false, at: '2026-11-06T10:00:00.000Z' }] }));
+    assert.match(cli(root, ['todos', 'show']).out, /abc123\s+Let recipes have a photo/);
+    assert.deepEqual(JSON.parse(cli(root, ['todos', 'show', 'abc123', '--json']).out).text, 'Let recipes have a photo');
+    assert.equal(cli(root, ['todos', 'show', 'abc123']).out.trim(), 'Let recipes have a photo');
+    assert.notEqual(cli(root, ['todos', 'show', 'nope']).code, 0);
+    // An addition that names a to-do it doesn't know is refused, before anything is saved.
+    const bad = cli(root, ['plan', 'add', '-', '--dry-run'], { stdin: JSON.stringify({ step: 'x', to: 't3', todo: 'nope' }) });
+    assert.notEqual(bad.code, 0);
+    assert.match(bad.err, /No to-do "nope"/);
+  } finally {
+    cleanup();
+  }
+});
+
 test('a learner task can be skipped only with a grant the learner gave', () => {
   const { root, paths, cleanup } = approvedProject();
   const denied = cli(root, ['task', 'skip']);
@@ -268,4 +365,36 @@ test('the bin script runs, prints help and sets exit codes', () => {
     assert.match(e.stderr, /Unknown command "nope"/);
   }
   assert.equal(cli(process.cwd(), ['status', '--bogus']).code, EXIT.error);
+});
+
+test('go picks up where the learner left off in one call: the window, the brief, git and what to do next', () => {
+  const plain = makeProject();
+  try {
+    cli(plain.root, ['init']);
+    assert.match(cli(plain.root, ['go', '--no-browser', '--command', 'start=/menitor:start']).out, /Setup isn't done.*\/menitor:start/);
+  } finally {
+    plain.cleanup();
+  }
+
+  const { root, cleanup } = approvedProject();
+  try {
+    const r = cli(root, ['go', '--no-browser', '--command', 'check=/menitor:check', '--command', 'hint=/menitor:hint']);
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /^Window {5}http:\/\/127\.0\.0\.1:\d+/m, 'the window is open, with its link');
+    assert.match(r.out, /t1\.c1 Branch feat\/skeleton/, 'the brief, with checklist IDs');
+    assert.match(r.out, /Since the task started\nBranch /);
+    assert.match(r.out, /Show the learner the card above without the IDs/);
+    assert.match(r.out, /Typing \/menitor:check or \/menitor:hint works too/);
+    assert.match(r.out, /Then wait for their press/);
+    assert.doesNotMatch(r.out, /This task is yours/);
+
+    cli(root, ['task', 'pass', '--override', 'test']);
+    const delegated = cli(root, ['go', '--no-browser']).out;
+    assert.match(delegated, /This task is yours: do it now/);
+    assert.match(delegated, /Menitor-Delegated: true/);
+    assert.doesNotMatch(delegated, /wait for their press/, 'nothing to wait for on Menitor\'s own task');
+  } finally {
+    cli(root, ['window', 'stop']);
+    cleanup();
+  }
 });

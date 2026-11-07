@@ -68,6 +68,34 @@ test('a plan whose first milestone is not a skeleton gets a warning', () => {
   assert.ok(warnings.some((w) => w.startsWith('Milestone 1 (m1) should be a walking skeleton')));
 });
 
+test('code on a card is flagged, but plain words that are also keywords are not', () => {
+  const code = (/** @type {string} */ text) => languageWarnings('x', text).some((w) => w.includes('looks like code'));
+  // Steps the check flagged on 2026-11-05, all plain English.
+  for (const plain of [
+    'Open the window first, or return at once and say why it could not',
+    'Commit: feat(window): let the learner read feedback before moving on',
+    'Show the mentor critique under each section, and let the learner revise',
+    'Import the recipes from the old spreadsheet',
+    'Select the cheapest host, then deploy',
+    'Write the function that saves a recipe',
+  ]) {
+    assert.equal(code(plain), false, plain);
+  }
+  for (const real of [
+    'const total = items.length',
+    'let count = 0',
+    'return { ok: true }',
+    'return res.json(user);',
+    'function save(recipe) and call it',
+    "import express from 'express'",
+    'SELECT name FROM recipes',
+    'items.map((x) => x.id)',
+    '<h1>Recipe box</h1>',
+  ]) {
+    assert.equal(code(real), true, real);
+  }
+});
+
 test('long sentences are flagged', () => {
   const long = Array.from({ length: 25 }, () => 'word').join(' ');
   assert.equal(languageWarnings('x', long).length, 1);

@@ -6,6 +6,16 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
+- **Briefs and checks read through the context graph.** A long doc section in a brief is folded to its opening and an outline of the rest; `menitor graph section` prints a part on request. `check run` adds a review map with the changed lines, the files importing each changed file, and the doc sections naming it, so a review opens those lines instead of whole files. On this repo, briefs read 26% less and a check with its reads 80% less ([docs/context-cost.md](docs/context-cost.md)).
+- **A context graph of docs, tasks and files** ([ADR 17](docs/adr/017-context-graph.md)). `menitor graph task` says what a task touches: its doc section with line numbers, the files the section names and the task changed, the files one import away, and earlier tasks on the same files, each with its size. `menitor graph file <path>` works the other way. It reads only files that changed since the last query, so a fresh graph answers with no file reads.
+- **A leaner session start.** Every session now starts about 180 tokens lighter: the CLI path is printed once, repeated rules are merged, and the status leaves out what the card already says. The task brief names its doc once, and the review diff drops git's index lines ([docs/context-cost.md](docs/context-cost.md)).
+- **`menitor go`: the current task in one call.** It opens the window and prints the brief, what changed in git since the task started, and only the next steps that apply. `/menitor:go` now runs just that, and `/menitor:on` and `/menitor:off` take what to say from their hook note. Together they load about half or less of their earlier context ([docs/context-cost.md](docs/context-cost.md)).
+- **What each command costs in context.** `npm run context-cost` measures the skill text, hook context and first CLI output of every command, the same way for all, and what every session loads. The baseline is in [docs/context-cost.md](docs/context-cost.md).
+- **Setup shows your answers back.** While Menitor asks its questions, the window shows what you've told it so far, in your own words.
+- **Quiet motion for each action.** A tick settles in and draws its check, a new hint fills its rung, fixes, replies and to-dos rise into place, a pass fills its cell in the plan and rings the next one, and folded milestones drop in as they open. Changing tabs or screens fades through, with the open tab's pill gliding across. Everything is still with reduced motion.
+- **To-dos have a tab of their own,** beside **Task** in the top bar, so the task screen holds only the task. A dot on the Task tab says when something there needs you. A deleted to-do can be brought back with **Undo** for a few seconds.
+- **The plan card keeps its size.** Finished milestones fold into one row and the ones still to come into another, each still showing every task as a small cell. Select a folded row to open it.
+- **A new mark.** Menitor's egg-and-petals logo replaces the M in the window's top bar, the browser tab and the plugin icon, in three colourways (`logo/`). The window's accent moves to the mark's teal.
 - **Type-along mode** (`/menitor:typealong`, learner-only):
   - each step in the window opens to plain instructions and the full code for that step, with line numbers;
   - the code can't be selected or copied there, so the learner types it by hand;
@@ -13,12 +23,25 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
   - the agent writes the code per milestone with `menitor steps import`, into a gitignored `.menitor/solutions.json`;
   - the window receives a step's code only once that step is open.
 - A `typealong` scenario in the sample project.
+- **The window opens with the session.** When a session starts on a task, the window opens by itself, and the session already has its link. Set `MENITOR_WINDOW_AUTOSTART=0` to turn it off.
+- **A to-do list in the window.** Jot down ideas, features and changes to come back to, and add, edit, tick or delete them. They're saved in `.menitor/todos.json` and stay between sessions. On a desktop the hints and the to-dos share the last row.
+- **Look back on any finished task.** Select a finished task in the plan, or in the finish screen's list, to open it. It shows who did it, its steps and fixes, Menitor's note, your explanation with Menitor's replies, and the hints you opened. **Previous** and **Next** step through the finished tasks, and **Back** or Escape returns to where you were.
+- **Send a to-do into the plan with one button.** **Add to plan** on an open to-do starts `/menitor:add` on it. Only the to-do's ID reaches the session, which reads the text with `menitor todos show`. Once it lands, the to-do says where it went, such as "In the plan as task 6". With no session listening, the button copies `/menitor:add` with the to-do's text.
+- **Draft the core of your PRD in the window.** A box each for the problem, the users and the must-have features, saved as you type. **Send for feedback** wakes your session, and Menitor's feedback appears under each section, marked once you revise after it.
+- **Choose your stack and focus areas in the window.** Menitor offers one to three stacks side by side, each with its reasons and hosting, and the focus areas as checkboxes. Each pick is saved the moment you make it, and **Confirm choices** tells your session.
+- **The setup warm-up runs in the window.** The window shows the exercise, an **I'm done** button, then Menitor's question with an answer box, beside the setup answers saved so far. Your answer is saved as data and reaches the session through `menitor setup show`.
+- **Setup never loses an answer.** `/menitor:start` saves each answer the moment you give it, in `.menitor/setup.json`, with `menitor setup set`. If the session closes mid-setup, the next one picks up from `menitor setup show` and never asks the same question twice.
 - **Explain-back in the window.** The agent asks with `menitor question ask` and judges with `menitor question judge`. The learner answers in the window or in chat, and the reply and any follow-up show under the answer. Answers are saved as data in `.menitor/answers.json`.
+- **`menitor open` opens the window from a terminal,** with no agent involved. The buttons keep the commands from the last `/menitor:go`, which `session.json` now remembers. `npm link` in the Menitor folder puts `menitor` on your PATH.
 - **Whose turn it is, in the window.** A banner shows anything holding up the next task:
   - a delegated task, with a **Start it** button that runs `/menitor:go`;
   - a skip waiting for the learner's confirm;
   - anything the agent is waiting on, posted with `menitor waiting`.
+- **The window opens as its own app window, maximized,** in Chrome, Edge, Chromium or Brave, with no tabs or address bar. `MENITOR_WINDOW_MAXIMIZED=0` gives a normal-size window. Without one of those browsers, or with `MENITOR_WINDOW_APP=0`, it opens in a tab as before.
 - On phones and tablets, **Before you code** now comes before the steps.
+- **A finish screen for a finished plan.** When every task passes, the window celebrates it with real figures: how many tasks you wrote, what Menitor did, hints opened and your explain-back record. Below that, every task and who did it, and a button to open your live app. Adding a task brings the card back.
+- **See that Menitor is working after a button press.** The pressed button says what's happening ("Checking…"), the line beside the buttons says it in words, and the other buttons wait, so a second press sends nothing. When Menitor is done, the line says what comes next. A new `Stop` hook records when the agent ends its turn.
+- **Read the feedback before moving on.** When a task passes after an explain-back, the window keeps the questions, your answers and Menitor's replies on screen, beside the plan. **Continue** shows the next card, and the window remembers it after a reload.
 - **Window buttons drive the session in every Claude Code surface,** including VS Code. The plugin ships an MCP server with one tool, `wait_for_learner`. Claude calls it when the next move is the learner's, and it returns the moment a button is pressed. A press is claimed once, so the wait tool and the monitor never both handle it (ADR 14).
 - **Add ideas to an approved plan** with `/menitor:add <idea>` (ADR 15):
   - Menitor asks one to three questions, picks the size, and proposes a spot with a reason. It adds nothing until the learner says yes;
@@ -42,9 +65,12 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
 
 ### Fixed
 
+- **Plain words on a card no longer count as code.** The plan check flagged steps like "let the learner revise" and "return at once" because they start with a keyword. Now a keyword counts only in a code shape, such as `let x =` or `return {`, so real warnings stand out.
+- **The wait tool no longer waits on a window that isn't open.** It opens the window before it listens, or returns at once with the reason if the window can't start. Before, a session could sit stuck waiting for a press that couldn't come.
 - **No commit asked for on cards without a commit step.** A task that only deploys or pushes, such as the sample's deploy task, used to fail its check with "No commit since the task started". Now a commit is required only when the card has a step that starts with "Commit".
 - **Learner-only commands work on the first try in VS Code.** After the learner switched files, VS Code put a note about the open file before the typed text. The hook missed `/menitor:off`, `/menitor:on`, `/menitor:skip` and `/menitor:typealong`, so a second try was needed. The hook now skips that note and the selection note, and a command inside a selection never counts.
 - **A window started before an update no longer calls a healthy plan broken.** It kept checking the plan with the rules it started with. Now `menitor window open` restarts a window that's older than Menitor's code. An old window that can't read the plan says it's out of date.
+- **A check sees only the task's own work with a branch per task.** When the previous task was on another branch, the check listed that task's files as deleted, or counted work merged in from other tasks as this one's. Now it measures from where the current branch starts.
 
 ## 0.1.0 (2026-11-04)
 

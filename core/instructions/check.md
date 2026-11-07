@@ -15,6 +15,7 @@ A task passes only when three things hold: the deterministic checks pass, the do
 - For each checklist item, decide: done, missing, or ticked but not found.
 - For each done-when criterion, decide: met or not, with the evidence.
 - Read the diff like a senior developer: broken behavior, missed edge cases, security holes, and code that doesn't match the docs.
+- Look where the review map points, not at whole files. Open a changed file only at its listed lines, and an importing file only to check a caller the change affects.
 - Pass on each "NOTE" line from the check run, such as a branch mix-up or files the agent touched.
 
 Sort what you find:
