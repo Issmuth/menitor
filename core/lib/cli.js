@@ -5,7 +5,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { EXIT, MenitorError } from './errors.js';
 import { requireRoot, statePaths } from './paths.js';
-import { repoRoot } from './git.js';
+import { git, repoRoot } from './git.js';
 import { parseJsonInput } from './fsx.js';
 import { appendAgentEvent, parseFieldArgs, parseLog } from './log.js';
 import { cardData, renderCard } from './card.js';
@@ -13,8 +13,8 @@ import { renderSetup } from './setup.js';
 import { computeStats, renderStats } from './stats.js';
 import { renderCheck } from './check.js';
 import { openWindow, readWindowInfo, isAlive, stopWindow, windowUrl } from './window.js';
-import { allTasks } from './plan.js';
-import { loadLearner, loadProgress, loadSession, requirePlan, saveSession } from './state.js';
+import { allTasks, findTask } from './plan.js';
+import { loadLearner, loadPlan, loadProgress, loadSession, loadSolutions, requirePlan, saveSession } from './state.js';
 
 /** The buttons whose commands the window shows or copies. */
 const WINDOW_COMMAND_KEYS = ['start', 'go', 'check', 'hint', 'stuck', 'skip', 'add'];
@@ -120,6 +120,10 @@ Checks
         --timeout <seconds>             Per command (default 180)
 
 Window
+  menitor go                            Pick up where the learner left off, in one call: open the
+                                        window, print the brief and what changed in git since the
+                                        task started, then what to do next. Takes --command and
+                                        --no-browser like "window open"
   menitor open                          Open the task window: the short form of "window open"
   menitor window open                   Start the task window if it isn't running, and open it
         --command <name>=<text>         What the learner types for check, hint, stuck, go or start
@@ -260,6 +264,95 @@ function renderBrief(b) {
 }
 
 /**
+ * The commands the learner types, as the adapter named them with --command, or as last remembered.
+ * @param {import('./paths.js').StatePaths} p
+ * @param {Record<string, any>} values
+ * @returns {Record<string, string>}
+ */
+function startCommands(p, values) {
+  /** @type {Record<string, string>} */
+  const given = {};
+  for (const pair of values.command ?? []) {
+    const eq = String(pair).indexOf('=');
+    if (eq > 0) given[String(pair).slice(0, eq)] = String(pair).slice(eq + 1);
+  }
+  if (Object.keys(given).length) return given;
+  try {
+    return loadSession(p).windowCommands ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * What changed in git since the task started, so a fresh session can say where the learner left off.
+ * @param {string} root
+ * @param {string | null} start the task's start commit
+ * @param {string | null} branch the card's branch
+ */
+function renderGitState(root, start, branch) {
+  const changes = git(root, ['status', '--short']);
+  if (changes === null) return 'Git        not a repo yet';
+  const current = git(root, ['rev-parse', '--abbrev-ref', 'HEAD']) ?? 'no commits yet';
+  const log = start ? (git(root, ['log', '--oneline', `${start}..HEAD`]) ?? '') : '';
+  const commits = log ? log.split('\n') : [];
+  const files = changes ? changes.split('\n') : [];
+  const list = (/** @type {string[]} */ items, /** @type {number} */ max) => [...items.slice(0, max).map((x) => `  ${x}`), ...(items.length > max ? [`  and ${items.length - max} more`] : [])];
+  return [
+    'Since the task started',
+    `Branch     ${current}${branch && branch !== current ? ` (the card's branch is ${branch})` : ''}`,
+    `Commits    ${commits.length || 'none yet'}`,
+    ...list(commits, 8),
+    `Changes    ${files.length ? `${files.length} not committed` : 'none uncommitted'}`,
+    ...list(files, 12),
+  ].join('\n');
+}
+
+/**
+ * What to do next on the current task. Only the cases that apply are printed, so the instructions
+ * for a new milestone or type-along cost nothing on the runs that don't need them.
+ * @param {import('./paths.js').StatePaths} p
+ * @param {ReturnType<typeof briefData>} brief
+ * @param {Record<string, string>} cmd the commands the learner types
+ */
+function renderNext(p, brief, cmd) {
+  const plan = requirePlan(p);
+  const { milestone } = findTask(plan, brief.card.task);
+  const open = milestone.tasks.filter((t) => t.status !== 'done' && t.owner === 'learner');
+  const lines = ['Next'];
+  const noHints = open.filter((t) => !t.hints);
+  if (noHints.length) {
+    lines.push(
+      `- This milestone has just started, so write the hints for ${noHints.map((t) => t.id).join(', ')}. Four rungs each: concept, approach, pseudocode, and a partial snippet with gaps, never the full solution. Store them with "hints import -", as JSON keyed by task ID.`,
+    );
+  }
+  if (brief.typeAlong) {
+    const steps = loadSolutions(p).steps;
+    const missing = open.flatMap((t) => t.checklist.filter((i) => !steps[i.id]).map((i) => i.id));
+    if (missing.length) {
+      lines.push(
+        `- Type-along is on and ${missing.length} steps have no code yet: ${missing.join(', ')}. For each, write "say" (what to do and where, in plain words) and "code" blocks, each with a "where" (a file path, or "Terminal"). Store them with "steps import -": {"t1.c2": {"say": "...", "code": [{"where": "src/app.js", "text": "..."}]}}. Never paste step code into chat; the window shows it.`,
+      );
+    }
+  }
+  if (brief.card.owner === 'delegated') {
+    lines.push(
+      '- This task is yours: do it now. Keep it small and match the docs.',
+      '- Commit on the task\'s branch with the trailer "Menitor-Delegated: true". Run "check run" and fix anything marked MUST FIX, then "task pass --note" with two lines on what you did and where. Then run "go" again for the next task.',
+      '- Steps that need the learner\'s own accounts are theirs: ask in chat, and post the same request with "waiting" so the window shows it.',
+    );
+  } else {
+    const typed = cmd.check && cmd.hint ? ` Typing ${cmd.check} or ${cmd.hint} works too.` : '';
+    lines.push(
+      '- Show the learner the card above without the IDs, and say in a sentence or two where they left off, from the changes above.',
+      `- Point them to the window: Check my work when they're done, and Hint if they're stuck.${typed} Don't explain the solution.`,
+      '- Then wait for their press.',
+    );
+  }
+  return lines.join('\n');
+}
+
+/**
  * @param {ReturnType<typeof questionState>['questions']} questions
  */
 function renderQuestions(questions) {
@@ -349,7 +442,12 @@ export function run(argv, ioOverrides = {}) {
      * @param {import('./paths.js').StatePaths} p
      * @param {Record<string, any>} v
      */
-    const windowOpen = (p, v) => {
+    /**
+     * Start the window if it isn't running and open it, keeping any --command names in the session.
+     * @param {import('./paths.js').StatePaths} p
+     * @param {Record<string, any>} v
+     */
+    const startWindow = (p, v) => {
       /** @type {Record<string, string>} */
       const given = {};
       for (const pair of v.command ?? []) {
@@ -366,12 +464,20 @@ export function run(argv, ioOverrides = {}) {
         session.windowCommands = given;
         saveSession(p, session);
       }
-      let r;
+      const commands = named ? given : (session.windowCommands ?? {});
       try {
-        r = openWindow(p, { commands: named ? given : (session.windowCommands ?? {}), browser: !v['no-browser'], env: io.env });
+        return { commands, r: openWindow(p, { commands, browser: !v['no-browser'], env: io.env }) };
       } catch (err) {
         throw new MenitorError(/** @type {Error} */ (err).message);
       }
+    };
+
+    /**
+     * @param {import('./paths.js').StatePaths} p
+     * @param {Record<string, any>} v
+     */
+    const windowOpen = (p, v) => {
+      const { r } = startWindow(p, v);
       if (v.json) json({ url: r.url, started: r.started, restarted: r.restarted, opened: r.opened });
       else {
         const what = r.restarted ? "Restarted the task window, which was older than Menitor's code" : r.started ? 'Started the task window' : 'The task window is already running';
@@ -514,6 +620,33 @@ export function run(argv, ioOverrides = {}) {
         const { ids, warnings } = importSteps(paths(), parseJsonInput(readSource(rest[0], io), 'The step code'));
         if (values.json) json({ stored: ids, warnings });
         else io.out(`Stored type-along code for ${ids.join(', ')}. The window shows each step's code once the step before it is ticked.${formatWarnings(warnings)}`);
+        return EXIT.ok;
+      }
+
+      case 'go': {
+        const p = paths();
+        const s = statusData(p);
+        const cmd = startCommands(p, values);
+        if (!s.approved) {
+          io.out(`Setup isn't done: there is no approved plan yet. Point the learner to ${cmd.start ?? 'the start command'} and stop.`);
+          return EXIT.ok;
+        }
+        if (!s.current) {
+          const plan = requirePlan(p);
+          const events = parseLog(fs.existsSync(p.log) ? fs.readFileSync(p.log, 'utf8') : '');
+          io.out(`${renderStats(computeStats(plan, events))}\n\nEvery task is done. Congratulate the learner in one line, then suggest what's next, such as polishing the README and sharing the deployed link.`);
+          return EXIT.ok;
+        }
+        /** @type {string} */
+        let windowLine;
+        try {
+          const { r } = startWindow(p, values);
+          windowLine = `Window     ${r.url} (${r.opened ? 'opened in the browser' : r.started || r.restarted ? 'started; give the learner the link, which works only on this machine' : 'already running'})`;
+        } catch (err) {
+          windowLine = `Window     couldn't start: ${/** @type {Error} */ (err).message}`;
+        }
+        const brief = briefData(p, undefined);
+        io.out([windowLine, '', renderBrief(brief), '', renderGitState(p.root, brief.startCommit, brief.card.branch), '', renderNext(p, brief, cmd)].join('\n'));
         return EXIT.ok;
       }
 

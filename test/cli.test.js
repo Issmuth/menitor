@@ -366,3 +366,35 @@ test('the bin script runs, prints help and sets exit codes', () => {
   }
   assert.equal(cli(process.cwd(), ['status', '--bogus']).code, EXIT.error);
 });
+
+test('go picks up where the learner left off in one call: the window, the brief, git and what to do next', () => {
+  const plain = makeProject();
+  try {
+    cli(plain.root, ['init']);
+    assert.match(cli(plain.root, ['go', '--no-browser', '--command', 'start=/menitor:start']).out, /Setup isn't done.*\/menitor:start/);
+  } finally {
+    plain.cleanup();
+  }
+
+  const { root, cleanup } = approvedProject();
+  try {
+    const r = cli(root, ['go', '--no-browser', '--command', 'check=/menitor:check', '--command', 'hint=/menitor:hint']);
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /^Window {5}http:\/\/127\.0\.0\.1:\d+/m, 'the window is open, with its link');
+    assert.match(r.out, /t1\.c1 Branch feat\/skeleton/, 'the brief, with checklist IDs');
+    assert.match(r.out, /Since the task started\nBranch /);
+    assert.match(r.out, /Show the learner the card above without the IDs/);
+    assert.match(r.out, /Typing \/menitor:check or \/menitor:hint works too/);
+    assert.match(r.out, /Then wait for their press/);
+    assert.doesNotMatch(r.out, /This task is yours/);
+
+    cli(root, ['task', 'pass', '--override', 'test']);
+    const delegated = cli(root, ['go', '--no-browser']).out;
+    assert.match(delegated, /This task is yours: do it now/);
+    assert.match(delegated, /Menitor-Delegated: true/);
+    assert.doesNotMatch(delegated, /wait for their press/, 'nothing to wait for on Menitor\'s own task');
+  } finally {
+    cli(root, ['window', 'stop']);
+    cleanup();
+  }
+});

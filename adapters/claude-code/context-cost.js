@@ -16,6 +16,7 @@ import path from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { sessionStart, userPromptSubmit } from './handlers.js';
+import { WINDOW_COMMANDS } from './skills.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
@@ -23,24 +24,27 @@ const CLI = path.join(ROOT, 'core', 'bin', 'menitor.js');
 const CREATE = path.join(ROOT, 'examples', 'sample', 'create.js');
 const SKILLS = path.join(HERE, 'skills');
 
+/** The command names the go skill passes, so the CLI can name what the learner types. */
+const GO_COMMANDS = Object.entries(WINDOW_COMMANDS).flatMap(([k, v]) => ['--command', `${k}=${v}`]);
+
 /** @param {string} text */
 export const tokens = (text) => Math.ceil(text.length / 4);
 
 /**
  * A typical run of each command: the sample scenario it starts from, the learner's prompt when a
- * hook reads it (after any prompt typed before it, not counted), and the CLI calls its skill makes
- * before the real work begins.
- * @type {Record<string, { scenario: string, before?: string, prompt?: string, init?: boolean, calls: { args: string[], stdin?: string }[] }>}
+ * hook reads it (after any prompt typed before it, not counted), the CLI calls its skill makes
+ * before the real work begins, and any clean-up after them, not counted.
+ * @type {Record<string, { scenario: string, before?: string, prompt?: string, init?: boolean, calls: { args: string[], stdin?: string }[], after?: string[][] }>}
  */
 export const RUNS = {
   start: { scenario: 'start', init: true, calls: [{ args: ['status'] }, { args: ['setup', 'show'] }] },
-  go: { scenario: 'start', calls: [{ args: ['status'] }, { args: ['task', 'brief'] }] },
+  go: { scenario: 'start', calls: [{ args: ['go', '--no-browser', ...GO_COMMANDS] }], after: [['window', 'stop']] },
   hint: { scenario: 'start', calls: [{ args: ['task', 'hint'] }] },
   stuck: { scenario: 'start', calls: [{ args: ['log', 'stuck', 'task=t1'] }, { args: ['task', 'hint'] }] },
   check: { scenario: 'check', calls: [{ args: ['task', 'brief'] }, { args: ['check', 'run'] }] },
   skip: { scenario: 'start', before: '/menitor:skip', prompt: '/menitor:skip --confirm', calls: [{ args: ['task', 'skip'] }] },
-  on: { scenario: 'start', prompt: '/menitor:on', calls: [{ args: ['status'] }, { args: ['task', 'show'] }] },
-  off: { scenario: 'start', prompt: '/menitor:off', calls: [{ args: ['status'] }] },
+  on: { scenario: 'start', before: '/menitor:off', prompt: '/menitor:on', calls: [] },
+  off: { scenario: 'start', prompt: '/menitor:off', calls: [] },
   typealong: { scenario: 'start', prompt: '/menitor:typealong', calls: [{ args: ['task', 'brief'] }] },
   add: {
     scenario: 'start',
@@ -139,6 +143,7 @@ export async function measure(options = {}) {
       if (run.before) userPromptSubmit({ prompt: run.before, cwd: project.root }, hookEnv(project.root));
       const hook = run.prompt ? hookText(userPromptSubmit({ prompt: run.prompt, cwd: project.root }, hookEnv(project.root))) : '';
       const cli = run.calls.map((call) => cliOutput(project.root, call)).join('');
+      for (const args of run.after ?? []) cliOutput(project.root, { args });
       rows.push({ command, skill: tokens(skill), hook: tokens(hook), cli: tokens(cli), total: tokens(skill) + tokens(hook) + tokens(cli) });
     } finally {
       project.cleanup();
