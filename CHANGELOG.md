@@ -6,6 +6,7 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
+- **What each command costs in context.** `npm run context-cost` measures the skill text, hook context and first CLI output of every command, the same way for all, and what every session loads. The baseline is in [docs/context-cost.md](docs/context-cost.md).
 - **Type-along mode** (`/menitor:typealong`, learner-only):
   - each step in the window opens to plain instructions and the full code for that step, with line numbers;
   - the code can't be selected or copied there, so the learner types it by hand;
