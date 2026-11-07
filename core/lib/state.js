@@ -2,7 +2,7 @@
 //
 // Each file has one writer, so the window and the agent never overwrite each other:
 //   plan.json, session.json, learner.md,
-//   solutions.json                       -> the CLI (the agent goes through it)
+//   solutions.json, graph.json           -> the CLI (the agent goes through it)
 //   progress.json, window.json,
 //   answers.json                         -> the task window
 //   guard.json                           -> agent-adapter hooks, from commands the learner typed
@@ -26,9 +26,12 @@ import { planProblems } from './plan.js';
  * @typedef {{ at: string, ok: boolean, head: string | null, problems?: number }} LastCheck
  * @typedef {{ id: string, text: string, try: 1 | 2, askedAt: string, outcome: null | 'good' | 'weak', feedback?: string | null, judgedAt?: string | null }} Question
  * @typedef {{ text: string, at: string, task?: string | null }} Waiting
- * @typedef {{ version: 1, currentTask: string | null, waiting?: Waiting | null, tasks: Record<string, { startCommit: string | null, startedAt: string, lastCheck?: LastCheck, questions?: Question[] }> }} Session
+ * @typedef {{ version: 1, currentTask: string | null, windowCommands?: Record<string, string>, todosPlanned?: Record<string, { to: string, at: string }>, waiting?: Waiting | null, tasks: Record<string, { startCommit: string | null, startedAt: string, lastCheck?: LastCheck, questions?: Question[] }> }} Session
  * @typedef {{ version: 1, answers: Record<string, { text: string, at: string }> }} Answers
- * @typedef {{ version: 1, ticks: Record<string, string> }} Progress
+ * @typedef {{ id: string, text: string, done: boolean, at: string, doneAt?: string | null }} Todo
+ * @typedef {{ version: 1, todos: Todo[] }} Todos
+ * @typedef {{ version: 1, options?: import('./setup.js').SetupOptions, critique?: import('./setup.js').Critique, answers: Record<string, { value: string, at: string }> }} Setup
+ * @typedef {{ version: 1, ticks: Record<string, string>, seen?: Record<string, string> }} Progress
  * @typedef {{ version: 1, mentorMode: 'on' | 'off', modeChangedAt?: string | null, typeAlong?: boolean, skipRequests: Record<string, string>, grants: Record<string, string> }} Guard
  * @typedef {{ where?: string, text: string }} CodeBlock
  * @typedef {{ say: string, code: CodeBlock[] }} StepCode
@@ -55,6 +58,9 @@ export const SCHEMAS = {
   inboxEvent: loadSchema('inbox-event'),
   solutions: loadSchema('solutions'),
   answers: loadSchema('answers'),
+  setup: loadSchema('setup'),
+  todos: loadSchema('todos'),
+  graph: loadSchema('graph'),
 };
 
 /**
@@ -241,6 +247,75 @@ export function loadAnswers(paths) {
 export function saveAnswers(paths, answers) {
   assertValid('answers', answers, 'The answers');
   writeJsonAtomic(paths.answers, answers);
+}
+
+// todos.json
+
+/**
+ * @param {StatePaths} paths
+ * @returns {Todos}
+ */
+export function loadTodos(paths) {
+  const todos = readJsonOrNull(paths.todos);
+  if (todos === null) return { version: 1, todos: [] };
+  assertValid('todos', todos, 'todos.json');
+  return /** @type {Todos} */ (todos);
+}
+
+/**
+ * For the task window only.
+ * @param {StatePaths} paths
+ * @param {Todos} todos
+ */
+export function saveTodos(paths, todos) {
+  assertValid('todos', todos, 'The to-dos');
+  writeJsonAtomic(paths.todos, todos);
+}
+
+// graph.json (the CLI writes it; it can always be rebuilt)
+
+/**
+ * @param {StatePaths} paths
+ * @returns {import('./graph.js').Graph | null} null when it doesn't exist yet
+ */
+export function loadGraph(paths) {
+  const graph = readJsonOrNull(paths.graph);
+  if (graph === null) return null;
+  assertValid('graph', graph, 'graph.json');
+  return /** @type {import('./graph.js').Graph} */ (graph);
+}
+
+/**
+ * For the CLI only.
+ * @param {StatePaths} paths
+ * @param {import('./graph.js').Graph} graph
+ */
+export function saveGraph(paths, graph) {
+  assertValid('graph', graph, 'The context graph');
+  writeJsonAtomic(paths.graph, graph);
+}
+
+// setup.json
+
+/**
+ * @param {StatePaths} paths
+ * @returns {Setup}
+ */
+export function loadSetup(paths) {
+  const setup = readJsonOrNull(paths.setup);
+  if (setup === null) return { version: 1, answers: {} };
+  assertValid('setup', setup, 'setup.json');
+  return /** @type {Setup} */ (setup);
+}
+
+/**
+ * For the CLI only.
+ * @param {StatePaths} paths
+ * @param {Setup} setup
+ */
+export function saveSetup(paths, setup) {
+  assertValid('setup', setup, 'The setup answers');
+  writeJsonAtomic(paths.setup, setup);
 }
 
 // learner.md

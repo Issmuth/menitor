@@ -15,7 +15,7 @@
     "commands": {
       "description": "What the learner types for each action, shown when a button can't reach the session.",
       "type": "object",
-      "propertyNames": { "enum": ["start", "go", "check", "hint", "stuck", "skip"] },
+      "propertyNames": { "enum": ["start", "go", "check", "hint", "stuck", "skip", "add"] },
       "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "^[^\\n\\r<>]*$" }
     }
   }

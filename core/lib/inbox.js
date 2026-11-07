@@ -28,8 +28,8 @@ const MAX_LINES = 500;
 
 /**
  * @typedef {import('./paths.js').StatePaths} StatePaths
- * @typedef {'check' | 'hint' | 'stuck' | 'go' | 'answer'} InboxType
- * @typedef {{ id: string, at: string, type: InboxType, task: string | null }} InboxEvent
+ * @typedef {'check' | 'hint' | 'stuck' | 'go' | 'answer' | 'warmup-done' | 'setup' | 'add'} InboxType
+ * @typedef {{ id: string, at: string, type: InboxType, task: string | null, todo?: string }} InboxEvent
  * @typedef {{ version: 1, pid: number, beatAt: string, startedAt: string, agent: string }} Listener
  */
 
@@ -217,13 +217,14 @@ export function readInbox(paths) {
 /**
  * Append one button press. For the window server only. Keeps the file short.
  * @param {StatePaths} paths
- * @param {{ type: InboxType, task: string | null }} event
+ * @param {{ type: InboxType, task: string | null, todo?: string }} event
  * @param {Date} [now]
  * @returns {InboxEvent}
  */
 export function appendInbox(paths, event, now = new Date()) {
   /** @type {InboxEvent} */
   const e = { id: crypto.randomBytes(9).toString('base64url'), at: now.toISOString(), type: event.type, task: event.task };
+  if (event.todo) e.todo = event.todo;
   const errors = validate(SCHEMAS.inboxEvent, e);
   if (errors.length) throw new Error(`Invalid window event: ${errors.map((x) => `${x.path} ${x.message}`).join('; ')}`);
   fs.appendFileSync(paths.inbox, `${JSON.stringify(e)}\n`, 'utf8');
@@ -232,17 +233,88 @@ export function appendInbox(paths, event, now = new Date()) {
   return e;
 }
 
+/** The activity log's mark for "the agent ended its turn", written by the adapter's stop hook. */
+export const TURN_END = 'turn-end';
+/** Button presses, as opposed to answers sent from the window. */
+const BUTTONS = new Set(['check', 'hint', 'stuck', 'go', 'add']);
+/** A press older than this is over, whatever happened to it. */
+export const PRESS_WINDOW_MS = 30 * 60 * 1000;
+/** How much of the end of the activity log to read for the last turn end. */
+const ACTIVITY_TAIL = 64 * 1024;
+
+/**
+ * @typedef {{ type: InboxType, task: string | null, at: string, claimedAt: string | null, todo?: string, state: 'sent' | 'working' | 'done', doneAt: string | null }} Press
+ */
+
+/**
+ * Where the last button press stands, so the window can show it: sent until a listener claims it,
+ * working until the agent ends its turn or listens again, then done. Null when there is no recent
+ * press, or when one was never picked up and nobody is listening any more.
+ * @param {StatePaths} paths
+ * @param {number} [now]
+ * @returns {Press | null}
+ */
+export function pressState(paths, now = Date.now()) {
+  const e = readInbox(paths).filter((x) => BUTTONS.has(x.type)).at(-1);
+  if (!e || now - Date.parse(e.at) > PRESS_WINDOW_MS) return null;
+  let claimedAt = null;
+  try {
+    claimedAt = fs.statSync(path.join(paths.claims, e.id)).mtime.toISOString();
+  } catch {
+    claimedAt = null;
+  }
+  const listener = liveListener(paths, now);
+  const base = { type: e.type, task: e.task, at: e.at, claimedAt, ...(e.todo ? { todo: e.todo } : {}) };
+  if (!claimedAt) return listener ? { ...base, state: 'sent', doneAt: null } : null;
+  const doneAt = lastTurnEnd(paths.activity, claimedAt) ?? (listener && listener.startedAt > claimedAt ? listener.startedAt : null);
+  return { ...base, state: doneAt ? 'done' : 'working', doneAt };
+}
+
+/**
+ * The time of the last turn end in the activity log after `after`, reading only the log's end.
+ * @param {string} file
+ * @param {string} after an ISO time
+ */
+function lastTurnEnd(file, after) {
+  let text;
+  try {
+    const fd = fs.openSync(file, 'r');
+    try {
+      const size = fs.fstatSync(fd).size;
+      const length = Math.min(size, ACTIVITY_TAIL);
+      const buf = Buffer.alloc(length);
+      fs.readSync(fd, buf, 0, length, size - length);
+      text = buf.toString('utf8');
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
+  const lines = text.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!lines[i].includes(TURN_END)) continue;
+    try {
+      const entry = JSON.parse(lines[i]);
+      if (entry.tool === TURN_END && typeof entry.at === 'string') return entry.at > after ? entry.at : null;
+    } catch {
+      // A torn first line from reading mid-file.
+    }
+  }
+  return null;
+}
+
 /**
  * Deliver a button press to a listening session, if there is one. Repeated presses of the same
- * button within a few seconds count once.
+ * button within a few seconds count once. Adding two different to-dos is two presses.
  * @param {StatePaths} paths
- * @param {{ type: InboxType, task: string | null }} event
+ * @param {{ type: InboxType, task: string | null, todo?: string }} event
  * @param {Date} [now]
  * @returns {{ delivered: boolean, duplicate: boolean }}
  */
 export function deliverToListener(paths, event, now = new Date()) {
   if (!liveListener(paths, now.getTime())) return { delivered: false, duplicate: false };
-  const recent = readInbox(paths).filter((e) => e.type === event.type && now.getTime() - Date.parse(e.at) < DEDUPE_MS);
+  const recent = readInbox(paths).filter((e) => e.type === event.type && e.todo === event.todo && now.getTime() - Date.parse(e.at) < DEDUPE_MS);
   if (recent.length) return { delivered: true, duplicate: true };
   appendInbox(paths, event, now);
   return { delivered: true, duplicate: false };

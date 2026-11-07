@@ -3,12 +3,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import path from 'node:path';
 import http from 'node:http';
-import { approvedProject, cli, makeProject } from './helpers.js';
+import { approvedProject, cli, makeProject, samplePlan } from './helpers.js';
 import { createWindowServer, cleanCommands, windowState } from '../core/server/server.js';
-import { loadProgress } from '../core/lib/state.js';
-import { readWindowInfo } from '../core/lib/window.js';
+import { loadProgress, loadSession } from '../core/lib/state.js';
+import { appArgs, appBrowser, readWindowInfo } from '../core/lib/window.js';
 import { codeFingerprint } from '../core/lib/fingerprint.js';
+import { claimEvent, readInbox } from '../core/lib/inbox.js';
 
 /**
  * A raw HTTP request, so tests can set any Host or Origin header.
@@ -142,6 +144,390 @@ test('ticks are saved to progress.json, only for the current card', async () => 
     assert.equal((await post('/api/tick', { item: 't3.c1', ticked: true })).status, 409, 'another task');
     assert.equal((await post('/api/tick', { item: 't1.c2' })).status, 400, 'missing ticked');
     assert.equal((await post('/api/tick', { item: { x: 1 }, ticked: true })).status, 400);
+  } finally {
+    await win.close();
+    cleanup();
+  }
+});
+
+test('a passed explain-back stays on screen until Continue, and a reload remembers it', async () => {
+  const { root, paths, cleanup } = approvedProject();
+  const { win, post } = await serve(root);
+  try {
+    cli(root, ['question', 'ask', 'Why does the page need its own route?']);
+    let s = windowState(paths, { commands: {} });
+    assert.equal(s.result, null, 'nothing has passed yet');
+    assert.equal((await post('/api/answer', { question: s.questions[0].id, text: 'So the home page has one place to grow.' })).status, 200);
+    cli(root, ['question', 'judge', 'good', '--feedback', 'Right: one route per page keeps them apart.']);
+    cli(root, ['task', 'pass', '--override', 'test']);
+
+    s = windowState(paths, { commands: {} });
+    assert.equal(s.card?.task, 't2', 'the plan has moved on');
+    assert.equal(s.result?.task, 't1');
+    assert.equal(s.result.number, 1);
+    assert.equal(s.result.goal, 'Show a hello page');
+    assert.deepEqual(
+      s.result.questions.map((/** @type {any} */ q) => [q.text, q.answer?.text, q.outcome, q.feedback]),
+      [['Why does the page need its own route?', 'So the home page has one place to grow.', 'good', 'Right: one route per page keeps them apart.']],
+    );
+    assert.deepEqual(s.result.next, { number: s.card?.number, goal: s.card?.goal });
+
+    assert.equal((await post('/api/continue', {})).status, 400);
+    assert.equal((await post('/api/continue', { task: 't2' })).status, 409, 'only the result on screen');
+    const r = await post('/api/continue', { task: 't1' });
+    assert.equal(r.status, 200, r.body);
+    assert.equal(JSON.parse(r.body).result, null);
+    assert.ok(loadProgress(paths).seen?.t1, 'kept in progress.json, which the window writes');
+    assert.equal(windowState(paths, { commands: {} }).result, null, 'a reload does not bring it back');
+
+    cli(root, ['task', 'pass', '--override', 'test']); // t2 is delegated: no explain-back
+    assert.equal(windowState(paths, { commands: {} }).result, null, 'a pass with no explain-back shows no result');
+  } finally {
+    await win.close();
+    cleanup();
+  }
+});
+
+test('a finished plan gets its summary from real figures, and an added task brings the card back', () => {
+  const { root, paths, cleanup } = approvedProject();
+  try {
+    assert.equal(windowState(paths, { commands: {} }).finish, null, 'not while tasks remain');
+    cli(root, ['plan', 'deploy-url', 'https://recipes.example.app']);
+    cli(root, ['task', 'pass', '--override', 't']);
+    cli(root, ['task', 'pass', '--override', 't']);
+    cli(root, ['task', 'hint']);
+    cli(root, ['task', 'pass', '--override', 't']);
+
+    const s = windowState(paths, { commands: {} });
+    assert.equal(s.phase, 'done');
+    const f = s.finish;
+    assert.equal(f.deployUrl, 'https://recipes.example.app');
+    assert.equal(f.hints, 1, 'hints opened, from the log');
+    assert.match(f.explained, /explain-back|questions/i, 'the explain-back line from the stats');
+    assert.ok(f.started && f.finished && f.started <= f.finished, 'from approval to the last pass');
+    assert.deepEqual(s.written, { learner: 2, delegated: 1, skipped: 0, focusTasksDone: 2 });
+
+    cli(root, ['plan', 'add', '-'], { stdin: JSON.stringify({ after: 'm2', task: { goal: 'Show a recipe count', why: 'It tells you how big the box is.', docs: 'docs/prd.md', checklist: ['Render the count'], doneWhen: 'The count shows', owner: 'delegated' } }) });
+    const again = windowState(paths, { commands: {} });
+    assert.equal(again.phase, 'task', 'the card is back');
+    assert.equal(again.finish, null);
+  } finally {
+    cleanup();
+  }
+});
+
+test('a finished task opens with its card, who did it, its notes, fixes and answers', async () => {
+  const { root, paths, cleanup } = approvedProject();
+  const { win, port, auth, post } = await serve(root);
+  /** @param {string} p */
+  const get = (p) => request(port, { path: p, headers: auth });
+  try {
+    assert.equal((await get('/api/task?id=t1')).status, 404, 'not finished yet');
+    cli(root, ['task', 'fix', 'Escape the page title']);
+    cli(root, ['question', 'ask', 'Why does the page need its own route?']);
+    const q = windowState(paths, { commands: {} }).questions[0].id;
+    assert.equal((await post('/api/answer', { question: q, text: 'So the home page has one place to grow.' })).status, 200);
+    cli(root, ['question', 'judge', 'good', '--feedback', 'Right: one route per page keeps them apart.']);
+    assert.equal(cli(root, ['task', 'pass', '--override', 'no build in tests', '--revisit', 'Routing']).code, 0);
+    assert.equal(cli(root, ['task', 'pass', '--override', 'no host in tests', '--note', 'Deployed to the host.']).code, 0);
+
+    const r = await get('/api/task?id=t1');
+    assert.equal(r.status, 200, r.body);
+    const t1 = JSON.parse(r.body);
+    assert.equal(t1.goal, 'Show a hello page');
+    assert.equal(t1.number, 1);
+    assert.equal(t1.owner, 'learner');
+    assert.ok(t1.passedAt);
+    assert.deepEqual(
+      t1.checklist.filter((/** @type {any} */ i) => i.source === 'fix').map((/** @type {any} */ i) => i.text),
+      ['Escape the page title'],
+    );
+    assert.deepEqual(
+      t1.questions.map((/** @type {any} */ x) => [x.text, x.answer?.text, x.outcome, x.feedback]),
+      [['Why does the page need its own route?', 'So the home page has one place to grow.', 'good', 'Right: one route per page keeps them apart.']],
+    );
+    assert.deepEqual(t1.revisit, ['Routing']);
+    assert.match(t1.note, /Passed without a clean check: no build in tests/);
+    assert.deepEqual([t1.prev, t1.next], [null, 't2'], 'steps through the finished tasks in plan order');
+
+    const t2 = JSON.parse((await get('/api/task?id=t2')).body);
+    assert.equal(t2.owner, 'delegated');
+    assert.match(t2.note, /Deployed to the host\./);
+    assert.deepEqual(t2.questions, []);
+    assert.deepEqual([t2.prev, t2.next], ['t1', null]);
+
+    assert.equal((await get('/api/task?id=t3')).status, 404, 'the current task is on its own card');
+    assert.equal((await get('/api/task?id=nope')).status, 404);
+    assert.equal((await get('/api/task')).status, 400);
+    assert.equal((await request(port, { path: '/api/task?id=t1' })).status, 401, 'needs the token like the rest');
+  } finally {
+    await win.close();
+    cleanup();
+  }
+});
+
+test('the page has a view for every screen the server sends', () => {
+  // Merges have dropped a branch of render() before; the server tests can't see that.
+  const app = fs.readFileSync(new URL('../core/server/page/app.js', import.meta.url), 'utf8');
+  const chain = /function render\(s\) \{[\s\S]*?content\.replaceChildren/.exec(app)?.[0] ?? '';
+  for (const view of ['problemView', 'finishedView', 'todosView', 'resultView', 'taskView', 'finishView', 'setupView', 'messageView']) {
+    assert.match(chain, new RegExp(`view = ${view}\\(`), `render() shows ${view}`);
+  }
+  assert.ok(chain.indexOf('resultView(') < chain.indexOf('taskView('), 'a passed result shows before the next card');
+  assert.ok(chain.indexOf('finishedView(') < chain.indexOf('resultView('), 'a finished task the learner opened shows over the rest');
+  assert.ok(chain.indexOf('todosView(') < chain.indexOf('resultView('), 'the to-dos tab shows whatever the main screen holds');
+});
+
+test('a press shows as sent, then working, then done; a second press meanwhile sends nothing', async () => {
+  const { root, paths, cleanup } = approvedProject();
+  const win = createWindowServer(root, { commands: { check: '/menitor:check' } });
+  const port = await win.listen(0);
+  const auth = { 'X-Menitor-Token': win.token };
+  /** @param {string} path @param {unknown} body */
+  const post = (path, body) => request(port, { method: 'POST', path, headers: { ...auth, 'Content-Type': 'application/json', Origin: `http://127.0.0.1:${port}` }, body: JSON.stringify(body) });
+  /** A session listening for presses, which started listening at `startedAt`. */
+  const listen = (/** @type {number} */ startedAt) => fs.writeFileSync(paths.listener, JSON.stringify({ version: 1, pid: process.pid, beatAt: new Date().toISOString(), startedAt: new Date(startedAt).toISOString(), agent: 'test' }));
+  const state = () => windowState(paths, { commands: {} });
+  try {
+    listen(Date.now() - 60000);
+    assert.equal(state().press, null, 'nothing pressed yet');
+    assert.equal(JSON.parse((await post('/api/event', { type: 'check' })).body).delivered, true);
+    assert.deepEqual([state().press?.type, state().press?.state], ['check', 'sent']);
+
+    const [event] = readInbox(paths);
+    assert.ok(claimEvent(paths, event.id), 'the session picks it up');
+    assert.equal(state().press?.state, 'working');
+    const again = JSON.parse((await post('/api/event', { type: 'hint' })).body);
+    assert.equal(again.busy, true);
+    assert.equal(readInbox(paths).length, 1, 'a second press while it works sends nothing');
+
+    // The agent ends its turn: the adapter's hook records it in the activity log.
+    const pause = () => new Promise((r) => setTimeout(r, 30));
+    await pause();
+    fs.appendFileSync(paths.activity, `${JSON.stringify({ at: new Date().toISOString(), tool: 'turn-end', task: 't1', writes: 'no' })}\n`);
+    assert.equal(state().press?.state, 'done');
+    await pause();
+
+    // Listening again after the claim also means the agent is done with the press.
+    assert.equal(JSON.parse((await post('/api/event', { type: 'stuck' })).body).delivered, true);
+    claimEvent(paths, readInbox(paths).at(-1)?.id ?? '');
+    assert.equal(state().press?.state, 'working');
+    listen(Date.now() + 1000);
+    assert.equal(state().press?.state, 'done');
+  } finally {
+    await win.close();
+    cleanup();
+  }
+});
+
+test('setup runs the warm-up in the window, and the answer reaches setup show as data', async () => {
+  const { root, paths, cleanup } = makeProject();
+  cli(root, ['init']);
+  /** @type {any[]} */
+  const delivered = [];
+  const win = createWindowServer(root, { deliver: (e) => (delivered.push(e), true) });
+  const port = await win.listen(0);
+  const auth = { 'X-Menitor-Token': win.token };
+  /** @param {string} p @param {unknown} body */
+  const post = (p, body) => request(port, { method: 'POST', path: p, headers: { ...auth, 'Content-Type': 'application/json', Origin: `http://127.0.0.1:${port}` }, body: JSON.stringify(body) });
+  const state = () => windowState(paths, { commands: {} });
+  try {
+    cli(root, ['setup', 'set', 'idea', 'A recipe box']);
+    let s = state();
+    assert.equal(s.phase, 'no-plan');
+    assert.deepEqual(s.setup.steps.slice(0, 2), [{ key: 'idea', label: 'Idea', done: true }, { key: 'goal', label: 'Goal', done: false }]);
+    assert.equal(s.setup.warmup, null, 'no warm-up yet');
+    assert.deepEqual(s.setup.told, [{ key: 'idea', label: 'Idea', value: 'A recipe box' }], 'the interview answers so far, shown back in the window');
+
+    // The agent writes the exercise; the window shows it as text blocks.
+    fs.mkdirSync(path.join(paths.dir, 'warmup'), { recursive: true });
+    fs.writeFileSync(path.join(paths.dir, 'warmup', 'README.md'), '# Warm-up\n\nWrite `total(prices)`.\n\n```js\ntotal([1, 2]) // 3\n```\n');
+    s = state();
+    assert.deepEqual(s.setup.warmup.exercise, [
+      { kind: 'heading', text: 'Warm-up' },
+      { kind: 'text', text: 'Write `total(prices)`.' },
+      { kind: 'code', text: 'total([1, 2]) // 3' },
+    ]);
+    assert.equal(s.setup.warmup.question, null);
+
+    // I'm done: a fixed event, nothing more.
+    assert.equal((await post('/api/event', { type: 'warmup-done' })).status, 200);
+    assert.deepEqual(delivered.at(-1), { type: 'warmup-done', task: null });
+
+    assert.equal((await post('/api/setup-answer', { key: 'warmup-answer', text: 'It adds them.' })).status, 409, 'no question asked yet');
+    cli(root, ['setup', 'set', 'warmup-question', 'Why does total start from 0?']);
+    assert.equal(state().setup.warmup.question, 'Why does total start from 0?');
+    assert.equal((await post('/api/setup-answer', { key: 'idea', text: 'x' })).status, 400, 'only answers the window asks for');
+
+    const r = await post('/api/setup-answer', { key: 'warmup-answer', text: 'So an empty list adds up to 0.' });
+    assert.equal(r.status, 200, r.body);
+    assert.deepEqual(delivered.at(-1), { type: 'setup', task: null });
+    assert.equal(state().setup.warmup.answer?.text, 'So an empty list adds up to 0.');
+
+    // The agent reads it through the CLI, marked as typed in the window.
+    const shown = JSON.parse(cli(root, ['setup', 'show', '--json']).out).answers.find((/** @type {any} */ a) => a.key === 'warmup-answer');
+    assert.deepEqual([shown.value, shown.source], ['So an empty list adds up to 0.', 'window']);
+
+    // Once the plan is approved, setup is over.
+    cli(root, ['plan', 'import', '-'], { stdin: JSON.stringify(samplePlan()) });
+    cli(root, ['plan', 'approve']);
+    assert.equal((await post('/api/setup-answer', { key: 'warmup-answer', text: 'Again' })).status, 409);
+    assert.equal(state().setup, undefined, 'no setup view once the plan is approved');
+  } finally {
+    await win.close();
+    cleanup();
+  }
+});
+
+test('setup choices are made in the window: saved at once, and Confirm tells the session', async () => {
+  const { root, paths, cleanup } = makeProject();
+  cli(root, ['init']);
+  /** @type {any[]} */
+  const delivered = [];
+  const win = createWindowServer(root, { deliver: (e) => (delivered.push(e), true) });
+  const port = await win.listen(0);
+  const auth = { 'X-Menitor-Token': win.token };
+  /** @param {unknown} body */
+  const choose = (body) => request(port, { method: 'POST', path: '/api/setup-answer', headers: { ...auth, 'Content-Type': 'application/json', Origin: `http://127.0.0.1:${port}` }, body: JSON.stringify(body) });
+  const state = () => windowState(paths, { commands: {} });
+  try {
+    assert.equal(state().setup.choices, null, 'nothing to choose yet');
+    assert.equal((await choose({ key: 'stack-choice', text: 'Next.js and Postgres' })).status, 409, 'no options posted yet');
+
+    cli(root, ['setup', 'options', 'focus', 'frontend,backend and APIs,database']);
+    cli(root, ['setup', 'options', 'stack', '-'], { stdin: JSON.stringify([{ name: 'Next.js and Postgres', reasons: ['One language'] }, { name: 'Express and SQLite', reasons: ['Fewer parts'] }]) });
+    assert.deepEqual(state().setup.choices, {
+      stack: { options: [{ name: 'Next.js and Postgres', reasons: ['One language'] }, { name: 'Express and SQLite', reasons: ['Fewer parts'] }], chosen: null },
+      focus: { options: ['frontend', 'backend and APIs', 'database'], chosen: [] },
+    });
+
+    // Each pick is saved at once, without waking the session.
+    assert.equal((await choose({ key: 'stack-choice', text: 'Express and SQLite', notify: false })).status, 200);
+    assert.equal((await choose({ key: 'focus', text: 'backend and APIs,database', notify: false })).status, 200);
+    assert.equal(delivered.length, 0);
+    assert.deepEqual(state().setup.choices.stack.chosen, 'Express and SQLite');
+    assert.deepEqual(state().setup.choices.focus.chosen, ['backend and APIs', 'database']);
+
+    // Only what was offered.
+    assert.equal((await choose({ key: 'stack-choice', text: 'Rails', notify: false })).status, 400);
+    assert.equal((await choose({ key: 'focus', text: 'frontend,cooking', notify: false })).status, 400);
+
+    // Confirm tells the session, which reads the picks with setup show.
+    assert.equal((await choose({ key: 'focus', text: 'backend and APIs,database' })).status, 200);
+    assert.deepEqual(delivered, [{ type: 'setup', task: null }]);
+    const answers = JSON.parse(cli(root, ['setup', 'show', '--json']).out).answers;
+    assert.deepEqual(answers.filter((/** @type {any} */ a) => a.source === 'window').map((/** @type {any} */ a) => [a.key, a.value]), [['focus', 'backend and APIs,database'], ['stack-choice', 'Express and SQLite']]);
+  } finally {
+    await win.close();
+    cleanup();
+  }
+});
+
+test('the PRD core is drafted in the window, saved as typed, with feedback under each section', async () => {
+  const { root, paths, cleanup } = makeProject();
+  cli(root, ['init']);
+  /** @type {any[]} */
+  const delivered = [];
+  const win = createWindowServer(root, { deliver: (e) => (delivered.push(e), true) });
+  const port = await win.listen(0);
+  const auth = { 'X-Menitor-Token': win.token };
+  /** @param {unknown} body */
+  const save = (body) => request(port, { method: 'POST', path: '/api/setup-answer', headers: { ...auth, 'Content-Type': 'application/json', Origin: `http://127.0.0.1:${port}` }, body: JSON.stringify(body) });
+  const state = () => windowState(paths, { commands: {} });
+  const sections = () => state().setup.prd.sections.map((/** @type {any} */ x) => [x.key, x.text, x.critique?.text ?? null, x.revised]);
+  try {
+    assert.equal(state().setup.prd, null, 'not open yet');
+    assert.equal((await save({ key: 'prd-problem', text: 'Recipes get lost', notify: false })).status, 409);
+
+    cli(root, ['setup', 'options', 'prd']);
+    assert.deepEqual(sections(), [
+      ['problem', null, null, false],
+      ['users', null, null, false],
+      ['features', null, null, false],
+    ]);
+
+    // Drafts save as they're typed, without waking the session.
+    assert.equal((await save({ key: 'prd-problem', text: 'Family recipes live in a dozen places and get lost.', notify: false })).status, 200);
+    assert.equal((await save({ key: 'prd-users', text: 'My family.', notify: false })).status, 200);
+    assert.equal((await save({ key: 'prd-features', text: 'Add a recipe\nList recipes\nSearch by ingredient', notify: true })).status, 200, 'Send for feedback');
+    assert.deepEqual(delivered, [{ type: 'setup', task: null }]);
+
+    // The session reads the whole draft as one answer, under headings.
+    const prd = JSON.parse(cli(root, ['setup', 'show', '--json']).out).answers.find((/** @type {any} */ a) => a.key === 'prd');
+    assert.equal(prd.source, 'window');
+    assert.equal(prd.value, 'Problem:\nFamily recipes live in a dozen places and get lost.\n\nUsers:\nMy family.\n\nMust-have features:\nAdd a recipe\nList recipes\nSearch by ingredient');
+
+    // Feedback shows under its section, and a revision after it is marked.
+    cli(root, ['setup', 'critique', 'users', 'Who exactly? Name one person and what they do with recipes.']);
+    assert.deepEqual(sections()[1], ['users', 'My family.', 'Who exactly? Name one person and what they do with recipes.', false]);
+    await new Promise((r) => setTimeout(r, 15));
+    await save({ key: 'prd-users', text: 'My mum, who cooks every Sunday and keeps recipes on paper.', notify: false });
+    assert.equal(sections()[1][3], true, 'revised after the feedback');
+  } finally {
+    await win.close();
+    cleanup();
+  }
+});
+
+test('to-dos are kept in the window: add, edit, tick and delete, in their own file', async () => {
+  const { root, paths, cleanup } = approvedProject();
+  let { win, post } = await serve(root);
+  const list = (/** @type {{ body: string }} */ r) => JSON.parse(r.body).todos;
+  try {
+    assert.deepEqual(windowState(paths, { commands: {} }).todos, []);
+    let r = await post('/api/todo', { action: 'add', text: '  Dark mode for the window  ' });
+    assert.equal(r.status, 200, r.body);
+    const [first] = list(r);
+    assert.deepEqual([first.text, first.done], ['Dark mode for the window', false]);
+    await post('/api/todo', { action: 'add', text: 'A history of finished tasks' });
+    await post('/api/todo', { action: 'edit', id: first.id, text: 'A dark mode toggle' });
+    r = await post('/api/todo', { action: 'tick', id: first.id, done: true });
+    assert.deepEqual(list(r).map((/** @type {any} */ t) => [t.text, t.done]), [['A dark mode toggle', true], ['A history of finished tasks', false]]);
+
+    // A new server, as after a restart or a new session, reads the same file.
+    await win.close();
+    ({ win, post } = await serve(root));
+    assert.deepEqual(windowState(paths, { commands: {} }).todos.map((/** @type {any} */ t) => t.text), ['A dark mode toggle', 'A history of finished tasks']);
+    r = await post('/api/todo', { action: 'delete', id: first.id });
+    assert.deepEqual(list(r).map((/** @type {any} */ t) => t.text), ['A history of finished tasks']);
+
+    assert.equal((await post('/api/todo', { action: 'add', text: '   ' })).status, 400);
+    assert.equal((await post('/api/todo', { action: 'add', text: 'x'.repeat(501) })).status, 400);
+    assert.equal((await post('/api/todo', { action: 'edit', id: 'nope', text: 'x' })).status, 404);
+    assert.equal((await post('/api/todo', { action: 'shout', text: 'x' })).status, 400);
+    assert.equal(cli(root, ['validate']).code, 0, 'validate reads todos.json');
+  } finally {
+    await win.close();
+    cleanup();
+  }
+});
+
+test('Add to plan sends only the to-do ID, and the to-do shows as planned once it lands', async () => {
+  const { root, paths, cleanup } = approvedProject();
+  /** @type {any[]} */
+  const delivered = [];
+  const win = createWindowServer(root, { commands: { add: '/menitor:add' }, deliver: (e) => (delivered.push(e), true) });
+  const port = await win.listen(0);
+  const auth = { 'X-Menitor-Token': win.token };
+  /** @param {string} p @param {unknown} body */
+  const post = (p, body) => request(port, { method: 'POST', path: p, headers: { ...auth, 'Content-Type': 'application/json', Origin: `http://127.0.0.1:${port}` }, body: JSON.stringify(body) });
+  try {
+    const todo = JSON.parse((await post('/api/todo', { action: 'add', text: 'Show how many recipes there are' })).body).todos[0];
+
+    const r = await post('/api/event', { type: 'add', todo: todo.id });
+    assert.equal(r.status, 200, r.body);
+    assert.deepEqual(JSON.parse(r.body), { delivered: true, command: '/menitor:add' });
+    assert.deepEqual(delivered, [{ type: 'add', task: 't1', todo: todo.id }], 'only the ID, never the text');
+
+    assert.equal((await post('/api/event', { type: 'add' })).status, 400, 'an add names its to-do');
+    assert.equal((await post('/api/event', { type: 'add', todo: 'nosuchtodo' })).status, 404);
+
+    // The agent adds it with the to-do's ID; the window marks it.
+    const added = cli(root, ['plan', 'add', '-'], { stdin: JSON.stringify({ after: 'm2', todo: todo.id, task: { goal: 'Show the recipe count', why: 'It says how big the box is.', docs: 'docs/prd.md', checklist: ['Render the count'], doneWhen: 'The count shows', owner: 'delegated' } }) });
+    assert.equal(added.code, 0, added.err);
+    const shown = windowState(paths, { commands: {} }).todos[0];
+    assert.equal(shown.planned?.to, 't4');
+    assert.equal((await post('/api/event', { type: 'add', todo: todo.id })).status, 409, 'already in the plan');
   } finally {
     await win.close();
     cleanup();
@@ -310,6 +696,62 @@ test('a window older than the code says it is out of date, not that the state is
       }
     }
   } finally {
+    cleanup();
+  }
+});
+
+test('the window opens as an app in the first Chromium browser found, on each platform', () => {
+  const only = (/** @type {string} */ found) => (/** @type {string} */ p) => p === found;
+  // Windows: env names in any case, as a copied environment keeps them.
+  const winEnv = { ProgramFiles: 'C:\\Program Files', 'ProgramFiles(x86)': 'C:\\Program Files (x86)', LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local' };
+  const edge = path.win32.join('C:\\Program Files (x86)', 'Microsoft\\Edge\\Application\\msedge.exe');
+  assert.equal(appBrowser('win32', winEnv, only(edge)), edge);
+  const chrome = path.win32.join('C:\\Users\\me\\AppData\\Local', 'Google\\Chrome\\Application\\chrome.exe');
+  assert.equal(appBrowser('win32', winEnv, (p) => p === chrome || p === edge), chrome, 'Chrome before Edge');
+
+  const mac = '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge';
+  assert.equal(appBrowser('darwin', {}, only(mac)), mac);
+
+  const linux = '/usr/bin/chromium';
+  assert.equal(appBrowser('linux', { PATH: '/usr/local/bin:/usr/bin', DISPLAY: ':0' }, only(linux)), linux);
+  assert.equal(appBrowser('linux', { PATH: '/usr/bin' }, only(linux)), null, 'no desktop, no window');
+
+  assert.equal(appBrowser('win32', { ...winEnv, MENITOR_WINDOW_APP: '0' }, only(edge)), null, 'the setting keeps tabs');
+  assert.equal(appBrowser('win32', winEnv, () => false), null, 'none installed: a tab as before');
+});
+
+test('the app window opens maximized in its own browser profile, unless turned off', () => {
+  const url = 'http://127.0.0.1:5000/?t=x';
+  const args = appArgs(url, {});
+  assert.equal(args[0], `--app=${url}`);
+  assert.ok(args.includes('--start-maximized'));
+  assert.ok(!args.includes('--start-fullscreen'), 'maximized, not full screen');
+  // A browser that is already running ignores start-up flags, so the window gets a profile of its own.
+  const profile = args.find((a) => a.startsWith('--user-data-dir='));
+  assert.ok(profile?.endsWith('menitor-browser'), profile);
+  assert.ok(args.includes('--no-first-run'));
+
+  assert.deepEqual(appArgs(url, { MENITOR_WINDOW_MAXIMIZED: '0' }), [`--app=${url}`], 'off: a normal app window in the usual profile');
+});
+
+test('menitor open works from a terminal, with the button commands the last window had', () => {
+  const { root, paths, cleanup } = approvedProject();
+  try {
+    // Projects set up before to-dos get the line when the CLI opens the window.
+    fs.writeFileSync(paths.gitignore, fs.readFileSync(paths.gitignore, 'utf8').replace(/^todos\.json\n/m, ''));
+    cli(root, ['window', 'open', '--no-browser', '--command', 'check=/menitor:check', '--command', 'go=/menitor:go']);
+    assert.deepEqual(loadSession(paths).windowCommands, { check: '/menitor:check', go: '/menitor:go' }, 'the commands are remembered');
+    cli(root, ['window', 'stop']);
+
+    // A learner in a terminal, with no session and no commands to pass.
+    const r = cli(root, ['open', '--no-browser']);
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /Started the task window: http:\/\/127\.0\.0\.1:\d+/);
+    assert.equal(readWindowInfo(paths)?.commands.check, '/menitor:check', 'the buttons keep their commands');
+    assert.match(cli(root, ['open', '--no-browser']).out, /already running/);
+    assert.match(fs.readFileSync(paths.gitignore, 'utf8'), /^todos\.json$/m, 'to-dos stay out of git');
+  } finally {
+    cli(root, ['window', 'stop']);
     cleanup();
   }
 });

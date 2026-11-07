@@ -13,12 +13,15 @@ import {
   projectFiles,
   toPosix,
 } from '../../core/lib/guard.js';
+import { TURN_END } from '../../core/lib/inbox.js';
 import { appendEvent } from '../../core/lib/log.js';
 import { statusData } from '../../core/lib/ops.js';
 import { cardData, renderCard } from '../../core/lib/card.js';
 import { loadGuard, loadPlan, loadProgress } from '../../core/lib/state.js';
 import { renderStatus } from '../../core/lib/cli.js';
 import { CLI, COMMANDS, LEARNER_ONLY, TAKE_TASKS, denyMessage, learnerCommandContext, mentorRules } from './messages.js';
+import { WINDOW_COMMANDS } from './skills.js';
+import { openBrowser, openWindow } from '../../core/lib/window.js';
 
 /**
  * @typedef {Record<string, any>} HookInput
@@ -204,11 +207,12 @@ export function userPromptSubmit(input, env) {
 /**
  * The context a session starts with: the rules, where things stand and the current card.
  * @param {GuardContext} ctx
+ * @param {string | null} [windowLine] where the task window is, when the session opened it
  */
-export function sessionContext(ctx) {
+export function sessionContext(ctx, windowLine = null) {
   if (!ctx.paths) return '';
   const lines = [`Menitor is active in this project. Mentor mode is ${ctx.mode}.`];
-  lines.push(`State CLI: ${CLI} <command>. It is the only way to change .menitor/. Its "help" command lists the rest.`);
+  lines.push(`State CLI: ${CLI} <command>, written \`menitor\` below. It is the only way to change .menitor/. Its "help" command lists the rest.`);
   if (ctx.mode === 'off') {
     lines.push(`The learner turned mentor mode off, so help normally. ${TAKE_TASKS} They can type ${COMMANDS.on} to turn it back on.`);
   } else {
@@ -217,10 +221,12 @@ export function sessionContext(ctx) {
   if (ctx.mode === 'on' && typeAlongOn(ctx)) {
     lines.push('', `Type-along is on: the window shows each step's instructions and full code, and the learner types it. Never paste step code into chat; point them to the window. You still never write their files. Steps without code yet need it: see "task brief" and "steps import".`);
   }
-  lines.push('', 'The task window has Check, Hint and Stuck buttons. A press arrives as a "Menitor window" notification. Run the skill it names right away, as if the learner had typed the command.');
+  lines.push('', 'A "Menitor window" notification is a button press in the task window: run the skill it names right away.');
+  if (windowLine) lines.push(windowLine);
   try {
-    lines.push('', renderStatus(statusData(ctx.paths)));
     const plan = loadPlan(ctx.paths);
+    // The card below names the current task, and "plan show" lists the milestones: neither is repeated here.
+    lines.push('', renderStatus(statusData(ctx.paths), { milestones: false, current: !(plan?.approvedAt && ctx.task) }));
     if (!plan) {
       lines.push('', `No plan yet. The learner sets one up with ${COMMANDS.start}.`);
     } else if (!plan.approvedAt) {
@@ -262,12 +268,48 @@ export function sessionStart(input, env) {
       // Counting sessions is for the stats; never block a session over it.
     }
   }
-  return { output: { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: sessionContext(ctx) } } };
+  const windowLine = autostartWindow(ctx, input, env);
+  return { output: { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: sessionContext(ctx, windowLine) } } };
+}
+
+/**
+ * Open the task window when a session starts on a task, so the card is there without a command.
+ * A browser opens only on a fresh start and only if the server had to start; a resume or a
+ * compaction just gets the link. MENITOR_WINDOW_AUTOSTART=0 turns it off.
+ * @param {GuardContext} ctx
+ * @param {HookInput} input
+ * @param {NodeJS.ProcessEnv} env
+ * @returns {string | null} the line for the session context
+ */
+function autostartWindow(ctx, input, env) {
+  if (!ctx.paths || !ctx.task || env.MENITOR_WINDOW_AUTOSTART === '0') return null;
+  try {
+    const r = openWindow(ctx.paths, { commands: WINDOW_COMMANDS, browser: false, env });
+    const fresh = input.source === 'startup' || input.source === 'clear' || input.source === undefined;
+    if (r.started && fresh) openBrowser(r.url, env);
+    return `The task window is ${r.started ? 'open' : 'running'}: ${r.url}`;
+  } catch (err) {
+    return `The task window couldn't start: ${/** @type {Error} */ (err).message}`;
+  }
+}
+
+/**
+ * Stop: the agent ended its turn. The window reads this as the answer to a button press, so it
+ * can stop showing that Menitor is working. It says nothing to the session.
+ * @param {HookInput} input
+ * @param {NodeJS.ProcessEnv} env
+ * @returns {HookResult}
+ */
+export function stop(input, env) {
+  const ctx = contextFor(input, env);
+  if (ctx.active) appendActivity(ctx, { tool: TURN_END });
+  return {};
 }
 
 const HANDLERS = /** @type {Record<string, (input: HookInput, env: NodeJS.ProcessEnv) => HookResult>} */ ({
   PreToolUse: preToolUse,
   PostToolUse: postToolUse,
+  Stop: stop,
   UserPromptSubmit: userPromptSubmit,
   SessionStart: sessionStart,
 });

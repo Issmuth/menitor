@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="logo/Frame%20102.svg">
+  <img src="logo/Frame%20103.svg" alt="" width="72" height="72">
+</picture>
+
 # Menitor
 
 > **You need Node.js 22 or newer on your PATH.** Menitor's state CLI, task window and hooks run on Node. Check with `node --version`.
@@ -100,18 +105,25 @@ In both modes the agent never writes your code, and every check still asks you t
 
 ## The task window
 
-`/menitor:go` opens a page in your browser with one task card. Keep it beside your editor, or pop it out.
+`/menitor:go` opens a page in your browser with one task card. Keep it beside your editor, or pop it out. When a session starts on a task, the window opens by itself; set `MENITOR_WINDOW_AUTOSTART=0` if you'd rather open it yourself.
 
 ![The task window: the desktop layout in light mode, and the pop-out in dark mode](docs/images/window.png)
 
+To open it yourself, without asking the agent, run `menitor open` in your project's folder. Its buttons keep the commands from the last time `/menitor:go` opened it. To get the `menitor` command, run `npm link` once in the folder Menitor is installed in: your clone, or the plugin's folder under `~/.claude/plugins/`. In a Claude Code session, `! menitor open` runs it straight away.
+
 - **Live:** it updates as soon as anything changes. You never need to reload.
 - **Ticks:** tick checklist items as you go. Fixes from a failed check appear as new items.
-- **Explain your code:** when a check asks about your code, the question appears in the window with an answer box. Send your answer there, or in your session. Menitor's reply, and any follow-up question, show up under it.
+- **Explain your code:** when a check asks about your code, the question appears in the window with an answer box. Send your answer there, or in your session. Menitor's reply, and any follow-up question, show up under it. When the task passes, the replies stay on screen until you press **Continue**.
 - **Whose turn it is:** anything holding up your next task shows at the top. That covers a task that's Menitor's (with a **Start it** button), a skip waiting for your confirm, and anything Menitor is waiting on, such as a sign-in or your deployed URL.
 - **Before you code** comes first: the one thing to read, the doc section and the branch. On a desktop it sits beside the steps.
-- **Buttons:** **Check my work**, **Hint** and **I'm stuck** go straight to your Claude Code session. When your next move is in the editor or the window, Claude waits for your press, so you don't type commands. If no session is listening, the buttons copy the command for you to paste. The card tells you which of the two will happen.
+- **Buttons:** **Check my work**, **Hint** and **I'm stuck** go straight to your Claude Code session. When your next move is in the editor or the window, Claude waits for your press, so you don't type commands. If no session is listening, the buttons copy the command for you to paste. The card tells you which of the two will happen. After a press, the button shows what Menitor is doing until it's done, and then the card says what comes next.
+- **Its own window:** with Chrome, Edge, Chromium or Brave installed, the window opens as an app, maximized, with no tabs or address bar. If an older Menitor window is still open, the new one opens at its normal size instead. Set `MENITOR_WINDOW_MAXIMIZED=0` for a normal-size window, or `MENITOR_WINDOW_APP=0` to always use a tab. Without one of those browsers, it opens in a tab.
 - **Pop out:** an always-on-top mini window in desktop Chrome, Edge and other Chromium browsers. Other browsers get a small separate window.
-- **The plan:** every task in your plan as one cell, marked by who did it: you, Menitor, skipped, the one you're on, or still to do. A dot marks tasks added after you approved the plan, and their card says **Added**.
+- **The plan:** every task in your plan as one cell, marked by who did it: you, Menitor, skipped, the one you're on, or still to do. A dot marks tasks added after you approved the plan, and their card says **Added**. While you work, the milestones you've finished fold into one row, and so do the ones still to come, so the card stays short however long the plan grows. Each folded row still shows every task as a small cell, and opens to the full milestones.
+- **Look back:** select a finished task in the plan to open it: who did it, its steps and fixes, Menitor's note, your explanation and the hints you opened. **Previous** and **Next** step through them.
+- **To-dos:** a tab of their own in the top bar, beside **Task**. Jot down ideas, features and changes to come back to, then edit, tick or delete them; a deleted one can be brought back with **Undo** for a few seconds. They stay between sessions. **Add to plan** sends one to Menitor, which asks you about it and adds it to the plan. The to-do then says where it went. When something on the task needs you, a dot on the **Task** tab says so.
+- **Setup:** while `/menitor:start` runs, the window shows what you've told Menitor so far in your own words, which answers are saved, the warm-up exercise with an **I'm done** button and Menitor's question about your code, the stacks and focus areas to choose from, and a box for each part of your PRD core, saved as you type, with Menitor's feedback under each.
+- **The finish:** when every task in your plan has passed, the window shows what you built and how: the tasks you wrote, what Menitor did, your hints and explain-backs, and a link to your live app.
 - **Hints:** the four-rung ladder shows which hints are open, with their text beside it. Code hints are set as code.
 - **Type-along:** each step opens to its instructions and code, with line numbers to keep your place. Locked steps don't reach the window until you tick the step before.
 - **Layout:** one column on a phone or in the pop-out, with the buttons always at the bottom of the screen. On a desktop, the steps sit beside the plan and the buttons sit beside the title. It works from 320 px wide, in light and dark mode, and by keyboard.
@@ -147,14 +159,17 @@ Menitor keeps its state in `.menitor/` in your project. The plan is committed, s
 | File | Holds | In git |
 | --- | --- | --- |
 | `plan.json` | milestones, tasks, checklists, done-when criteria, owners, hints | yes |
-| `session.json` | the current task, start commits, the last check | no |
-| `progress.json` | your checklist ticks | no |
+| `session.json` | the current task, start commits, the last check, and the to-dos added to the plan | no |
+| `progress.json` | your checklist ticks, and the explain-back results you've read | no |
 | `learner.md` | your level, focus areas, strengths, recurring mistakes, hint use | no |
 | `log.md` | a dated history of checks, hints, skips, disputes and additions | no |
 | `guard.json` | mentor mode and skip grants, from commands you typed | no |
 | `activity.jsonl` | every command and file write the agent ran | no |
 | `solutions.json` | type-along: each step's instructions and code | no |
 | `answers.json` | your answers to explain-back questions, typed in the window | no |
+| `setup.json` | what you said during setup, saved as you go, so a closed session loses nothing | no |
+| `todos.json` | your to-dos, written in the window | no |
+| `graph.json` | the context graph: doc sections, tasks and the files they touch. Rebuilt any time | no |
 | `window.json`, `inbox.jsonl`, `listener.json`, `waiter.json`, `claims/` | the running window and its buttons | no |
 
 Your lean docs go in `docs/`, one page each: product requirements, technical requirements, app flow, design brief, data and API contract, and testing approach. Decision records go in `docs/adr/`. You write the first one, for your stack.

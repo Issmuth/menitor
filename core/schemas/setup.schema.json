@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Issmuth/menitor/blob/main/core/schemas/setup.schema.json",
+  "title": "Menitor setup answers (.menitor/setup.json)",
+  "description": "What the learner said during setup, saved the moment each answer is given, so a session that closes mid-setup loses nothing. Written by the agent through the menitor CLI.",
+  "type": "object",
+  "required": ["version", "answers"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "options": {
+      "description": "Choices the agent offers in the window: one to three stacks, the recommended one first, and the focus areas to pick from.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stack": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "required": ["name", "reasons"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+              "reasons": { "type": "array", "minItems": 1, "maxItems": 5, "items": { "type": "string", "minLength": 1, "maxLength": 200 } },
+              "hosting": { "type": "string", "minLength": 1, "maxLength": 100 }
+            }
+          }
+        },
+        "focus": { "type": "array", "minItems": 1, "maxItems": 12, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 60 } },
+        "prd": { "description": "The window shows a box for each PRD core section.", "const": true }
+      }
+    },
+    "critique": {
+      "description": "The mentor's feedback on each PRD core section, shown under it in the window.",
+      "type": "object",
+      "propertyNames": { "enum": ["problem", "users", "features"] },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["text", "at"],
+        "additionalProperties": false,
+        "properties": {
+          "text": { "type": "string", "minLength": 1, "maxLength": 2000 },
+          "at": { "type": "string" }
+        }
+      }
+    },
+    "answers": {
+      "type": "object",
+      "propertyNames": { "enum": ["idea", "goal", "time", "experience", "stack", "warmup-question", "warmup-answer", "focus", "help", "stack-choice", "prd"] },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["value", "at"],
+        "additionalProperties": false,
+        "properties": {
+          "value": { "type": "string", "minLength": 1, "maxLength": 8000 },
+          "at": { "type": "string" }
+        }
+      }
+    }
+  }
+}

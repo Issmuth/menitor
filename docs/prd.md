@@ -131,6 +131,7 @@ The window is a localhost page in the learner’s browser that shows one task ca
 | W-9 | A banner shows whose turn it is: a delegated task with a Start it button, a skip waiting for the learner's confirm, or anything the agent is waiting on. |
 | W-10 | Explain-back questions appear in the window with an answer box. The learner answers there or in the session, and the mentor's reply shows under the answer. |
 | W-11 | Tasks added after approval carry an Added tag on the card and a dot in the plan ledger ([ADR 15](adr/015-adding-to-a-locked-plan.md)). |
+| W-12 | Any finished task opens from the plan ledger, read-only, with who did it, its steps and fixes, the notes, the hints opened and the explain-back answers. |
 
 Every task renders in this card shape. “Why” is two sentences at most, and a card never contains code. In type-along mode, a step's code shows under that step only once it is open (H-9).
 
@@ -203,9 +204,12 @@ State lives in .menitor/, and each file has one writer, so the window, the hooks
 | File | Written by | Holds |
 | --- | --- | --- |
 | plan.json | Agent, through the CLI | Milestones, tasks, checklists, done-when criteria, owners, hints |
-| session.json | Agent, through the CLI | The current task, start commits, the last check |
+| session.json | Agent, through the CLI | The current task, start commits, the last check, and which to-dos went into the plan |
 | learner.md | Agent, through the CLI | Level, focus areas, strengths, recurring mistakes, hint use |
 | solutions.json | Agent, through the CLI | Type-along: each step's instructions and code |
+| setup.json | Agent, through the CLI | What the learner said during setup, saved as each answer is given |
+| todos.json | Window | The learner's own to-dos |
+| graph.json | Agent, through the CLI | The context graph of doc sections, tasks and files ([ADR 17](adr/017-context-graph.md)) |
 | progress.json | Window | Checklist ticks |
 | answers.json | Window | Explain-back answers typed in the window |
 | guard.json | Hooks | Mentor mode, type-along, skip requests and grants, from the learner's typing |

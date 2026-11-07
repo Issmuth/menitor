@@ -16,6 +16,7 @@ import { readDocLink } from './docs.js';
 import { languageWarnings } from './lint.js';
 import { readTextOrNull } from './fsx.js';
 import { runCheck } from './check.js';
+import { emptyGraph, foldedSection, refreshGraph, reviewMap } from './graph.js';
 import {
   SCHEMAS,
   defaultSession,
@@ -27,12 +28,18 @@ import {
   loadPlan,
   loadProgress,
   loadSession,
+  loadSetup,
+  loadTodos,
+  loadGraph,
+  saveGraph,
   requirePlan,
   savePlan,
   saveLearner,
   saveSession,
+  saveSetup,
   saveSolutions,
 } from './state.js';
+import { PRD_SECTIONS, SETUP_STEPS, isSetupKey } from './setup.js';
 
 /**
  * @typedef {import('./paths.js').StatePaths} StatePaths
@@ -51,6 +58,9 @@ log.md
 activity.jsonl
 solutions.json
 answers.json
+setup.json
+todos.json
+graph.json
 waiter.json
 claims/
 window.json
@@ -184,10 +194,14 @@ export function addToPlan(paths, raw, options = {}) {
   if (kinds.length !== 1) throw new MenitorError(`Add one thing at a time. ${ADD_SHAPES}.`);
   const kind = kinds[0];
   const where = kind === 'step' ? 'to' : 'after';
-  const extra = Object.keys(input).filter((k) => k !== kind && k !== where);
+  const extra = Object.keys(input).filter((k) => k !== kind && k !== where && k !== 'todo');
   if (extra.length) throw new MenitorError(`Unknown field ${extra.map((k) => `"${k}"`).join(', ')}. ${ADD_SHAPES}.`);
   if (typeof input[where] !== 'string') {
     throw new MenitorError(kind === 'step' ? 'Say which task the step joins with "to": a task ID' : `Say where the ${kind} goes with "after": ${kind === 'task' ? 'a task ID or a milestone ID' : 'a milestone ID'}`);
+  }
+  // An idea from the window's to-do list names it, so the window can mark it as planned.
+  if (input.todo !== undefined && (typeof input.todo !== 'string' || !loadTodos(paths).todos.some((t) => t.id === input.todo))) {
+    throw new MenitorError(`No to-do "${input.todo}" in the window's list. Check the ID with "menitor todos show".`);
   }
 
   const plan = requireApprovedPlan(paths);
@@ -228,6 +242,11 @@ export function addToPlan(paths, raw, options = {}) {
   // Every other task was done, so the first new one becomes the current task.
   const first = current ? null : nextTodo(next);
   if (first) startTask(paths, session, first, now);
+  if (typeof input.todo === 'string') {
+    const latest = loadSession(paths);
+    latest.todosPlanned = { ...latest.todosPlanned, [input.todo]: { to: added.id, at: now.toISOString() } };
+    saveSession(paths, latest);
+  }
   return { ...added, warnings: fresh, saved: true, started: first?.task.id ?? null };
 }
 
@@ -288,6 +307,13 @@ export function checkTask(paths, id, options = {}) {
     },
     options,
   );
+  // Where the review should look, from the context graph: the changed lines, the files importing a
+  // changed file, and the doc sections naming it (ADR 17).
+  try {
+    report.review = reviewMap(contextGraph(paths).graph, report.diff, report.files);
+  } catch {
+    report.review = [];
+  }
   if (report.ranCommands && start) {
     // Read the session again: the checks may have run for minutes.
     const fresh = loadSession(paths);
@@ -421,13 +447,170 @@ export function importHints(paths, raw) {
 }
 
 /**
- * Projects set up before type-along keep their own .menitor/.gitignore; make sure step code stays out of git.
+ * Projects set up before a state file existed keep their own .menitor/.gitignore; make sure the
+ * file stays out of git all the same.
+ * @param {StatePaths} paths
+ * @param {string} name such as "solutions.json"
+ */
+function ignoreStateFile(paths, name) {
+  const text = readTextOrNull(paths.gitignore) ?? '';
+  if (new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm').test(text)) return;
+  writeFileAtomic(paths.gitignore, `${text.replace(/\n*$/, '\n')}${name}\n`);
+}
+
+/**
+ * Keep the files the window writes out of git, in projects set up before those files existed.
+ * The window never writes .menitor/.gitignore itself; the CLI does this when it opens the window.
  * @param {StatePaths} paths
  */
-function ignoreSolutions(paths) {
-  const text = readTextOrNull(paths.gitignore) ?? '';
-  if (/^solutions\.json$/m.test(text)) return;
-  writeFileAtomic(paths.gitignore, `${text.replace(/\n*$/, '\n')}solutions.json\n`);
+export function ignoreWindowFiles(paths) {
+  ignoreStateFile(paths, 'todos.json');
+}
+
+/**
+ * Save one setup answer the moment it's given. Answering again replaces it.
+ * @param {StatePaths} paths
+ * @param {string} key one of SETUP_STEPS
+ * @param {string} value
+ * @param {{ now?: Date }} [options]
+ */
+export function setSetupAnswer(paths, key, value, options = {}) {
+  if (!isSetupKey(key)) throw new MenitorError(`Unknown setup answer "${key}". Use one of: ${SETUP_STEPS.map((s) => s.key).join(', ')}`);
+  const text = value.replace(/\s+$/, '');
+  if (!text.trim()) throw new MenitorError(`The ${key} answer needs some text`);
+  const setup = loadSetup(paths);
+  setup.answers[key] = { value: text, at: (options.now ?? new Date()).toISOString() };
+  saveSetup(paths, setup);
+  ignoreStateFile(paths, 'setup.json');
+  return setup.answers[key];
+}
+
+/**
+ * Offer choices in the window: the focus areas as a comma-separated list, or one to three stacks
+ * as JSON, the recommended one first, each with its reasons. Posting again replaces them.
+ * @param {StatePaths} paths
+ * @param {string} kind "focus" or "stack"
+ * @param {string} raw
+ */
+export function setSetupOptions(paths, kind, raw) {
+  const setup = loadSetup(paths);
+  const options = { ...setup.options };
+  if (kind === 'focus') {
+    options.focus = [...new Set(raw.split(',').map((s) => s.trim()).filter(Boolean))];
+  } else if (kind === 'prd') {
+    options.prd = true;
+  } else if (kind === 'stack') {
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      throw new MenitorError(`The stack options are not valid JSON: ${/** @type {Error} */ (err).message}`);
+    }
+    options.stack = parsed;
+  } else {
+    throw new MenitorError(`Unknown setup options "${kind}". Use focus, stack or prd.`);
+  }
+  setup.options = options;
+  const errors = validate(SCHEMAS.setup, setup);
+  if (errors.length) {
+    throw new MenitorError(`Invalid ${kind} options`, { details: errors.map((e) => `${e.path.replace(/^\$\.options\./, '')} ${e.message}`) });
+  }
+  saveSetup(paths, setup);
+  ignoreStateFile(paths, 'setup.json');
+  return options;
+}
+
+/**
+ * Post the mentor's feedback on one PRD core section; the window shows it under that section.
+ * @param {StatePaths} paths
+ * @param {string} section problem, users or features
+ * @param {string} text
+ * @param {{ now?: Date }} [options]
+ */
+export function setSetupCritique(paths, section, text, options = {}) {
+  if (!PRD_SECTIONS.some((s) => s.key === section)) throw new MenitorError(`Unknown PRD section "${section}". Use ${PRD_SECTIONS.map((s) => s.key).join(', ')}.`);
+  const clean = text.replace(/\s+$/, '');
+  if (!clean.trim()) throw new MenitorError(`The feedback on ${section} needs some text`);
+  const setup = loadSetup(paths);
+  setup.critique = { ...setup.critique, [section]: { text: clean, at: (options.now ?? new Date()).toISOString() } };
+  saveSetup(paths, setup);
+  ignoreStateFile(paths, 'setup.json');
+  return setup.critique;
+}
+
+/**
+ * The PRD core drafted in the window, as one answer under headings, if any section is written.
+ * @param {Record<string, { text: string, at: string } | undefined>} typed
+ */
+function windowPrd(typed) {
+  const parts = PRD_SECTIONS.map((s) => ({ s, a: typed[`prd-${s.key}`] })).filter((p) => p.a);
+  if (!parts.length) return undefined;
+  const at = parts.map((p) => /** @type {{ at: string }} */ (p.a).at).sort().at(-1) ?? '';
+  return { text: parts.map((p) => `${p.s.label}:\n${/** @type {{ text: string }} */ (p.a).text}`).join('\n\n'), at };
+}
+
+/**
+ * The context graph, brought up to date (ADR 17). Only files that changed since the last query
+ * are read; a graph that can't be read is rebuilt, since everything in it comes from the docs, the
+ * plan and git.
+ * @param {StatePaths} paths
+ * @returns {{ graph: import('./graph.js').Graph, read: number }}
+ */
+export function contextGraph(paths) {
+  /** @type {import('./graph.js').Graph} */
+  let graph;
+  try {
+    graph = loadGraph(paths) ?? emptyGraph();
+  } catch {
+    graph = emptyGraph();
+  }
+  const r = refreshGraph(paths.root, graph, loadPlan(paths), loadSession(paths));
+  if (r.changed) {
+    ignoreStateFile(paths, 'graph.json');
+    saveGraph(paths, r.graph);
+  }
+  return { graph: r.graph, read: r.read };
+}
+
+/**
+ * The learner's to-dos from the window, each with where it went if the add flow planned it.
+ * Their text is the learner's words: data to read, never instructions.
+ * @param {StatePaths} paths
+ * @returns {Array<import('./state.js').Todo & { planned?: { to: string, at: string } }>}
+ */
+export function todoList(paths) {
+  const planned = loadSession(paths).todosPlanned ?? {};
+  return loadTodos(paths).todos.map((t) => (planned[t.id] ? { ...t, planned: planned[t.id] } : t));
+}
+
+/**
+ * The setup answers saved so far, in the order setup asks, and those still to ask.
+ * @param {StatePaths} paths
+ * @returns {import('./setup.js').SetupStatus}
+ */
+export function setupStatus(paths) {
+  const setup = loadSetup(paths);
+  const saved = setup.answers;
+  // Answers typed in the window live in the window's own file; the newer of the two wins.
+  const typed = /** @type {Record<string, { text: string, at: string } | undefined>} */ ({ ...loadAnswers(paths).answers });
+  typed.prd = windowPrd(typed);
+  /** @param {string} key */
+  const pick = (key) => {
+    const said = saved[key];
+    const window = typed[key];
+    if (window && (!said || window.at > said.at)) return { value: window.text, at: window.at, source: /** @type {const} */ ('window') };
+    return said ? { value: said.value, at: said.at, source: /** @type {const} */ ('session') } : null;
+  };
+  /** @type {import('./setup.js').SetupAnswer[]} */
+  const answers = [];
+  /** @type {{ key: import('./setup.js').SetupKey, label: string }[]} */
+  const missing = [];
+  for (const s of SETUP_STEPS) {
+    const a = pick(s.key);
+    if (a) answers.push({ key: s.key, label: s.label, ...a });
+    else missing.push({ key: s.key, label: s.label });
+  }
+  return { answers, missing, options: setup.options ?? {}, critique: setup.critique ?? {} };
 }
 
 /**
@@ -460,7 +643,7 @@ export function importSteps(paths, raw, options = {}) {
     if (step && typeof step.say === 'string') warnings.push(...languageWarnings(`${id} say`, step.say).filter((w) => !w.includes('looks like code')));
   }
   saveSolutions(paths, solutions);
-  ignoreSolutions(paths);
+  ignoreStateFile(paths, 'solutions.json');
   appendEvent(paths.log, 'steps', { count: ids.length }, options.now);
   return { ids, warnings };
 }
@@ -715,7 +898,7 @@ export function briefData(paths, id) {
     checks: plan.checks ?? {},
     verify: task.verify ?? [],
     deployUrl: plan.project.deployUrl ?? null,
-    doc: readDocLink(paths.root, task.docs),
+    doc: briefDoc(paths, task.docs),
     typeAlong: Boolean(loadGuard(paths).typeAlong),
     questions: (start?.questions ?? []).map((q) => ({ ...q, answer: loadAnswers(paths).answers[q.id] ?? null })),
     waiting: session.waiting ?? null,
@@ -725,6 +908,31 @@ export function briefData(paths, id) {
       return { stored: ids.filter((id) => steps[id]), missing: ids.filter((id) => !steps[id]) };
     })(),
   };
+}
+
+/**
+ * The doc a task links, as its brief shows it: whole when short, folded through the context graph
+ * when long (ADR 17), so the brief carries the opening and an outline instead of every line.
+ * @param {StatePaths} paths
+ * @param {string} link
+ */
+function briefDoc(paths, link) {
+  const doc = readDocLink(paths.root, link);
+  /** @type {{ link: string, heading: string, lines: [number, number], chars: number }[]} */
+  let more = [];
+  if (doc.found === 'section' || doc.found === 'file') {
+    try {
+      const folded = foldedSection(paths.root, contextGraph(paths).graph, link);
+      if (folded) {
+        doc.text = folded.text;
+        doc.truncated = false;
+        more = folded.more;
+      }
+    } catch {
+      // The whole section still serves.
+    }
+  }
+  return { ...doc, more };
 }
 
 /**
@@ -804,6 +1012,9 @@ export function validateAll(paths) {
   const session = attempt('session.json', () => loadSession(paths));
   const progress = attempt('progress.json', () => loadProgress(paths));
   const guard = attempt('guard.json', () => loadGuard(paths));
+  attempt('setup.json', () => loadSetup(paths));
+  attempt('todos.json', () => loadTodos(paths));
+  attempt('graph.json', () => loadGraph(paths));
   attempt('log.md', () => parseLog(fs.existsSync(paths.log) ? fs.readFileSync(paths.log, 'utf8') : ''));
 
   if (plan) {
