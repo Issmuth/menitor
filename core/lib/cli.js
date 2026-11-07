@@ -14,6 +14,7 @@ import { computeStats, renderStats } from './stats.js';
 import { renderCheck } from './check.js';
 import { openWindow, readWindowInfo, isAlive, stopWindow, windowUrl } from './window.js';
 import { allTasks, findTask } from './plan.js';
+import { fileLinks, taskTouches } from './graph.js';
 import { loadLearner, loadPlan, loadProgress, loadSession, loadSolutions, requirePlan, saveSession } from './state.js';
 
 /** The buttons whose commands the window shows or copies. */
@@ -28,6 +29,7 @@ import {
   importPlan,
   importSteps,
   askQuestion,
+  contextGraph,
   judgeQuestion,
   questionState,
   setWaiting,
@@ -131,6 +133,13 @@ Window
         --no-browser                    Print the link without opening a browser
   menitor window status                 Whether the window is running, and its link
   menitor window stop                   Stop the window server
+
+Context
+  menitor graph                         Bring the context graph of docs, tasks and files up to date
+  menitor graph task [id]               What a task touches: its doc section, the files it names and
+                                        changed, the files one import away, and their sizes
+  menitor graph file <path>             What imports a file and what it imports, the sections that
+                                        name it, and the tasks that changed it
 
 History
   menitor log <event> key=value...      Log check, explain, stuck, dispute, deploy or note
@@ -263,6 +272,44 @@ function renderBrief(b) {
   else lines.push(doc.text);
   if (doc.truncated) lines.push('[cut at 4000 characters]');
   return lines.join('\n');
+}
+
+/** @param {number} bytes A size in the units a reader weighs: bytes, or KB with one decimal. */
+function sizeOf(bytes) {
+  return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+/** @param {number} read How many files a query had to read, which is none when the graph was fresh. */
+function readNote(read) {
+  return read ? `Read ${read === 1 ? '1 changed file' : `${read} changed files`} to bring the graph up to date.` : 'Read no files: the graph was up to date.';
+}
+
+/**
+ * @param {NonNullable<ReturnType<typeof taskTouches>>} t
+ * @param {number} read
+ */
+function renderTouches(t, read) {
+  const MAX = 12;
+  const list = (/** @type {{ path: string, size: number, via?: string }[]} */ items) =>
+    items.length ? [...items.slice(0, MAX).map((f) => `${f.path} (${sizeOf(f.size)})${f.via ? ` · ${f.via}` : ''}`), ...(items.length > MAX ? [`and ${items.length - MAX} more (--json lists them)`] : [])].join('\n           ') : 'none';
+  const lines = [`Task ${t.task} touches`];
+  if (!t.section) lines.push('Section    none on the card');
+  else if ('missing' in t.section) lines.push(`Section    ${t.section.link} (not found in the docs)`);
+  else lines.push(`Section    ${t.section.link}${t.section.heading ? ` "${t.section.heading}"` : ''} · lines ${t.section.lines[0]}-${t.section.lines[1]} · ${t.section.chars} chars`);
+  lines.push(`Named      ${list(t.named)}`, `Changed    ${list(t.touched)}`, `Near       ${list(t.near)}`);
+  const few = (/** @type {string[]} */ files) => (files.length > 4 ? `${files.slice(0, 4).join(', ')} and ${files.length - 4} more` : files.join(', '));
+  if (t.earlier.length) lines.push(`Earlier    ${t.earlier.slice(0, MAX).map((e) => `${e.task} changed ${few(e.files)}`).join('\n           ')}${t.earlier.length > MAX ? `\n           and ${t.earlier.length - MAX} more tasks` : ''}`);
+  lines.push('', readNote(read));
+  return lines.join('\n');
+}
+
+/**
+ * @param {NonNullable<ReturnType<typeof fileLinks>>} f
+ * @param {number} read
+ */
+function renderFileLinks(f, read) {
+  const list = (/** @type {string[]} */ items) => (items.length ? items.join(', ') : 'none');
+  return [`${f.path} (${sizeOf(f.size)})`, `Imports    ${list(f.imports)}`, `Imported by ${list(f.importedBy)}`, `Named in   ${list(f.namedBy)}`, `Changed by ${list(f.tasks)}`, '', readNote(read)].join('\n');
 }
 
 /**
@@ -623,6 +670,37 @@ export function run(argv, ioOverrides = {}) {
         if (values.json) json({ stored: ids, warnings });
         else io.out(`Stored type-along code for ${ids.join(', ')}. The window shows each step's code once the step before it is ticked.${formatWarnings(warnings)}`);
         return EXIT.ok;
+      }
+
+      case 'graph': {
+        const p = paths();
+        const { graph, read } = contextGraph(p);
+        if (!sub) {
+          const files = Object.values(graph.files);
+          const summary = { files: files.length, docs: files.filter((f) => f.sections).length, sections: files.reduce((n, f) => n + (f.sections?.length ?? 0), 0), code: files.filter((f) => f.imports).length, tasks: Object.keys(graph.tasks).length, read };
+          if (values.json) json(summary);
+          else io.out(`Context graph: ${summary.files} files, ${summary.sections} sections in ${summary.docs} docs, imports in ${summary.code} code files, ${summary.tasks} tasks.\n${readNote(read)}`);
+          return EXIT.ok;
+        }
+        if (sub === 'task') {
+          const plan = requirePlan(p);
+          const id = rest[0] ?? loadSession(p).currentTask;
+          if (!id || !allTasks(plan).some((e) => e.task.id === id)) throw new MenitorError(id ? `No task "${id}" in the plan.` : 'There is no current task. Name one: menitor graph task <id>');
+          const t = /** @type {NonNullable<ReturnType<typeof taskTouches>>} */ (taskTouches(graph, id));
+          if (values.json) json({ ...t, read });
+          else io.out(renderTouches(t, read));
+          return EXIT.ok;
+        }
+        if (sub === 'file') {
+          if (!rest[0]) throw new MenitorError('Usage: menitor graph file <path>');
+          const file = rest[0].replaceAll('\\', '/').replace(/^\.\//, '');
+          const f = fileLinks(graph, file);
+          if (!f) throw new MenitorError(`"${file}" isn't a project file the graph knows. Paths are from the project root.`);
+          if (values.json) json({ ...f, read });
+          else io.out(renderFileLinks(f, read));
+          return EXIT.ok;
+        }
+        throw new MenitorError('Usage: menitor graph [task [id] | file <path>]');
       }
 
       case 'go': {

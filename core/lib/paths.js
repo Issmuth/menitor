@@ -24,6 +24,7 @@ export const STATE_DIR = '.menitor';
  * @property {string} answers  answers.json, explain-back answers typed in the window, written by the window
  * @property {string} setup    setup.json, what the learner said during setup, written by the CLI
  * @property {string} todos    todos.json, the learner's own notes, written by the window
+ * @property {string} graph    graph.json, the context graph of docs, tasks and files, written by the CLI
  * @property {string} waiter   waiter.json, a heartbeat while the agent waits for a window button
  * @property {string} claims   claims/, one empty file per window event already taken by a listener
  * @property {string} gitignore .menitor/.gitignore
@@ -52,6 +53,7 @@ export function statePaths(root) {
     answers: path.join(dir, 'answers.json'),
     setup: path.join(dir, 'setup.json'),
     todos: path.join(dir, 'todos.json'),
+    graph: path.join(dir, 'graph.json'),
     waiter: path.join(dir, 'waiter.json'),
     claims: path.join(dir, 'claims'),
     gitignore: path.join(dir, '.gitignore'),

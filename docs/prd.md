@@ -209,6 +209,7 @@ State lives in .menitor/, and each file has one writer, so the window, the hooks
 | solutions.json | Agent, through the CLI | Type-along: each step's instructions and code |
 | setup.json | Agent, through the CLI | What the learner said during setup, saved as each answer is given |
 | todos.json | Window | The learner's own to-dos |
+| graph.json | Agent, through the CLI | The context graph of doc sections, tasks and files ([ADR 17](adr/017-context-graph.md)) |
 | progress.json | Window | Checklist ticks |
 | answers.json | Window | Explain-back answers typed in the window |
 | guard.json | Hooks | Mentor mode, type-along, skip requests and grants, from the learner's typing |

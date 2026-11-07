@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Issmuth/menitor/blob/main/core/schemas/graph.schema.json",
+  "title": "Menitor context graph (.menitor/graph.json)",
+  "description": "Doc sections, tasks and project files, with what each names, imports or changed (ADR 17). Written only by the CLI, and always rebuildable from the docs, the plan and git.",
+  "type": "object",
+  "required": ["version", "files", "tasks"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "files": {
+      "description": "Every project file by its path from the root, with forward slashes.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["key", "size"],
+        "additionalProperties": false,
+        "properties": {
+          "key": { "description": "Size and modified time: a file whose key is unchanged is not read again.", "type": "string", "pattern": "^\\d+:\\d+$" },
+          "size": { "type": "integer", "minimum": 0 },
+          "imports": { "description": "Import lines as written, in JavaScript, TypeScript or Python.", "type": "array", "items": { "type": "string" } },
+          "sections": {
+            "description": "The sections of a Markdown file.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["anchor", "heading", "level", "start", "end", "chars", "mentions", "links"],
+              "additionalProperties": false,
+              "properties": {
+                "anchor": { "type": "string" },
+                "heading": { "type": "string" },
+                "level": { "type": "integer", "minimum": 1, "maximum": 6 },
+                "start": { "type": "integer", "minimum": 1 },
+                "end": { "type": "integer", "minimum": 0 },
+                "chars": { "type": "integer", "minimum": 0 },
+                "mentions": { "description": "Code-formatted text that looks like a path.", "type": "array", "items": { "type": "string" } },
+                "links": { "description": "Markdown link targets in the project.", "type": "array", "items": { "type": "string" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "tasks": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["section", "range", "touched"],
+        "additionalProperties": false,
+        "properties": {
+          "section": { "description": "The docs link on the task's card.", "type": ["string", "null"] },
+          "range": { "description": "The commits its files were measured over; a finished task's never moves.", "type": ["string", "null"] },
+          "touched": { "description": "The files the task changed.", "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

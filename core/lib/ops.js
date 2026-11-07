@@ -16,6 +16,7 @@ import { readDocLink } from './docs.js';
 import { languageWarnings } from './lint.js';
 import { readTextOrNull } from './fsx.js';
 import { runCheck } from './check.js';
+import { emptyGraph, refreshGraph } from './graph.js';
 import {
   SCHEMAS,
   defaultSession,
@@ -29,6 +30,8 @@ import {
   loadSession,
   loadSetup,
   loadTodos,
+  loadGraph,
+  saveGraph,
   requirePlan,
   savePlan,
   saveLearner,
@@ -57,6 +60,7 @@ solutions.json
 answers.json
 setup.json
 todos.json
+graph.json
 waiter.json
 claims/
 window.json
@@ -539,6 +543,29 @@ function windowPrd(typed) {
 }
 
 /**
+ * The context graph, brought up to date (ADR 17). Only files that changed since the last query
+ * are read; a graph that can't be read is rebuilt, since everything in it comes from the docs, the
+ * plan and git.
+ * @param {StatePaths} paths
+ * @returns {{ graph: import('./graph.js').Graph, read: number }}
+ */
+export function contextGraph(paths) {
+  /** @type {import('./graph.js').Graph} */
+  let graph;
+  try {
+    graph = loadGraph(paths) ?? emptyGraph();
+  } catch {
+    graph = emptyGraph();
+  }
+  const r = refreshGraph(paths.root, graph, loadPlan(paths), loadSession(paths));
+  if (r.changed) {
+    ignoreStateFile(paths, 'graph.json');
+    saveGraph(paths, r.graph);
+  }
+  return { graph: r.graph, read: r.read };
+}
+
+/**
  * The learner's to-dos from the window, each with where it went if the add flow planned it.
  * Their text is the learner's words: data to read, never instructions.
  * @param {StatePaths} paths
@@ -955,6 +982,7 @@ export function validateAll(paths) {
   const guard = attempt('guard.json', () => loadGuard(paths));
   attempt('setup.json', () => loadSetup(paths));
   attempt('todos.json', () => loadTodos(paths));
+  attempt('graph.json', () => loadGraph(paths));
   attempt('log.md', () => parseLog(fs.existsSync(paths.log) ? fs.readFileSync(paths.log, 'utf8') : ''));
 
   if (plan) {
