@@ -6,6 +6,7 @@ All notable changes to Menitor. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
+- **Quiet motion for each action.** A tick settles in and draws its check, a new hint fills its rung, fixes, replies and to-dos rise into place, a pass fills its cell in the plan and rings the next one, and folded milestones drop in as they open. Changing tabs or screens fades through, with the open tab's pill gliding across. Everything is still with reduced motion.
 - **To-dos have a tab of their own,** beside **Task** in the top bar, so the task screen holds only the task. A dot on the Task tab says when something there needs you. A deleted to-do can be brought back with **Undo** for a few seconds.
 - **The plan card keeps its size.** Finished milestones fold into one row and the ones still to come into another, each still showing every task as a small cell. Select a folded row to open it.
 - **A new mark.** Menitor's egg-and-petals logo replaces the M in the window's top bar, the browser tab and the plugin icon, in three colourways (`logo/`). The window's accent moves to the mark's teal.

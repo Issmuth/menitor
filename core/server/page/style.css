@@ -82,6 +82,10 @@
   --panel-pad: 16px;
   --control-height: 40px;
   --edge: 16px; /* the page's outer margin, matched by the top bar */
+
+  /* Motion: feedback only, quick and once. Strong ease-outs; a short accelerating curve only for leaving. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-exit: cubic-bezier(0.55, 0.055, 0.675, 0.19);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -361,6 +365,16 @@ pre {
 .tab:hover,
 .tab[aria-current="page"] {
   color: var(--text);
+}
+
+.tab:active {
+  transform: scale(0.98);
+}
+
+.tab-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* The open tab's pill sits behind its label, so it can glide from tab to tab. */
@@ -2321,6 +2335,208 @@ h1 {
 
 .pip .bar-inner {
   min-height: 44px;
+}
+
+/* Motion. Each change says so once, then holds still; the page is finished without any of it. */
+
+@media (prefers-reduced-motion: no-preference) {
+  .toast:not([hidden]) {
+    animation: toast-in 240ms var(--ease-out) both;
+  }
+
+  .toast.leaving {
+    animation: toast-out 180ms var(--ease-exit) both;
+  }
+
+  /* Something that just arrived (a fix, a hint, a reply, a to-do) rises into place. */
+  .m-arrive {
+    animation: m-arrive 360ms var(--ease-out) var(--m-delay, 0ms) both;
+  }
+
+  /* A line whose words changed (a press's progress, the last check) fades to the new words. */
+  .m-fade {
+    animation: m-fade 300ms ease var(--m-delay, 0ms) both;
+  }
+
+  /* Milestones unfolding drop in from just above, a beat apart. */
+  .m-drop {
+    animation: m-drop 280ms var(--ease-out) var(--m-delay, 0ms) both;
+  }
+
+  /* A tick: the box settles in, then its check draws. */
+  .m-tick input {
+    animation: m-press 300ms var(--ease-out) var(--m-delay, 0ms) both;
+  }
+
+  .m-tick input::before {
+    animation: m-check 260ms var(--ease-out) calc(var(--m-delay, 0ms) + 60ms) both;
+  }
+
+  /* A hint opening fills its rung from the left. */
+  .m-rung::before {
+    transform-origin: left center;
+    animation: m-fill-x 520ms var(--ease-out) var(--m-delay, 0ms) both;
+  }
+
+  /* A task passing fills its cell; the next task's cell gets one soft ring, closing onto it. */
+  .m-fill {
+    animation: m-fill 560ms var(--ease-out) var(--m-delay, 0ms) both;
+  }
+
+  .m-now::before {
+    content: "";
+    position: absolute;
+    inset: -5px;
+    border: 2px solid var(--text);
+    border-radius: 9px;
+    pointer-events: none;
+    animation: m-ring 760ms var(--ease-out) var(--m-delay, 0ms) both;
+  }
+
+  /* A to-do ticked done greys out rather than snapping. */
+  .m-done .todo-text {
+    animation: m-mute 360ms ease var(--m-delay, 0ms) both;
+  }
+
+  /* Changing screens: the old view fades, the new one rises a few pixels, and the open tab's pill
+   * glides to its tab. The names are set only while a transition runs. */
+  .vt .bar {
+    view-transition-name: menitor-bar;
+  }
+
+  .vt .tab-pill {
+    view-transition-name: menitor-tab-pill;
+  }
+
+  .vt .tab[data-key="tab:main"] .tab-text {
+    view-transition-name: menitor-tab-main;
+  }
+
+  .vt .tab[data-key="tab:todos"] .tab-text {
+    view-transition-name: menitor-tab-todos;
+  }
+
+  .vt .content {
+    view-transition-name: menitor-content;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root),
+  ::view-transition-old(menitor-bar),
+  ::view-transition-new(menitor-bar),
+  ::view-transition-group(menitor-content) {
+    animation: none;
+  }
+
+  ::view-transition-group(menitor-tab-pill) {
+    animation-duration: 320ms;
+    animation-timing-function: var(--ease-out);
+  }
+
+  ::view-transition-group(menitor-tab-main),
+  ::view-transition-group(menitor-tab-todos) {
+    animation-duration: 200ms;
+  }
+
+  /* A fade through, not a crossfade: the old screen is gone before the new one rises, so two
+   * layouts never show at once. */
+  ::view-transition-old(menitor-content) {
+    animation: vt-leave 110ms var(--ease-exit) both;
+  }
+
+  ::view-transition-new(menitor-content) {
+    animation: vt-arrive 260ms var(--ease-out) 90ms both;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+}
+
+@keyframes m-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes m-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes m-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes m-press {
+  from {
+    transform: scale(0.82);
+  }
+}
+
+@keyframes m-check {
+  from {
+    opacity: 0;
+    transform: translateY(-1px) rotate(-45deg) scale(0.4);
+  }
+}
+
+@keyframes m-fill-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes m-fill {
+  from {
+    opacity: 0.3;
+    transform: scale(0.5);
+  }
+}
+
+@keyframes m-ring {
+  from {
+    opacity: 0.55;
+    transform: scale(1.5);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+@keyframes m-mute {
+  from {
+    color: var(--text);
+  }
+}
+
+@keyframes vt-leave {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes vt-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

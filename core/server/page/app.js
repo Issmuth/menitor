@@ -84,6 +84,9 @@ function docOf(/** @type {{ target: EventTarget | null } | undefined} */ e) {
   return t?.ownerDocument ?? document;
 }
 
+/** @type {ReturnType<typeof setTimeout> | undefined} */
+let toastLeave;
+
 /**
  * @param {string} text
  * @param {string} [code]
@@ -93,11 +96,146 @@ function showToast(text, code, doc = document) {
   const el = doc === document ? toast : /** @type {HTMLElement} */ (doc.getElementById('toast'));
   if (!el) return;
   el.replaceChildren(text, code ? ' ' : '', code ? h('code', null, code) : '');
+  el.classList.remove('leaving');
   el.hidden = false;
   clearTimeout(toastTimer);
+  clearTimeout(toastLeave);
   toastTimer = setTimeout(() => {
-    el.hidden = true;
+    // It fades out, a little faster than it came in, then leaves the page.
+    el.classList.add('leaving');
+    toastLeave = setTimeout(() => {
+      el.hidden = true;
+      el.classList.remove('leaving');
+    }, 180);
   }, 5000);
+}
+
+/*
+ * Motion is feedback: what just changed says so once, then holds still. The page redraws from
+ * state on every update, so a change is marked by its element's data-m key, and the element drawn
+ * next carries the motion on from where it was instead of starting it over.
+ */
+
+/** @type {Map<string, { cls: string, at: number, ms: number, delay: number }>} */
+const motionMarks = new Map();
+
+/**
+ * @param {string} key the element's data-m
+ * @param {string} cls the motion class
+ * @param {number} ms how long it runs
+ * @param {number} [delay] a stagger before it starts
+ */
+function mark(key, cls, ms, delay = 0) {
+  motionMarks.set(key, { cls, at: performance.now(), ms: ms + delay, delay });
+}
+
+/** @param {Element} root Put the motions still running on the elements just drawn. */
+function applyMotion(root) {
+  if (!motionMarks.size) return;
+  const now = performance.now();
+  for (const [key, m] of motionMarks) if (now - m.at > m.ms) motionMarks.delete(key);
+  for (const el of root.querySelectorAll('[data-m]')) {
+    const m = motionMarks.get(/** @type {HTMLElement} */ (el).dataset.m ?? '');
+    if (!m) continue;
+    el.classList.add(m.cls);
+    // A negative delay picks the motion up part way, so a redraw mid-motion doesn't restart it.
+    /** @type {HTMLElement} */ (el).style.setProperty('--m-delay', `${Math.round(m.delay - (now - m.at))}ms`);
+  }
+}
+
+/**
+ * What changed between two states, marked for motion: a tick, a fix or a hint arriving, a reply,
+ * a pass filling its cell, the next task's cell, a to-do added or done.
+ * @param {any} prev
+ * @param {any} s
+ */
+function markChanges(prev, s) {
+  if (!prev?.ok || !s?.ok || prev === s) return;
+  const a = prev.card;
+  const b = s.card;
+  if (a && b && a.task === b.task) {
+    const was = new Map(a.checklist.map((/** @type {any} */ i) => [i.id, i]));
+    for (const item of b.checklist) {
+      const old = /** @type {any} */ (was.get(item.id));
+      if (!old) mark(`item:${item.id}`, 'm-arrive', 360);
+      else if (item.ticked && !old.ticked) mark(`tick:${item.id}`, 'm-tick', 340);
+    }
+    for (let i = a.hints.revealed; i < b.hints.revealed; i++) {
+      mark(`rung:${i}`, 'm-rung', 520);
+      const rung = b.hints.rungs[i]?.rung;
+      if (rung) mark(`hint:${rung}`, 'm-arrive', 400, 120);
+    }
+    if (findingOf(prev).text !== findingOf(s).text) mark('finding', 'm-fade', 300);
+  }
+  if (pressLine(prev).text !== pressLine(s).text) mark('how-line', 'm-fade', 300);
+  const asked = new Map((prev.questions ?? []).map((/** @type {any} */ q) => [q.id, q]));
+  for (const q of s.questions ?? []) {
+    const old = /** @type {any} */ (asked.get(q.id));
+    if (!old) mark(`q:${q.id}`, 'm-arrive', 400);
+    else if (q.feedback && !old.feedback) mark(`fb:${q.id}`, 'm-arrive', 400);
+  }
+  if (s.waiting && s.waiting.text !== prev.waiting?.text) mark('waiting', 'm-arrive', 400);
+  const saved = new Set((prev.setup?.steps ?? []).filter((/** @type {any} */ x) => x.done).map((/** @type {any} */ x) => x.key));
+  for (const x of s.setup?.steps ?? []) if (x.done && !saved.has(x.key) && prev.setup) mark(`setup:${x.key}`, 'm-fade', 360);
+  const tasks = new Map((prev.milestones ?? []).flatMap((/** @type {any} */ m) => m.tasks ?? []).map((/** @type {any} */ t) => [t.id, t]));
+  for (const t of (s.milestones ?? []).flatMap((/** @type {any} */ m) => m.tasks ?? [])) {
+    const old = /** @type {any} */ (tasks.get(t.id));
+    if (!old) mark(`cell:${t.id}`, 'm-arrive', 400);
+    else if (t.done && !old.done) mark(`cell:${t.id}`, 'm-fill', 560);
+    else if (t.current && !old.current) mark(`cell:${t.id}`, 'm-now', 760, 240);
+  }
+  const todos = new Map((prev.todos ?? []).map((/** @type {any} */ t) => [t.id, t]));
+  for (const t of s.todos ?? []) {
+    const old = /** @type {any} */ (todos.get(t.id));
+    if (!old) mark(`todo:${t.id}`, 'm-arrive', 360);
+    else if (t.done && !old.done) mark(`todo:${t.id}`, 'm-done', 360);
+    else if (t.planned && !old.planned) mark(`planned:${t.id}`, 'm-arrive', 360);
+  }
+}
+
+/** @param {'done' | 'later'} which A group of milestones unfolding: each row drops in, a beat apart. */
+function markPlanGroup(which) {
+  const ms = /** @type {any[]} */ (state?.milestones ?? []);
+  const current = ms.findIndex((m) => m.current);
+  if (current < 0) return;
+  const group = which === 'done' ? ms.slice(0, current) : ms.slice(current + 1);
+  group.forEach((m, i) => mark(`ms:${m.id}`, 'm-drop', 280, Math.min(i, 4) * 40));
+}
+
+/** Transitions running, so the last one to finish takes the names away. */
+let transitions = 0;
+
+/**
+ * Change views with a short crossfade: the old view fades, the new one rises a few pixels, and the
+ * open tab's pill glides to its new tab. Reduced motion, and browsers without view transitions,
+ * change at once.
+ * @param {() => void} update
+ */
+function withTransition(update) {
+  const doc = /** @type {any} */ (content.ownerDocument);
+  const still = doc.defaultView?.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (typeof doc.startViewTransition !== 'function' || still || doc.visibilityState === 'hidden') {
+    update();
+    return;
+  }
+  transitions += 1;
+  doc.documentElement.classList.add('vt');
+  const t = doc.startViewTransition(update);
+  t.finished.finally(() => {
+    transitions -= 1;
+    if (!transitions) doc.documentElement.classList.remove('vt');
+  });
+}
+
+/**
+ * Which screen a state puts on screen; a change of screen fades through. A pass that lands while
+ * the to-dos or a finished task are open changes nothing on screen, so it doesn't.
+ * @param {any} s
+ */
+function viewKey(s) {
+  if (finished) return `finished|${finished.id}|${s?.ok}`;
+  if (tab === 'todos') return `todos|${s?.ok}`;
+  return ['main', s?.ok, s?.phase, s?.result?.task ?? '', s?.card?.task ?? ''].join('|');
 }
 
 /** Tell screen readers about a change worth hearing, once. */
@@ -271,7 +409,7 @@ function actions(s) {
   return h(
     'div',
     { class: `actions${line.busy ? ' pending' : ''}` },
-    h('p', { class: `how${line.busy ? ' working' : ''}` }, line.text),
+    h('p', { class: `how${line.busy ? ' working' : ''}`, 'data-m': 'how-line' }, line.text),
     s.typeAlong ? null : pressButton(s, 'hint', 'Hint', 'secondary'),
     pressButton(s, 'stuck', "I'm stuck", 'secondary'),
     pressButton(s, 'check', 'Check my work', openQuestion(s) ? 'secondary' : 'primary'),
@@ -348,7 +486,7 @@ function pastQuestion(q) {
     h('p', { class: 'past-q' }, q.text),
     q.answer ? h('p', { class: 'past-a' }, q.answer.text) : h('p', { class: 'empty' }, 'Answered in your session.'),
     h('p', { class: `finding ${q.outcome === 'good' ? 'good' : ''}` }, q.outcome === 'good' ? 'Good answer' : 'Not quite yet'),
-    q.feedback ? h('p', { class: 'feedback' }, q.feedback) : null,
+    q.feedback ? h('p', { class: 'feedback', 'data-m': `fb:${q.id}` }, q.feedback) : null,
   );
 }
 
@@ -359,7 +497,7 @@ function questionPanel(s) {
   /** @type {(Node | null)[]} */
   const main = [h('header', { class: 'panel-head' }, h('h2', { id: 'qa-title' }, 'Explain your code'), open ? h('span', { class: 'count' }, open.try === 1 ? 'One question' : 'One more question') : null)];
   if (open) {
-    main.push(h('p', { class: 'question' }, open.text));
+    main.push(h('p', { class: 'question', 'data-m': `q:${open.id}` }, open.text));
     if (open.answer && !editing.has(open.id)) {
       main.push(
         h('div', { class: 'answer' }, h('p', { class: 'answer-text' }, open.answer.text)),
@@ -396,7 +534,11 @@ function turnView(s) {
   const cmd = (/** @type {string} */ k, /** @type {string} */ fallback) => s.commands?.[k] ?? fallback;
   /** @type {Node[]} */
   const nodes = [];
-  if (s.waiting) nodes.push(callout('you', 'Menitor is waiting on you', s.waiting.text));
+  if (s.waiting) {
+    const waiting = callout('you', 'Menitor is waiting on you', s.waiting.text);
+    waiting.dataset.m = 'waiting';
+    nodes.push(waiting);
+  }
   if (c.owner === 'delegated') {
     const asked = s.goAskedAt;
     nodes.push(
@@ -531,8 +673,8 @@ function typeAlongPanel(c, s) {
     list.append(
       h(
         'li',
-        { class: `item step${item.ticked ? ' done' : ''}${locked ? ' locked' : ''}${expanded ? ' expanded' : ''}` },
-        h('div', { class: 'step-row' }, box, toggle),
+        { class: `item step${item.ticked ? ' done' : ''}${locked ? ' locked' : ''}${expanded ? ' expanded' : ''}`, 'data-m': `item:${item.id}` },
+        h('div', { class: 'step-row', 'data-m': `tick:${item.id}` }, box, toggle),
         h('div', { class: 'solution', id: panelId, hidden: !expanded }, ...body),
       ),
     );
@@ -563,8 +705,8 @@ function stepsPanel(c) {
     list.append(
       h(
         'li',
-        { class: `item${item.ticked ? ' done' : ''}${learner ? '' : ' readonly'}` },
-        h('label', null, box, h('span', { class: 'text' }, item.text, item.source === 'fix' ? h('span', { class: 'pill negative' }, 'Fix') : null)),
+        { class: `item${item.ticked ? ' done' : ''}${learner ? '' : ' readonly'}`, 'data-m': `item:${item.id}` },
+        h('label', { 'data-m': `tick:${item.id}` }, box, h('span', { class: 'text' }, item.text, item.source === 'fix' ? h('span', { class: 'pill negative' }, 'Fix') : null)),
       ),
     );
   }
@@ -588,12 +730,12 @@ function hintsPanel(c) {
     body.push(h('p', { class: 'empty' }, "This milestone's hints are written when you first ask for one."));
   } else {
     const ladder = h('ol', { class: 'ladder', 'aria-label': 'Hint ladder' });
-    for (const r of rungs) ladder.append(h('li', { class: `rung${r.open ? ' open' : ''}` }, RUNGS[r.rung] ?? r.rung, h('span', { class: 'sr-only' }, r.open ? ' (open)' : ' (locked)')));
+    rungs.forEach((/** @type {any} */ r, /** @type {number} */ i) => ladder.append(h('li', { class: `rung${r.open ? ' open' : ''}`, 'data-m': `rung:${i}` }, RUNGS[r.rung] ?? r.rung, h('span', { class: 'sr-only' }, r.open ? ' (open)' : ' (locked)'))));
     side.push(ladder);
     for (const r of rungs) {
       if (!r.open || !r.text) continue;
       const text = CODE_RUNGS.has(r.rung) ? h('pre', null, h('code', null, r.text)) : h('p', null, r.text);
-      body.push(h('div', { class: 'hint' }, h('h3', null, RUNGS[r.rung] ?? r.rung), text));
+      body.push(h('div', { class: 'hint', 'data-m': `hint:${r.rung}` }, h('h3', null, RUNGS[r.rung] ?? r.rung), text));
     }
     if (revealed === 0) body.push(h('p', { class: 'empty hint' }, 'None open yet. The first one is the idea, never the code.'));
     if (!body.length) body.push(h('p', { class: 'empty' }, 'None open yet.'));
@@ -694,6 +836,7 @@ function togglePlanGroup(which) {
   } catch {
     // Not kept between visits; it still works now.
   }
+  if (planOpen[which]) markPlanGroup(which);
   render(state);
 }
 
@@ -767,7 +910,7 @@ function taskView(s) {
         { class: 'status' },
         h('span', { class: 'num' }, `Task ${c.number} of ${c.total} · ${c.milestone.title}`),
         c.added ? h('span', { class: 'tag', title: `Added to the plan on ${new Date(c.added).toLocaleDateString()}` }, 'Added') : null,
-        h('span', { class: `finding ${f.tone}` }, f.text),
+        h('span', { class: `finding ${f.tone}`, 'data-m': 'finding' }, f.text),
       ),
       h('p', { class: 'why' }, c.why),
     ),
@@ -799,7 +942,8 @@ async function continueOn(r, e) {
   const btn = /** @type {HTMLButtonElement} */ (e.currentTarget);
   btn.disabled = true;
   try {
-    render(await post('/api/continue', { task: r.task }));
+    const next = await post('/api/continue', { task: r.task });
+    withTransition(() => render(next));
   } catch (err) {
     btn.disabled = false;
     showToast(`Couldn't move on: ${/** @type {Error} */ (err).message}`, undefined, docOf(e));
@@ -821,7 +965,7 @@ function explainList(questions) {
         h('p', { class: 'past-q' }, q.text),
         q.answer ? h('p', { class: 'past-a' }, q.answer.text) : h('p', { class: 'empty' }, 'Answered in your session.'),
         h('p', { class: `finding ${q.outcome === 'good' ? 'good' : ''}` }, q.outcome === 'good' ? 'Good answer' : 'Not quite yet'),
-        q.feedback ? h('p', { class: 'result-feedback' }, q.feedback) : null,
+        q.feedback ? h('p', { class: 'result-feedback', 'data-m': `fb:${q.id}` }, q.feedback) : null,
       ),
     ),
   );
@@ -852,17 +996,24 @@ async function openFinished(id, e) {
     const res = await fetch(`/api/task?id=${encodeURIComponent(id)}`, { credentials: 'same-origin' });
     if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
     const stepping = Boolean(finished);
-    finished = { id, data: await res.json() };
-    syncHash();
-    if (!state) return;
-    render(state);
-    // Opened from the plan, the keyboard moves to the task; Previous and Next keep it where it is.
-    // Opened from a link, nothing was pressed, so focus stays put.
-    const doc = content.ownerDocument;
-    if (!e) return;
-    if (!stepping || !content.contains(doc.activeElement) || /** @type {HTMLButtonElement} */ (doc.activeElement).disabled) {
-      /** @type {HTMLElement | null} */ (content.querySelector('#title'))?.focus();
+    const data = await res.json();
+    if (!state) {
+      finished = { id, data };
+      syncHash();
+      return;
     }
+    withTransition(() => {
+      finished = { id, data };
+      syncHash();
+      render(state);
+      // Opened from the plan, the keyboard moves to the task; Previous and Next keep it where it is.
+      // Opened from a link, nothing was pressed, so focus stays put.
+      const doc = content.ownerDocument;
+      if (!e) return;
+      if (!stepping || !content.contains(doc.activeElement) || /** @type {HTMLButtonElement} */ (doc.activeElement).disabled) {
+        /** @type {HTMLElement | null} */ (content.querySelector('#title'))?.focus();
+      }
+    });
   } catch (err) {
     if (!finished) syncHash();
     showToast(`Couldn't open that task: ${/** @type {Error} */ (err).message}`, undefined, docOf(e));
@@ -872,13 +1023,19 @@ async function openFinished(id, e) {
 /** Back to where the learner was, with the keyboard on the task they had open. */
 function closeFinished() {
   const id = finished?.id ?? '';
-  finished = null;
-  syncHash();
-  if (!state) return;
-  render(state);
-  // Back on the cell or the list row it was opened from; a cell in a folded group isn't there, so the title.
-  const from = content.querySelector(`[data-key="cell:${CSS.escape(id)}"], [data-key="built:${CSS.escape(id)}"]`) ?? content.querySelector('#title');
-  /** @type {HTMLElement | null} */ (from)?.focus();
+  if (!state) {
+    finished = null;
+    syncHash();
+    return;
+  }
+  withTransition(() => {
+    finished = null;
+    syncHash();
+    render(state);
+    // Back on the cell or the list row it was opened from; a cell in a folded group isn't there, so the title.
+    const from = content.querySelector(`[data-key="cell:${CSS.escape(id)}"], [data-key="built:${CSS.escape(id)}"]`) ?? content.querySelector('#title');
+    /** @type {HTMLElement | null} */ (from)?.focus();
+  });
 }
 
 /** @param {any} t Who did a task, in words. */
@@ -1336,7 +1493,7 @@ function setupView(s) {
     'section',
     { class: 'panel setup-steps', 'aria-labelledby': 'setup-steps-title' },
     h('header', { class: 'panel-head' }, h('h2', { id: 'setup-steps-title' }, 'Setup so far')),
-    h('ol', { class: 'setup-list' }, ...su.steps.map((/** @type {any} */ x) => h('li', { class: x.done ? 'done' : '' }, h('span', null, x.label), h('span', { class: 'setup-mark' }, x.done ? 'Saved' : 'Not yet')))),
+    h('ol', { class: 'setup-list' }, ...su.steps.map((/** @type {any} */ x) => h('li', { class: x.done ? 'done' : '', 'data-m': `setup:${x.key}` }, h('span', null, x.label), h('span', { class: 'setup-mark' }, x.done ? 'Saved' : 'Not yet')))),
   );
   return { nodes: [head, h('div', { class: 'setup-body' }, main, steps)], bar: false };
 }
@@ -1446,6 +1603,7 @@ async function deleteTodo(t, index, e) {
         if (state) render(state);
       }, UNDO_MS),
     };
+    mark('todo-undo', 'm-arrive', 320);
     render(next);
     /** @type {HTMLElement | null} */ (content.querySelector('[data-key="todo-undo"]'))?.focus();
   } catch (err) {
@@ -1474,7 +1632,7 @@ async function undoDelete(e) {
 function undoRow(u) {
   return h(
     'li',
-    { class: 'todo undo' },
+    { class: 'todo undo', 'data-m': 'todo-undo' },
     h('p', { class: 'todo-text' }, `Deleted “${u.text}”`),
     h('div', { class: 'todo-actions' }, h('button', { type: 'button', class: 'btn ghost small', 'data-key': 'todo-undo', onclick: undoDelete }, 'Undo')),
   );
@@ -1531,7 +1689,7 @@ function todoRow(t, index) {
     h(
       'div',
       { class: 'todo-actions' },
-      t.planned ? h('span', { class: 'todo-planned' }, plannedAs(state, t.planned.to)) : t.done ? null : planTodoButton(state, t),
+      t.planned ? h('span', { class: 'todo-planned', 'data-m': `planned:${t.id}` }, plannedAs(state, t.planned.to)) : t.done ? null : planTodoButton(state, t),
       h('button', { type: 'button', class: 'btn ghost small', 'data-key': `todo-edit-btn:${t.id}`, 'aria-label': `Edit: ${t.text}`, onclick: () => ((editingTodo = t.id), render(state)) }, 'Edit'),
       h('button', { type: 'button', class: 'btn ghost small', 'aria-label': `Delete: ${t.text}`, onclick: (/** @type {Event} */ e) => deleteTodo(t, index, e) }, 'Delete'),
     ),
@@ -1780,10 +1938,15 @@ function renderTabs(s) {
       'button',
       { type: 'button', class: 'tab', 'data-key': `tab:${which}`, 'aria-current': tab === which ? 'page' : undefined, onclick: () => switchTab(which) },
       tab === which ? h('span', { class: 'tab-pill', 'aria-hidden': 'true' }) : null,
-      h('span', { class: 'tab-label' }, label),
-      count ? h('span', { class: 'tab-count num' }, String(count), h('span', { class: 'sr-only' }, ' open')) : null,
-      attention ? h('span', { class: 'tab-dot', 'aria-hidden': 'true' }) : null,
-      attention ? h('span', { class: 'sr-only' }, ', needs you') : null,
+      // The words in one box over the pill, so the pill can glide beneath them.
+      h(
+        'span',
+        { class: 'tab-text' },
+        h('span', null, label),
+        count ? h('span', { class: 'tab-count num' }, String(count), h('span', { class: 'sr-only' }, ' open')) : null,
+        attention ? h('span', { class: 'tab-dot', 'aria-hidden': 'true' }) : null,
+        attention ? h('span', { class: 'sr-only' }, ', needs you') : null,
+      ),
     );
   tabsNav.replaceChildren(button('main', mainLabel, 0, dot), button('todos', 'To-dos', open, false));
   tabsNav.hidden = false;
@@ -1797,17 +1960,20 @@ function switchTab(next) {
   if (tab === next && !finished) return;
   const win = content.ownerDocument.defaultView ?? window;
   scrollByTab[tab] = win.scrollY;
-  tab = next;
-  finished = null;
-  syncHash();
-  if (state) render(state);
-  win.scrollTo(0, scrollByTab[next] ?? 0);
+  withTransition(() => {
+    tab = next;
+    finished = null;
+    syncHash();
+    if (state) render(state);
+    win.scrollTo(0, scrollByTab[next] ?? 0);
+  });
 }
 
 /** @param {any} s */
 function render(s) {
   const prev = state;
   state = s;
+  markChanges(prev, s);
   // Keep the keyboard where it was: a tick re-renders the card.
   const doc = app.ownerDocument;
   const active = /** @type {HTMLElement | null} */ (doc.activeElement);
@@ -1828,6 +1994,7 @@ function render(s) {
 
   const notice = s.ok && s.mentorMode === 'off' ? h('p', { class: 'notice', role: 'status' }, 'Mentor mode is off, so the agent may write code anywhere.') : null;
   content.replaceChildren(...(notice ? [notice] : []), ...view.nodes);
+  applyMotion(content);
   sheet.classList.toggle('has-bar', view.bar);
 
   projectName.textContent = s.project ?? 'Your project';
@@ -1868,7 +2035,9 @@ function connect() {
   const events = new EventSource('/api/events');
   events.addEventListener('state', (e) => {
     setLive('live');
-    render(JSON.parse(/** @type {MessageEvent} */ (e).data));
+    const next = JSON.parse(/** @type {MessageEvent} */ (e).data);
+    if (state && viewKey(next) !== viewKey(state)) withTransition(() => render(next));
+    else render(next);
   });
   events.addEventListener('error', async () => {
     setLive('lost');
