@@ -2,7 +2,7 @@
 //
 // Each file has one writer, so the window and the agent never overwrite each other:
 //   plan.json, session.json, learner.md,
-//   solutions.json                       -> the CLI (the agent goes through it)
+//   solutions.json, graph.json           -> the CLI (the agent goes through it)
 //   progress.json, window.json,
 //   answers.json                         -> the task window
 //   guard.json                           -> agent-adapter hooks, from commands the learner typed
@@ -60,6 +60,7 @@ export const SCHEMAS = {
   answers: loadSchema('answers'),
   setup: loadSchema('setup'),
   todos: loadSchema('todos'),
+  graph: loadSchema('graph'),
 };
 
 /**
@@ -269,6 +270,29 @@ export function loadTodos(paths) {
 export function saveTodos(paths, todos) {
   assertValid('todos', todos, 'The to-dos');
   writeJsonAtomic(paths.todos, todos);
+}
+
+// graph.json (the CLI writes it; it can always be rebuilt)
+
+/**
+ * @param {StatePaths} paths
+ * @returns {import('./graph.js').Graph | null} null when it doesn't exist yet
+ */
+export function loadGraph(paths) {
+  const graph = readJsonOrNull(paths.graph);
+  if (graph === null) return null;
+  assertValid('graph', graph, 'graph.json');
+  return /** @type {import('./graph.js').Graph} */ (graph);
+}
+
+/**
+ * For the CLI only.
+ * @param {StatePaths} paths
+ * @param {import('./graph.js').Graph} graph
+ */
+export function saveGraph(paths, graph) {
+  assertValid('graph', graph, 'The context graph');
+  writeJsonAtomic(paths.graph, graph);
 }
 
 // setup.json
